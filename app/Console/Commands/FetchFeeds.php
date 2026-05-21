@@ -82,7 +82,7 @@ class FetchFeeds extends Command
             $url = trim((string) $item->link);
             if (empty($url)) continue;
 
-            $title = trim((string) $item->title);
+            $title = $this->decode((string) $item->title);
             if (empty($title)) continue;
 
             $slug = $this->uniqueSlug($title, $url);
@@ -114,8 +114,16 @@ class FetchFeeds extends Command
 
     private function extractDescription(\SimpleXMLElement $item): string
     {
-        $raw = (string) $item->description;
-        return trim(strip_tags($raw));
+        return $this->decode(strip_tags((string) $item->description));
+    }
+
+    /**
+     * Decode HTML entities (e.g. &agrave; → à, &amp; → &) and trim.
+     * RSS feeds frequently encode Vietnamese diacritics as entities.
+     */
+    private function decode(string $raw): string
+    {
+        return trim(html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     }
 
     private function extractImage(\SimpleXMLElement $item): ?string

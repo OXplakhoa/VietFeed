@@ -1,21 +1,6 @@
 <x-app-layout>
     <x-slot name="title">{{ $category->name }} — VietFeed</x-slot>
 
-    {{-- Category Tabs --}}
-    <div class="category-tabs-bar">
-        <div class="container-xl">
-            <nav class="nav flex-nowrap">
-                <a href="{{ route('home') }}" class="nav-link">Tất cả</a>
-                @foreach($categories as $cat)
-                <a href="{{ route('categories.show', $cat->slug) }}"
-                   class="nav-link {{ $cat->id === $category->id ? 'active' : '' }}">
-                    {{ $cat->name }}
-                </a>
-                @endforeach
-            </nav>
-        </div>
-    </div>
-
     <div class="container-xl py-4">
         <div class="section-header">
             <h2>{{ $category->name }}</h2>

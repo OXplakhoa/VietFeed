@@ -126,6 +126,7 @@
 
             {{-- Related Articles Sidebar --}}
             <div class="col-lg-4">
+                <div class="sidebar-sticky">
                 @if($related->count())
                 <div class="trending-sidebar">
                     <div class="sidebar-title">Bài viết liên quan</div>
@@ -153,13 +154,14 @@
                 </div>
                 @endif
 
-                <div class="trending-sidebar mt-3">
+                <div class="trending-sidebar">
                     <div class="sidebar-title">Nguồn bài viết</div>
                     <a href="{{ $article->source->url }}" target="_blank" rel="noopener"
                        style="color:var(--text);text-decoration:none;font-size:.875rem">
                         <i class="bi bi-newspaper me-2" style="color:var(--accent)"></i>
                         {{ $article->source->name }}
                     </a>
+                </div>
                 </div>
             </div>
         </div>

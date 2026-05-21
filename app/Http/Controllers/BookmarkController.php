@@ -22,6 +22,13 @@ class BookmarkController extends Controller
 
     public function toggle(Request $request)
     {
+        if (! auth()->user()->hasVerifiedEmail()) {
+            return response()->json([
+                'error'   => 'unverified',
+                'message' => 'Vui lòng xác minh email để lưu bài viết',
+            ], 403);
+        }
+
         $request->validate(['article_id' => 'required|exists:articles,id']);
 
         $existing = auth()->user()

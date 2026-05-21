@@ -1,6 +1,18 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="dark">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
+    {{-- Apply theme BEFORE any CSS loads to prevent FOUC (flash of dark on light pages, or vice versa) --}}
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('vf-theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
+
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -30,17 +42,7 @@
             <i class="bi bi-list" style="font-size:1.4rem;color:var(--text)"></i>
         </button>
 
-        <div class="collapse navbar-collapse" id="vfNav">
-
-            {{-- Desktop category links --}}
-            <ul class="navbar-nav me-auto d-none d-xl-flex">
-                @foreach(\App\Models\Category::all() as $cat)
-                <li class="nav-item">
-                    <a class="nav-link {{ request()->is('categories/'.$cat->slug) ? 'active' : '' }}"
-                       href="{{ route('categories.show', $cat->slug) }}">{{ $cat->name }}</a>
-                </li>
-                @endforeach
-            </ul>
+        <div class="collapse navbar-collapse justify-content-end" id="vfNav">
 
             {{-- Search Bar --}}
             <div class="position-relative me-3 my-2 my-lg-0" style="width:240px">
@@ -107,22 +109,25 @@
                 @endauth
             </div>
 
-            {{-- Mobile: category list --}}
-            <div class="d-xl-none mt-3 pb-2" style="border-top:1px solid var(--border)">
-                <div class="d-flex flex-wrap gap-1 pt-2">
-                    @foreach(\App\Models\Category::all() as $cat)
-                    <a href="{{ route('categories.show', $cat->slug) }}"
-                       class="badge text-decoration-none"
-                       style="background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);font-size:.8rem;padding:.4rem .7rem;border-radius:6px">
-                        {{ $cat->name }}
-                    </a>
-                    @endforeach
-                </div>
-            </div>
-
         </div>
     </div>
 </nav>
+
+{{-- ── Sticky Category Tabs (universal) ───────────────────────── --}}
+<div class="category-tabs-bar">
+    <div class="container-xl">
+        <nav class="nav flex-nowrap">
+            <a href="{{ route('home') }}"
+               class="nav-link {{ request()->routeIs('home') ? 'active' : '' }}">Tất cả</a>
+            @foreach(\App\Models\Category::all() as $cat)
+            <a href="{{ route('categories.show', $cat->slug) }}"
+               class="nav-link {{ request()->is('categories/'.$cat->slug) ? 'active' : '' }}">
+                {{ $cat->name }}
+            </a>
+            @endforeach
+        </nav>
+    </div>
+</div>
 
 {{-- Flash Messages --}}
 @if(session('success'))

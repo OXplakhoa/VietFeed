@@ -22,11 +22,15 @@ Route::get('/search', [SearchController::class, 'index'])->name('search');
 Route::get('/api/live-search', [SearchController::class, 'liveSearch'])->name('search.live');
 Route::get('/api/articles', [HomeController::class, 'loadMore'])->name('api.articles.load');
 
+// ── Auth-only (controller handles its own verified check for friendlier UX) ──
+Route::middleware('auth')->group(function () {
+    Route::post('/bookmarks/toggle', [BookmarkController::class, 'toggle'])->name('bookmarks.toggle');
+});
+
 // ── Auth-required routes ───────────────────────────────────────
 Route::middleware(['auth', 'verified'])->group(function () {
     // Bookmarks
     Route::get('/bookmarks', [BookmarkController::class, 'index'])->name('bookmarks.index');
-    Route::post('/bookmarks/toggle', [BookmarkController::class, 'toggle'])->name('bookmarks.toggle');
 
     // Comments (note: {article:slug} for route-model binding by slug)
     Route::post('/articles/{article:slug}/comments', [CommentController::class, 'store'])->name('comments.store');

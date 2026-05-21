@@ -71,7 +71,13 @@ function initBookmarkToggle() {
 
             if (res.status === 401) { window.location.href = '/login'; return; }
 
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                showToast(data.message || 'Có lỗi xảy ra, vui lòng thử lại', 'error');
+                return;
+            }
+
             const icon = btn.querySelector('.bi');
 
             if (data.action === 'added') {

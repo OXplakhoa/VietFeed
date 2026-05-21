@@ -1,24 +1,6 @@
 <x-app-layout>
     <x-slot name="title">Trang chủ — VietFeed</x-slot>
 
-    {{-- ── Category Tabs ─────────────────────────────────────────────── --}}
-    <div class="category-tabs-bar">
-        <div class="container-xl">
-            <nav class="nav flex-nowrap">
-                <a href="{{ route('home') }}"
-                   class="nav-link {{ request()->routeIs('home') && !request('cat') ? 'active' : '' }}">
-                    Tất cả
-                </a>
-                @foreach($categories as $cat)
-                <a href="{{ route('categories.show', $cat->slug) }}"
-                   class="nav-link {{ request()->is('categories/'.$cat->slug) ? 'active' : '' }}">
-                    {{ $cat->name }}
-                </a>
-                @endforeach
-            </nav>
-        </div>
-    </div>
-
     <div class="container-xl py-4">
 
         {{-- ── Hero Grid ──────────────────────────────────────────────── --}}
@@ -105,36 +87,38 @@
 
             {{-- Trending Sidebar --}}
             <div class="col-lg-4">
-                <div class="trending-sidebar">
-                    <div class="sidebar-title">
-                        <i class="bi bi-fire" style="color:var(--accent)"></i> Đang thịnh hành
-                    </div>
-                    @foreach($trending as $i => $t)
-                    <a href="{{ route('articles.show', $t->slug) }}" class="trending-item">
-                        <span class="trending-num">{{ str_pad($i + 1, 2, '0', STR_PAD_LEFT) }}</span>
-                        <div>
-                            <div class="trending-item-title">{{ $t->title }}</div>
-                            <div style="font-size:.73rem;color:var(--text-muted);margin-top:.2rem">
-                                {{ $t->bookmarks_count }} lượt lưu
-                            </div>
+                <div class="sidebar-sticky">
+                    <div class="trending-sidebar">
+                        <div class="sidebar-title">
+                            <i class="bi bi-fire" style="color:var(--accent)"></i> Đang thịnh hành
                         </div>
-                    </a>
-                    @endforeach
-                </div>
-
-                {{-- Quick category links --}}
-                <div class="trending-sidebar mt-3">
-                    <div class="sidebar-title">Chủ đề</div>
-                    <div class="d-flex flex-wrap gap-2">
-                        @foreach($categories as $cat)
-                        <a href="{{ route('categories.show', $cat->slug) }}"
-                           class="badge text-decoration-none"
-                           style="background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);padding:.45rem .85rem;border-radius:6px;font-size:.82rem;transition:border-color .2s,color .2s"
-                           onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
-                           onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
-                            {{ $cat->name }}
+                        @foreach($trending as $i => $t)
+                        <a href="{{ route('articles.show', $t->slug) }}" class="trending-item">
+                            <span class="trending-num">{{ str_pad($i + 1, 2, '0', STR_PAD_LEFT) }}</span>
+                            <div>
+                                <div class="trending-item-title">{{ $t->title }}</div>
+                                <div style="font-size:.73rem;color:var(--text-muted);margin-top:.2rem">
+                                    {{ $t->bookmarks_count }} lượt lưu
+                                </div>
+                            </div>
                         </a>
                         @endforeach
+                    </div>
+
+                    {{-- Quick category links --}}
+                    <div class="trending-sidebar">
+                        <div class="sidebar-title">Chủ đề</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            @foreach($categories as $cat)
+                            <a href="{{ route('categories.show', $cat->slug) }}"
+                               class="badge text-decoration-none"
+                               style="background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);padding:.45rem .85rem;border-radius:6px;font-size:.82rem;transition:border-color .2s,color .2s"
+                               onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+                               onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
+                                {{ $cat->name }}
+                            </a>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
             </div>
