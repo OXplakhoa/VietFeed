@@ -37,6 +37,18 @@ class ProfileController extends Controller
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }
 
+    public function updatePreferences(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'categories'   => 'array',
+            'categories.*' => 'exists:categories,id',
+        ]);
+
+        $request->user()->favoriteCategories()->sync($request->categories ?? []);
+
+        return back()->with('status', 'preferences-updated');
+    }
+
     /**
      * Delete the user's account.
      */
