@@ -197,7 +197,7 @@
         <h2 id="verify-modal-title" class="vf-modal-title">Xác minh email</h2>
         <p class="vf-modal-email">Chúng tôi đã gửi link xác minh đến<br><strong>{{ auth()->user()->email }}</strong></p>
         <button id="verify-resend-btn" type="button">Gửi lại email xác minh</button>
-        <p class="vf-modal-hint">Không nhận được? Kiểm tra thư mục spam hoặc nhấn gửi lại.</p>
+        <p class="vf-modal-hint">Không nhận được ? Kiểm tra thư mục spam hoặc nhấn gửi lại.</p>
     </div>
 </div>
 @endif
