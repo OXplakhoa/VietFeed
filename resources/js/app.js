@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initLiveSearch();
     initFadeIn();
     initCommentReplyToggle();
+    initVerificationModal();
 
     if (document.getElementById('infinite-scroll-anchor')) {
         initInfiniteScroll();
@@ -38,12 +39,36 @@ function updateToggleIcon(btn, theme) {
     btn.title = theme === 'dark' ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối';
 }
 
-// ── Sticky Navbar Glow ─────────────────────────────────────────
+// ── Auto-Hide Navbar + sticky category tabs ────────────────────
 function initNavbarScroll() {
     const navbar = document.querySelector('.vf-navbar');
+    const tabs   = document.querySelector('.category-tabs-bar');
     if (!navbar) return;
+
+    let lastScrollY = window.scrollY;
+    let ticking     = false;
+
     window.addEventListener('scroll', () => {
-        navbar.classList.toggle('scrolled', window.scrollY > 50);
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+            const y     = window.scrollY;
+            const delta = y - lastScrollY;
+
+            navbar.classList.toggle('scrolled', y > 50);
+
+            if (y < 80) {
+                navbar.classList.remove('navbar-hidden');
+                tabs?.classList.remove('navbar-collapsed');
+            } else if (Math.abs(delta) > 10) {
+                const hide = delta > 0;
+                navbar.classList.toggle('navbar-hidden', hide);
+                tabs?.classList.toggle('navbar-collapsed', hide);
+            }
+
+            lastScrollY = y;
+            ticking     = false;
+        });
     }, { passive: true });
 }
 
@@ -72,6 +97,11 @@ function initBookmarkToggle() {
             if (res.status === 401) { window.location.href = '/login'; return; }
 
             const data = await res.json().catch(() => ({}));
+
+            if (res.status === 403 && data.verify_required) {
+                showVerifyToast();
+                return;
+            }
 
             if (!res.ok) {
                 showToast(data.message || 'Có lỗi xảy ra, vui lòng thử lại', 'error');
@@ -261,3 +291,69 @@ function showToast(message, type = 'success') {
 }
 
 window.showToast = showToast;
+
+// ── Email Verification Modal ───────────────────────────────────
+function initVerificationModal() {
+    const backdrop = document.getElementById('verify-modal-backdrop');
+    if (!backdrop) return;
+
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+    const btn  = document.getElementById('verify-resend-btn');
+
+    backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) closeVerifyModal();
+    });
+
+    document.getElementById('verify-modal-close')?.addEventListener('click', closeVerifyModal);
+
+    btn?.addEventListener('click', async () => {
+        if (btn.classList.contains('sent')) return;
+        btn.disabled = true;
+        btn.textContent = 'Đang gửi…';
+        try {
+            await fetch('/email/verification-notification', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+            });
+            btn.textContent = '✓ Đã gửi! Kiểm tra hộp thư';
+            btn.classList.add('sent');
+            setTimeout(() => closeVerifyModal(), 4000);
+        } catch {
+            btn.disabled = false;
+            btn.textContent = 'Gửi lại email xác minh';
+        }
+    });
+}
+
+function openVerifyModal() {
+    const backdrop = document.getElementById('verify-modal-backdrop');
+    if (backdrop) backdrop.classList.add('open');
+}
+
+function closeVerifyModal() {
+    const backdrop = document.getElementById('verify-modal-backdrop');
+    if (backdrop) backdrop.classList.remove('open');
+}
+
+function showVerifyToast() {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'vf-toast toast show info';
+    el.setAttribute('role', 'alert');
+    el.innerHTML = `
+        <div class="toast-header">
+            <i class="bi bi-info-circle-fill me-2"></i>
+            <strong class="me-auto">VietFeed</strong>
+            <button type="button" class="btn-close btn-close-white" onclick="this.closest('.toast').remove()"></button>
+        </div>
+        <div class="toast-body">
+            Xác minh email để sử dụng tính năng này.
+            <a href="#" onclick="event.preventDefault();openVerifyModal();this.closest('.toast').remove()"
+               style="color:var(--accent);text-decoration:underline;margin-left:4px">Xác minh ngay →</a>
+        </div>`;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 8000);
+}
+
+window.openVerifyModal = openVerifyModal;

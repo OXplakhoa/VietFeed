@@ -156,6 +156,53 @@
 {{-- Toast Container --}}
 <div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index:9999"></div>
 
+@if(session('show_verify_banner'))
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const el = document.createElement('div');
+        el.className = 'vf-toast toast show info';
+        el.setAttribute('role', 'alert');
+        el.innerHTML = `
+            <div class="toast-header">
+                <i class="bi bi-envelope-check-fill me-2"></i>
+                <strong class="me-auto">VietFeed</strong>
+                <button type="button" class="btn-close btn-close-white" onclick="this.closest('.toast').remove()"></button>
+            </div>
+            <div class="toast-body">
+                Xác minh email để sử dụng đầy đủ tính năng.
+                <a href="#" onclick="event.preventDefault();openVerifyModal();this.closest('.toast').remove()"
+                   style="color:var(--accent);text-decoration:underline;margin-left:4px">Kiểm tra hộp thư →</a>
+            </div>`;
+        document.getElementById('toast-container')?.appendChild(el);
+        setTimeout(() => el.remove(), 10000);
+    });
+</script>
+@endif
+
+@if(session('verify_email_required'))
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof openVerifyModal === 'function') openVerifyModal();
+    });
+</script>
+@endif
+
+@auth
+@if(!auth()->user()->hasVerifiedEmail())
+{{-- Verification Modal --}}
+<div id="verify-modal-backdrop" class="vf-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="verify-modal-title">
+    <div class="vf-modal">
+        <button id="verify-modal-close" class="vf-modal-close" aria-label="Đóng">&times;</button>
+        <span class="vf-modal-icon">📧</span>
+        <h2 id="verify-modal-title" class="vf-modal-title">Xác minh email</h2>
+        <p class="vf-modal-email">Chúng tôi đã gửi link xác minh đến<br><strong>{{ auth()->user()->email }}</strong></p>
+        <button id="verify-resend-btn" type="button">Gửi lại email xác minh</button>
+        <p class="vf-modal-hint">Không nhận được? Kiểm tra thư mục spam hoặc nhấn gửi lại.</p>
+    </div>
+</div>
+@endif
+@endauth
+
 {{-- Main Content --}}
 <main>{{ $slot }}</main>
 
