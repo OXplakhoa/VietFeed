@@ -13,6 +13,46 @@
             </a>
         </div>
 
+        {{-- Filter Bar --}}
+        <form method="GET" action="{{ route('admin.categories.index') }}" class="mb-4">
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <input type="text" name="q" value="{{ request('q') }}"
+                           class="form-control form-control-sm"
+                           placeholder="Tìm theo tên chủ đề…"
+                           style="background:var(--surface);border-color:var(--border);color:var(--text)">
+                </div>
+                <div class="col-md-2">
+                    <select name="sort" class="form-select form-select-sm"
+                            style="background:var(--surface);border-color:var(--border);color:var(--text)">
+                        <option value="name"           {{ request('sort','name') === 'name'           ? 'selected' : '' }}>Tên</option>
+                        <option value="articles_count" {{ request('sort') === 'articles_count'        ? 'selected' : '' }}>Số bài viết</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select name="dir" class="form-select form-select-sm"
+                            style="background:var(--surface);border-color:var(--border);color:var(--text)">
+                        <option value="asc"  {{ request('dir','asc') === 'asc'  ? 'selected' : '' }}>Tăng dần</option>
+                        <option value="desc" {{ request('dir') === 'desc'        ? 'selected' : '' }}>Giảm dần</option>
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-sm w-100"
+                            style="background:var(--accent);color:#fff;border:none;border-radius:6px">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+                @if(request()->hasAny(['q','sort','dir']))
+                <div class="col-auto">
+                    <a href="{{ route('admin.categories.index') }}" class="btn btn-sm"
+                       style="background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);border-radius:6px">
+                        Xóa bộ lọc
+                    </a>
+                </div>
+                @endif
+            </div>
+        </form>
+
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
             <div class="table-responsive">
                 <table class="table table-hover mb-0" style="color:var(--text)">
@@ -57,5 +97,7 @@
                 </table>
             </div>
         </div>
+
+        <div class="mt-3">{{ $categories->links() }}</div>
     </div>
 </x-app-layout>

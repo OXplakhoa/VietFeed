@@ -31,6 +31,14 @@ class ArticleController extends Controller
             $query->where('source_id', $request->source);
         }
 
+        if ($request->filled('date_from')) {
+            $query->where('published_at', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->where('published_at', '<=', $request->date_to . ' 23:59:59');
+        }
+
         $articles   = $query->latest('published_at')->paginate(20)->withQueryString();
         $categories = Category::orderBy('name')->get();
         $sources    = Source::orderBy('name')->get();

@@ -57,6 +57,34 @@
                     </button>
                 </div>
             </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-3">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"
+                              style="background:var(--surface-alt);border-color:var(--border);color:var(--text-muted);font-size:.8rem">Từ</span>
+                        <input type="date" name="date_from" value="{{ request('date_from') }}"
+                               class="form-control form-control-sm"
+                               style="background:var(--surface);border-color:var(--border);color:var(--text)">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"
+                              style="background:var(--surface-alt);border-color:var(--border);color:var(--text-muted);font-size:.8rem">Đến</span>
+                        <input type="date" name="date_to" value="{{ request('date_to') }}"
+                               class="form-control form-control-sm"
+                               style="background:var(--surface);border-color:var(--border);color:var(--text)">
+                    </div>
+                </div>
+                @if(request()->hasAny(['q','category','source','date_from','date_to']))
+                <div class="col-auto d-flex align-items-center">
+                    <a href="{{ route('admin.articles.index') }}" class="btn btn-sm"
+                       style="background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);border-radius:6px">
+                        Xóa bộ lọc
+                    </a>
+                </div>
+                @endif
+            </div>
         </form>
 
         {{-- Bulk action bar (no form wrapper — uses submitBulk() JS) --}}

@@ -7,16 +7,26 @@ use App\Http\Requests\Admin\StoreSourceRequest;
 use App\Http\Requests\Admin\UpdateSourceRequest;
 use App\Models\Category;
 use App\Models\Source;
+use Illuminate\Http\Request;
 
 class SourceController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $sources = Source::with('category')
-            ->withCount('articles')
-            ->orderBy('category_id')
-            ->orderBy('name')
-            ->paginate(20);
+        $query = Source::with('category')->withCount('articles');
+
+        if ($request->filled('q')) {
+            $query->where('name', 'LIKE', "%{$request->q}%");
+        }
+
+        $sort         = $request->input('sort', 'name');
+        $dir          = $request->input('dir', 'asc') === 'desc' ? 'desc' : 'asc';
+        $allowedSorts = ['name', 'articles_count', 'last_fetched_at'];
+        if (in_array($sort, $allowedSorts, true)) {
+            $query->orderBy($sort, $dir);
+        }
+
+        $sources = $query->paginate(20)->withQueryString();
 
         return view('admin.sources.index', compact('sources'));
     }
