@@ -120,7 +120,7 @@
                             {{-- Standalone per-row delete form — NOT nested inside anything --}}
                             <form action="{{ route('admin.articles.destroy', $a) }}" method="POST"
                                   class="d-inline"
-                                  onsubmit="return confirm('Xóa bài viết này?')">
+                                  onsubmit="vfConfirmForm(event, this, 'Bài viết này sẽ bị xóa vĩnh viễn.')">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit"
@@ -150,20 +150,22 @@
     function submitBulk() {
         const checked = Array.from(document.querySelectorAll('.row-check:checked'));
         if (checked.length === 0) return;
-        if (!confirm('Xóa ' + checked.length + ' bài viết đã chọn?')) return;
 
-        const form = document.getElementById('bulk-form');
-        // Remove any ids[] inputs from a previous (cancelled) attempt
-        form.querySelectorAll('input[name="ids[]"]').forEach(i => i.remove());
-        // Inject the selected IDs
-        checked.forEach(function (c) {
-            const inp = document.createElement('input');
-            inp.type  = 'hidden';
-            inp.name  = 'ids[]';
-            inp.value = c.value;
-            form.appendChild(inp);
+        vfConfirm({
+            message: checked.length + ' bài viết đã chọn sẽ bị xóa vĩnh viễn.',
+            onConfirm: function () {
+                const form = document.getElementById('bulk-form');
+                form.querySelectorAll('input[name="ids[]"]').forEach(i => i.remove());
+                checked.forEach(function (c) {
+                    const inp = document.createElement('input');
+                    inp.type  = 'hidden';
+                    inp.name  = 'ids[]';
+                    inp.value = c.value;
+                    form.appendChild(inp);
+                });
+                form.submit();
+            }
         });
-        form.submit();
     }
 
     (function () {

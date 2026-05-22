@@ -60,7 +60,7 @@
                                 <i class="bi bi-pencil me-1"></i>Sửa
                             </a>
                             <form action="{{ route('admin.sources.destroy', $src) }}" method="POST" class="d-inline"
-                                  onsubmit="return confirm('Xóa nguồn tin này? Các bài viết từ nguồn này sẽ không bị xóa.')">
+                                  onsubmit="vfConfirmForm(event, this, 'Nguồn tin sẽ bị xóa. Các bài viết đã lấy sẽ không bị xóa.')">
                                 @csrf @method('DELETE')
                                 <button type="submit" style="color:#ef4444;font-size:.8rem;background:none;border:none;padding:0;cursor:pointer">
                                     <i class="bi bi-trash me-1"></i>Xóa

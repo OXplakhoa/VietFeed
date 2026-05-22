@@ -84,7 +84,7 @@
                 <div class="mt-3 p-3" style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:12px">
                     <div style="font-size:.85rem;font-weight:500;color:#ef4444;margin-bottom:.5rem">Vùng nguy hiểm</div>
                     <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
-                          onsubmit="return confirm('Xóa người dùng {{ $user->name }}? Hành động này không thể hoàn tác.')">
+                          onsubmit="vfConfirmForm(event, this, 'Người dùng {{ $user->name }} sẽ bị xóa. Hành động này không thể hoàn tác.')">
                         @csrf @method('DELETE')
                         <button type="submit" style="font-size:.8rem;color:#ef4444;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:.3rem .75rem;cursor:pointer">
                             <i class="bi bi-trash me-1"></i>Xóa người dùng

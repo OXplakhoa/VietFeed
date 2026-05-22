@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initFadeIn();
     initCommentReplyToggle();
     initVerificationModal();
+    initConfirmModal();
 
     if (document.getElementById('infinite-scroll-anchor')) {
         initInfiniteScroll();
@@ -357,3 +358,60 @@ function showVerifyToast() {
 }
 
 window.openVerifyModal = openVerifyModal;
+
+// ── Confirm Modal ──────────────────────────────────────────────
+let _confirmCallback = null;
+
+function initConfirmModal() {
+    const backdrop = document.getElementById('vf-confirm-backdrop');
+    if (!backdrop) return;
+
+    document.getElementById('vf-confirm-close')?.addEventListener('click', closeConfirmModal);
+    document.getElementById('vf-cancel-btn')?.addEventListener('click', closeConfirmModal);
+
+    document.getElementById('vf-confirm-btn')?.addEventListener('click', () => {
+        closeConfirmModal();
+        if (typeof _confirmCallback === 'function') _confirmCallback();
+        _confirmCallback = null;
+    });
+
+    backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) closeConfirmModal();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (!backdrop.classList.contains('open')) return;
+        if (e.key === 'Escape') { closeConfirmModal(); }
+        if (e.key === 'Enter')  {
+            e.preventDefault();
+            closeConfirmModal();
+            if (typeof _confirmCallback === 'function') _confirmCallback();
+            _confirmCallback = null;
+        }
+    });
+}
+
+function vfConfirm({ title, message, onConfirm }) {
+    const backdrop = document.getElementById('vf-confirm-backdrop');
+    if (!backdrop) { if (typeof onConfirm === 'function') onConfirm(); return; }
+
+    document.getElementById('vf-confirm-title').textContent  = title   || 'Xác nhận xóa';
+    document.getElementById('vf-confirm-message').textContent = message || 'Bạn có chắc muốn thực hiện hành động này?';
+    _confirmCallback = onConfirm;
+    backdrop.classList.add('open');
+    setTimeout(() => document.getElementById('vf-cancel-btn')?.focus(), 50);
+}
+
+function closeConfirmModal() {
+    document.getElementById('vf-confirm-backdrop')?.classList.remove('open');
+    _confirmCallback = null;
+}
+
+function vfConfirmForm(event, formOrEl, message, title) {
+    event.preventDefault();
+    const form = (formOrEl && formOrEl.tagName === 'FORM') ? formOrEl : formOrEl?.closest('form');
+    vfConfirm({ title, message, onConfirm: () => form?.submit() });
+}
+
+window.vfConfirm     = vfConfirm;
+window.vfConfirmForm = vfConfirmForm;

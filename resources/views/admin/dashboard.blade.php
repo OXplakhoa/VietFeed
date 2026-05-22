@@ -110,10 +110,10 @@
                         <div style="font-size:.8rem;color:var(--text-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
                             {{ $c->body }}
                         </div>
-                        <form action="{{ route('admin.comments.destroy', $c) }}" method="POST" class="mt-1">
+                        <form action="{{ route('admin.comments.destroy', $c) }}" method="POST" class="mt-1"
+                              onsubmit="vfConfirmForm(event, this, 'Bình luận này sẽ bị xóa vĩnh viễn.')">
                             @csrf @method('DELETE')
-                            <button type="submit" class="btn btn-sm p-0" style="font-size:.7rem;color:#ef4444;background:none;border:none"
-                                    onclick="return confirm('Xóa bình luận này?')">
+                            <button type="submit" class="btn btn-sm p-0" style="font-size:.7rem;color:#ef4444;background:none;border:none">
                                 <i class="bi bi-trash me-1"></i>Xóa
                             </button>
                         </form>

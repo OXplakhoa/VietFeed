@@ -69,7 +69,7 @@
                         </td>
                         <td class="pe-3 text-end" style="vertical-align:middle">
                             <form action="{{ route('admin.comments.destroy', $c) }}" method="POST"
-                                  onsubmit="return confirm('Xóa bình luận này?')">
+                                  onsubmit="vfConfirmForm(event, this, 'Bình luận này sẽ bị xóa vĩnh viễn.')">
                                 @csrf @method('DELETE')
                                 <button type="submit" style="color:#ef4444;font-size:.8rem;background:none;border:none;padding:0;cursor:pointer">
                                     <i class="bi bi-trash me-1"></i>Xóa

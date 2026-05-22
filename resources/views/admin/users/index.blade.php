@@ -83,7 +83,7 @@
                             </a>
                             @if(!$u->is(auth()->user()))
                             <form action="{{ route('admin.users.destroy', $u) }}" method="POST" class="d-inline"
-                                  onsubmit="return confirm('Xóa người dùng {{ $u->name }}?')">
+                                  onsubmit="vfConfirmForm(event, this, 'Người dùng {{ $u->name }} sẽ bị xóa vĩnh viễn.')">
                                 @csrf @method('DELETE')
                                 <button type="submit" style="color:#ef4444;font-size:.8rem;background:none;border:none;padding:0;cursor:pointer">
                                     <i class="bi bi-trash me-1"></i>Xóa

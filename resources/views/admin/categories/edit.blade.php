@@ -31,7 +31,7 @@
                 <div class="mt-3 p-3" style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:12px">
                     <div style="font-size:.85rem;font-weight:500;color:#ef4444;margin-bottom:.5rem">Vùng nguy hiểm</div>
                     <form action="{{ route('admin.categories.destroy', $category) }}" method="POST"
-                          onsubmit="return confirm('Xóa chủ đề này?')">
+                          onsubmit="vfConfirmForm(event, this, 'Chủ đề này sẽ bị xóa vĩnh viễn.')">
                         @csrf @method('DELETE')
                         <button type="submit" style="font-size:.8rem;color:#ef4444;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:.3rem .75rem;cursor:pointer">
                             <i class="bi bi-trash me-1"></i>Xóa chủ đề

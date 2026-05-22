@@ -49,7 +49,7 @@
                             <div style="font-size:.7rem;color:var(--text-muted)">{{ $c->created_at->diffForHumans() }}</div>
                         </div>
                         <form action="{{ route('admin.comments.destroy', $c) }}" method="POST"
-                              onsubmit="return confirm('Xóa bình luận?')">
+                              onsubmit="vfConfirmForm(event, this, 'Bình luận này sẽ bị xóa vĩnh viễn.')">
                             @csrf @method('DELETE')
                             <button type="submit" style="color:#ef4444;background:none;border:none;font-size:.75rem;cursor:pointer">
                                 <i class="bi bi-trash"></i>

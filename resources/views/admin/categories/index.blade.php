@@ -40,7 +40,7 @@
                                 <i class="bi bi-pencil me-1"></i>Sửa
                             </a>
                             <form action="{{ route('admin.categories.destroy', $cat) }}" method="POST" class="d-inline"
-                                  onsubmit="return confirm('Xóa chủ đề này?')">
+                                  onsubmit="vfConfirmForm(event, this, 'Chủ đề này sẽ bị xóa vĩnh viễn.')">
                                 @csrf @method('DELETE')
                                 <button type="submit" style="color:#ef4444;font-size:.8rem;background:none;border:none;padding:0;cursor:pointer">
                                     <i class="bi bi-trash me-1"></i>Xóa

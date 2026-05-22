@@ -200,6 +200,20 @@
 </script>
 @endif
 
+{{-- Confirm Modal (shared across all admin delete/bulk actions) --}}
+<div id="vf-confirm-backdrop" class="vf-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="vf-confirm-title">
+    <div class="vf-modal">
+        <button id="vf-confirm-close" class="vf-modal-close" aria-label="Đóng">&times;</button>
+        <span class="vf-modal-icon">🗑️</span>
+        <h2 id="vf-confirm-title" class="vf-modal-title">Xác nhận xóa</h2>
+        <p id="vf-confirm-message" class="vf-confirm-body"></p>
+        <div class="vf-confirm-actions">
+            <button id="vf-confirm-btn" type="button">Xóa</button>
+            <button id="vf-cancel-btn" type="button">Hủy</button>
+        </div>
+    </div>
+</div>
+
 @auth
 @if(!auth()->user()->hasVerifiedEmail())
 {{-- Verification Modal --}}
