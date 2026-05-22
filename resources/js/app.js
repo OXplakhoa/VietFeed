@@ -370,9 +370,9 @@ function initConfirmModal() {
     document.getElementById('vf-cancel-btn')?.addEventListener('click', closeConfirmModal);
 
     document.getElementById('vf-confirm-btn')?.addEventListener('click', () => {
+        const cb = _confirmCallback;
         closeConfirmModal();
-        if (typeof _confirmCallback === 'function') _confirmCallback();
-        _confirmCallback = null;
+        if (typeof cb === 'function') cb();
     });
 
     backdrop.addEventListener('click', (e) => {
@@ -384,9 +384,9 @@ function initConfirmModal() {
         if (e.key === 'Escape') { closeConfirmModal(); }
         if (e.key === 'Enter')  {
             e.preventDefault();
+            const cb = _confirmCallback;
             closeConfirmModal();
-            if (typeof _confirmCallback === 'function') _confirmCallback();
-            _confirmCallback = null;
+            if (typeof cb === 'function') cb();
         }
     });
 }
