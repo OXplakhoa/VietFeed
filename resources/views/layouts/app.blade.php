@@ -113,7 +113,8 @@
     </div>
 </nav>
 
-{{-- ── Sticky Category Tabs (universal) ───────────────────────── --}}
+{{-- ── Sticky Category Tabs (public pages only) ────────────────── --}}
+@unless(request()->routeIs('admin.*'))
 <div class="category-tabs-bar">
     <div class="container-xl">
         <nav class="nav flex-nowrap">
@@ -128,6 +129,7 @@
         </nav>
     </div>
 </div>
+@endunless
 
 {{-- Flash Messages --}}
 @if(session('success'))
@@ -137,6 +139,17 @@
          role="alert">
         <i class="bi bi-check-circle-fill"></i>
         <span>{{ session('success') }}</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" style="opacity:.6"></button>
+    </div>
+</div>
+@endif
+@if(session('error'))
+<div class="container-xl mt-3">
+    <div class="alert alert-dismissible d-flex align-items-center gap-2 mb-0"
+         style="background:rgba(230,57,70,.12);border:1px solid rgba(230,57,70,.3);color:var(--accent);border-radius:10px"
+         role="alert">
+        <i class="bi bi-exclamation-circle-fill"></i>
+        <span>{{ session('error') }}</span>
         <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" style="opacity:.6"></button>
     </div>
 </div>

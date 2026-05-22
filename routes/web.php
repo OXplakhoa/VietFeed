@@ -1,6 +1,11 @@
 <?php
 
+use App\Http\Controllers\Admin\ArticleController as AdminArticle;
+use App\Http\Controllers\Admin\CategoryController as AdminCategory;
+use App\Http\Controllers\Admin\CommentController as AdminComment;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboard;
+use App\Http\Controllers\Admin\SourceController as AdminSource;
+use App\Http\Controllers\Admin\UserController as AdminUser;
 use App\Http\Controllers\ArticleController;
 use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\CategoryController;
@@ -51,6 +56,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // ── Admin routes ───────────────────────────────────────────────
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/dashboard', [AdminDashboard::class, 'index'])->name('dashboard');
+
+    // Bulk-destroy must be before resource routes so 'bulk-destroy' isn't mistaken for an article ID
+    Route::post('articles/bulk-destroy', [AdminArticle::class, 'bulkDestroy'])->name('articles.bulk-destroy');
+
+    Route::resource('sources',    AdminSource::class);
+    Route::resource('categories', AdminCategory::class);
+    Route::resource('articles',   AdminArticle::class)->except(['create', 'store']);
+    Route::resource('comments',   AdminComment::class)->only(['index', 'destroy']);
+    Route::resource('users',      AdminUser::class)->only(['index', 'edit', 'update', 'destroy']);
 });
 
 require __DIR__.'/auth.php';
