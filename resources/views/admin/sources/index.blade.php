@@ -77,8 +77,8 @@
                                     {{ $src->name }}
                                 </a>
                             </div>
-                            <div style="font-size:.75rem;color:var(--text-muted)">
-                                <a href="{{ $src->feed_url }}" target="_blank" style="color:var(--text-muted)">
+                            <div style="font-size:.75rem;color:var(--text-secondary)">
+                                <a href="{{ $src->feed_url }}" target="_blank" style="color:var(--text-secondary)">
                                     {{ Str::limit($src->feed_url, 50) }}
                                 </a>
                             </div>
@@ -89,10 +89,10 @@
                             @if($src->is_active)
                                 <span style="font-size:.75rem;background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:.2rem .55rem;font-weight:500">Hoạt động</span>
                             @else
-                                <span style="font-size:.75rem;background:rgba(107,114,128,.12);color:#9ca3af;border:1px solid rgba(107,114,128,.3);border-radius:6px;padding:.2rem .55rem;font-weight:500">Tắt</span>
+                                <span style="font-size:.75rem;background:rgba(107,114,128,.12);color:var(--text-secondary);border:1px solid rgba(107,114,128,.3);border-radius:6px;padding:.2rem .55rem;font-weight:500">Tắt</span>
                             @endif
                         </td>
-                        <td style="vertical-align:middle;font-size:.8rem;color:var(--text-muted)">
+                        <td style="vertical-align:middle;font-size:.8rem;color:var(--text-secondary)">
                             {{ $src->last_fetched_at ? $src->last_fetched_at->diffForHumans() : 'Chưa lấy' }}
                         </td>
                         <td class="pe-3 text-end" style="vertical-align:middle;white-space:nowrap">

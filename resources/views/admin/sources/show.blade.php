@@ -63,10 +63,10 @@
                                 {{ Str::limit($a->title, 70) }}
                             </a>
                         </td>
-                        <td style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">
+                        <td style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap">
                             <i class="bi bi-bookmark me-1"></i>{{ $a->bookmarks_count }}
                         </td>
-                        <td style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">
+                        <td style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap">
                             {{ $a->published_at?->format('d/m/Y') ?? '—' }}
                         </td>
                         <td class="pe-3" style="white-space:nowrap">

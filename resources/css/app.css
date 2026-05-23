@@ -8,6 +8,7 @@
     --border:        #2A2A32;
     --text:          #E8E8EC;
     --text-muted:    #8888A0;
+    --text-secondary: #C4C4D4;
     --accent:        #E63946;
     --accent-hover:  #FF4D5A;
     --glass-bg:      rgba(20, 20, 24, 0.90);
@@ -23,6 +24,7 @@
     --border:        #E0E0D8;
     --text:          #1A1A1F;
     --text-muted:    #6B6B78;
+    --text-secondary: #6B6B78;
     --accent:        #D62839;
     --accent-hover:  #E63946;
     --glass-bg:      rgba(255, 255, 255, 0.90);

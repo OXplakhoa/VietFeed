@@ -55,7 +55,7 @@
                                 <span style="font-size:.7rem;color:var(--accent);margin-left:.3rem">(bạn)</span>
                                 @endif
                             </div>
-                            <div style="font-size:.75rem;color:var(--text-muted)">{{ $u->email }}</div>
+                            <div style="font-size:.75rem;color:var(--text-secondary)">{{ $u->email }}</div>
                         </td>
                         <td style="vertical-align:middle">
                             @if($u->isAdmin())
@@ -68,12 +68,12 @@
                             @if($u->email_verified_at)
                             <i class="bi bi-check-circle-fill" style="color:#22c55e;font-size:.9rem" title="Đã xác minh"></i>
                             @else
-                            <i class="bi bi-x-circle" style="color:#6b7280;font-size:.9rem" title="Chưa xác minh"></i>
+                            <i class="bi bi-x-circle" style="color:var(--text-muted);font-size:.9rem" title="Chưa xác minh"></i>
                             @endif
                         </td>
                         <td style="vertical-align:middle;font-size:.85rem">{{ $u->comments_count }}</td>
                         <td style="vertical-align:middle;font-size:.85rem">{{ $u->bookmarks_count }}</td>
-                        <td style="vertical-align:middle;font-size:.78rem;color:var(--text-muted);white-space:nowrap">
+                        <td style="vertical-align:middle;font-size:.78rem;color:var(--text-secondary);white-space:nowrap">
                             {{ $u->created_at->format('d/m/Y') }}
                         </td>
                         <td class="pe-3 text-end" style="vertical-align:middle;white-space:nowrap">

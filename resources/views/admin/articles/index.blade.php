@@ -131,13 +131,13 @@
                         </td>
                         <td style="vertical-align:middle;font-size:.8rem;white-space:nowrap">
                             <a href="{{ route('categories.show', $a->category->slug) }}" target="_blank"
-                               style="color:var(--text-muted);text-decoration:none">{{ $a->category->name }}</a>
+                               style="color:var(--text-secondary);text-decoration:none">{{ $a->category->name }}</a>
                         </td>
-                        <td style="vertical-align:middle;font-size:.78rem;color:var(--text-muted);white-space:nowrap">
+                        <td style="vertical-align:middle;font-size:.78rem;color:var(--text-secondary);white-space:nowrap">
                             {{ Str::limit($a->source->name, 20) }}
                         </td>
                         <td style="vertical-align:middle;font-size:.8rem">{{ $a->bookmarks_count }}</td>
-                        <td style="vertical-align:middle;font-size:.78rem;color:var(--text-muted);white-space:nowrap">
+                        <td style="vertical-align:middle;font-size:.78rem;color:var(--text-secondary);white-space:nowrap">
                             {{ $a->published_at?->format('d/m/Y') ?? '—' }}
                         </td>
                         <td class="pe-3 text-end" style="vertical-align:middle;white-space:nowrap">

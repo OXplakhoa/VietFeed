@@ -48,11 +48,11 @@
                     <tr style="border-color:var(--border)">
                         <td class="ps-3 py-3" style="vertical-align:middle;white-space:nowrap">
                             <div style="font-size:.85rem;font-weight:500;color:var(--text)">{{ $c->user?->name ?? 'Ẩn danh' }}</div>
-                            <div style="font-size:.75rem;color:var(--text-muted)">{{ $c->user?->email }}</div>
+                            <div style="font-size:.75rem;color:var(--text-secondary)">{{ $c->user?->email }}</div>
                         </td>
                         <td style="vertical-align:middle;max-width:200px">
                             <a href="{{ $c->article ? route('articles.show', $c->article->slug) : '#' }}"
-                               target="_blank" style="font-size:.8rem;color:var(--text-muted);text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
+                               target="_blank" style="font-size:.8rem;color:var(--text-secondary);text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
                                 {{ $c->article?->title ?? '—' }}
                             </a>
                         </td>
@@ -64,7 +64,7 @@
                                 {{ $c->body }}
                             </div>
                         </td>
-                        <td style="vertical-align:middle;font-size:.78rem;color:var(--text-muted);white-space:nowrap">
+                        <td style="vertical-align:middle;font-size:.78rem;color:var(--text-secondary);white-space:nowrap">
                             {{ $c->created_at->diffForHumans() }}
                         </td>
                         <td class="pe-3 text-end" style="vertical-align:middle">

@@ -107,7 +107,7 @@
                             <span style="font-size:.75rem;font-weight:500;color:var(--text)">{{ $c->user?->name ?? 'Ẩn danh' }}</span>
                             <span style="font-size:.7rem;color:var(--text-muted)">· {{ $c->created_at->diffForHumans() }}</span>
                         </div>
-                        <div style="font-size:.8rem;color:var(--text-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
+                        <div style="font-size:.8rem;color:var(--text-secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
                             {{ $c->body }}
                         </div>
                         <form action="{{ route('admin.comments.destroy', $c) }}" method="POST" class="mt-1"
@@ -165,8 +165,8 @@
                                 {{ Str::limit($a->title, 70) }}
                             </a>
                         </td>
-                        <td style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">{{ $a->source->name }}</td>
-                        <td style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">{{ $a->created_at->diffForHumans() }}</td>
+                        <td style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap">{{ $a->source->name }}</td>
+                        <td style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap">{{ $a->created_at->diffForHumans() }}</td>
                         <td style="white-space:nowrap">
                             <a href="{{ route('admin.articles.edit', $a) }}"
                                style="font-size:.75rem;color:var(--accent);text-decoration:none">
