@@ -10,7 +10,7 @@
         <a href="{{ route('categories.show', $article->category->slug) }}" class="category-badge mb-2 d-inline-block">
             {{ $article->category->name }}
         </a>
-        <div class="article-hero-title" style="font-size:clamp(1.2rem,2.5vw,1.7rem)">
+        <div class="article-hero-title">
             {{ $article->title }}
         </div>
         <div class="article-hero-meta mt-2">
@@ -18,6 +18,7 @@
             @if($article->published_at)
                 &middot; {{ $article->published_at->diffForHumans() }}
             @endif
+            &middot; {{ $article->reading_time }} phút đọc
         </div>
     </div>
 </a>

@@ -13,31 +13,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// ── Dark Mode ──────────────────────────────────────────────────
+// ── Dark Mode (CSS-driven sun/moon rotation swap) ──────────────
 function initDarkMode() {
     const html = document.documentElement;
     const toggle = document.getElementById('dark-mode-toggle');
 
     const saved = localStorage.getItem('vf-theme') || 'dark';
     html.setAttribute('data-theme', saved);
-    updateToggleIcon(toggle, saved);
+    if (toggle) toggle.title = saved === 'dark' ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối';
 
     if (toggle) {
         toggle.addEventListener('click', () => {
             const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
             html.setAttribute('data-theme', next);
             localStorage.setItem('vf-theme', next);
-            updateToggleIcon(toggle, next);
+            toggle.title = next === 'dark' ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối';
         });
     }
-}
-
-function updateToggleIcon(btn, theme) {
-    if (!btn) return;
-    btn.innerHTML = theme === 'dark'
-        ? '<i class="bi bi-sun"></i>'
-        : '<i class="bi bi-moon"></i>';
-    btn.title = theme === 'dark' ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối';
 }
 
 // ── Auto-Hide Navbar + sticky category tabs ────────────────────
@@ -162,11 +154,11 @@ function initLiveSearch() {
 function showSearchSkeleton(container) {
     container.style.display = 'block';
     container.innerHTML = Array(4).fill(`
-        <div class="d-flex gap-2 align-items-center p-2" style="border-bottom:1px solid var(--border)">
-            <div class="skeleton" style="width:48px;height:48px;border-radius:6px;flex-shrink:0"></div>
-            <div class="flex-fill">
-                <div class="skeleton" style="height:13px;width:75%;margin-bottom:6px"></div>
-                <div class="skeleton" style="height:11px;width:45%"></div>
+        <div class="skeleton-search-item">
+            <div class="sk-thumb skeleton"></div>
+            <div class="sk-stack">
+                <div class="skeleton skeleton-text" style="width:80%"></div>
+                <div class="skeleton skeleton-text sm" style="width:45%"></div>
             </div>
         </div>`).join('');
 }

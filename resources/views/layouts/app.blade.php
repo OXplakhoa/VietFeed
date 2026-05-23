@@ -64,7 +64,8 @@
             {{-- Right side --}}
             <div class="d-flex align-items-center gap-2 mt-2 mt-lg-0">
                 <button id="dark-mode-toggle" aria-label="Chế độ tối/sáng">
-                    <i class="bi bi-sun"></i>
+                    <i class="bi bi-sun-fill icon sun"></i>
+                    <i class="bi bi-moon-fill icon moon"></i>
                 </button>
 
                 @auth

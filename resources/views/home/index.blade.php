@@ -62,7 +62,7 @@
 
                 <div class="row g-3" id="articles-grid">
                     @foreach($articles as $article)
-                    <div class="col-sm-6 col-lg-4 mb-1 fade-in">
+                    <div class="col-sm-6 col-lg-4 mb-1 fade-in card-stagger">
                         <x-article-card
                             :article="$article"
                             :bookmarked="in_array($article->id, $bookmarkedIds)" />
