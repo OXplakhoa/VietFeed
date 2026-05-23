@@ -70,7 +70,7 @@
                     <tr style="border-color:var(--border)">
                         <td class="ps-3 py-3" style="vertical-align:middle;font-weight:500;font-size:.875rem">{{ $cat->name }}</td>
                         <td style="vertical-align:middle">
-                            <code style="font-size:.78rem;background:var(--surface-alt);border:1px solid var(--border);border-radius:4px;padding:.1rem .4rem;color:var(--text-muted)">{{ $cat->slug }}</code>
+                            <code style="font-size:.78rem;background:var(--surface-alt);border:1px solid var(--border);border-radius:4px;padding:.1rem .4rem;color:var(--text-secondary)">{{ $cat->slug }}</code>
                         </td>
                         <td style="vertical-align:middle;font-size:.85rem">{{ number_format($cat->articles_count) }}</td>
                         <td style="vertical-align:middle;font-size:.85rem">{{ $cat->sources_count }}</td>

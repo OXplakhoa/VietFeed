@@ -71,7 +71,7 @@
                     @forelse($sources as $src)
                     <tr style="border-color:var(--border)">
                         <td class="ps-3 py-3" style="vertical-align:middle">
-                            <div style="font-weight:500;font-size:.875rem">
+                            <div style="font-weight:600;font-size:.875rem">
                                 <a href="{{ route('admin.sources.show', $src) }}"
                                    style="color:var(--text);text-decoration:none">
                                     {{ $src->name }}

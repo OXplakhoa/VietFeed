@@ -43,6 +43,20 @@ body {
 h1, h2, h3, .serif { font-family: 'Playfair Display', serif; }
 a { color: inherit; }
 
+/* ── Bootstrap table token bridge ────────────────────────────── */
+/* Bootstrap 5.3 explicitly sets cell color via --bs-table-color on every
+   td/th (selector: .table>:not(caption)>*>*), overriding inherited color.
+   Map its variables to our design tokens so cells respect our theme. */
+.table {
+    --bs-table-color:       var(--text);
+    --bs-table-bg:          var(--surface);
+    --bs-table-border-color: var(--border);
+    --bs-table-hover-color: var(--text);
+    --bs-table-hover-bg:    var(--surface-alt);
+    --bs-table-striped-color: var(--text);
+    --bs-table-striped-bg:  var(--surface-alt);
+}
+
 /* ── Navbar ───────────────────────────────────────────────────── */
 .vf-navbar {
     background: var(--glass-bg) !important;

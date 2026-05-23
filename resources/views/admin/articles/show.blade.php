@@ -46,7 +46,7 @@
                         <div>
                             <div style="font-size:.8rem;font-weight:500;color:var(--text)">{{ $c->user?->name ?? 'Ẩn danh' }}</div>
                             <div style="font-size:.8rem;color:var(--text-secondary)">{{ $c->body }}</div>
-                            <div style="font-size:.7rem;color:var(--text-muted)">{{ $c->created_at->diffForHumans() }}</div>
+                            <div style="font-size:.7rem;color:var(--text-secondary)">{{ $c->created_at->diffForHumans() }}</div>
                         </div>
                         <form action="{{ route('admin.comments.destroy', $c) }}" method="POST"
                               onsubmit="vfConfirmForm(event, this, 'Bình luận này sẽ bị xóa vĩnh viễn.')">

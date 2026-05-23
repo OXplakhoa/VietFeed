@@ -125,7 +125,7 @@
                         </td>
                         <td style="vertical-align:middle;max-width:320px">
                             <a href="{{ route('admin.articles.show', $a) }}"
-                               style="font-size:.85rem;color:var(--text);text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
+                               style="font-size:.85rem;font-weight:500;color:var(--text);text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
                                 {{ $a->title }}
                             </a>
                         </td>

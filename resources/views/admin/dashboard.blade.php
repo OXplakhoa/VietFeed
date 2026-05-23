@@ -82,7 +82,7 @@
                                style="font-size:.8rem;color:var(--text);text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
                                 {{ $a->title }}
                             </a>
-                            <div style="font-size:.7rem;color:var(--text-muted);margin-top:.15rem">
+                            <div style="font-size:.7rem;color:var(--text-secondary);margin-top:.15rem">
                                 <i class="bi bi-bookmark-fill me-1" style="color:var(--accent)"></i>{{ $a->bookmarks_count }}
                             </div>
                         </div>
@@ -105,7 +105,7 @@
                         <div class="d-flex align-items-center gap-1 mb-1">
                             <i class="bi bi-person-circle" style="color:var(--text-muted);font-size:.8rem"></i>
                             <span style="font-size:.75rem;font-weight:500;color:var(--text)">{{ $c->user?->name ?? 'Ẩn danh' }}</span>
-                            <span style="font-size:.7rem;color:var(--text-muted)">· {{ $c->created_at->diffForHumans() }}</span>
+                            <span style="font-size:.7rem;color:var(--text-secondary)">· {{ $c->created_at->diffForHumans() }}</span>
                         </div>
                         <div style="font-size:.8rem;color:var(--text-secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
                             {{ $c->body }}
@@ -187,7 +187,7 @@
     (function () {
         const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
         const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)';
-        const textColor  = isDark ? '#8888A0' : '#6B6B78';
+        const textColor  = isDark ? '#C4C4D4' : '#6B6B78';
         const accent     = '#E63946';
 
         Chart.defaults.color = textColor;
