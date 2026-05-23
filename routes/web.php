@@ -14,6 +14,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\TickerController;
 use Illuminate\Support\Facades\Route;
 
 // ── Public routes ──────────────────────────────────────────────
@@ -26,6 +27,7 @@ Route::get('/search', [SearchController::class, 'index'])->name('search');
 // ── AJAX API routes (no auth required for search) ──────────────
 Route::get('/api/live-search', [SearchController::class, 'liveSearch'])->name('search.live');
 Route::get('/api/articles', [HomeController::class, 'loadMore'])->name('api.articles.load');
+Route::get('/api/ticker', [TickerController::class, 'index'])->name('api.ticker');
 
 // ── Auth-only (controller handles its own verified check for friendlier UX) ──
 Route::middleware('auth')->group(function () {

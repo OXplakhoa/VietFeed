@@ -37,6 +37,43 @@
             Viet<span class="accent">Feed</span>
         </a>
 
+        {{-- ── Financial Ticker (lg+ only) ──────────────────────── --}}
+        <div id="vf-ticker" class="vf-ticker d-none d-lg-flex align-items-center gap-2 ms-3"
+             data-ticker="{{ json_encode($ticker ?? ['usd' => null, 'sjc' => null]) }}">
+
+            {{-- USD/VND pill --}}
+            <div class="vf-ticker-pill" data-metric="usd" role="button" tabindex="0" aria-label="Tỷ giá USD/VND">
+                <i class="bi bi-currency-dollar vf-ticker-pill__icon"></i>
+                <span class="vf-ticker-pill__label">USD</span>
+                <span class="vf-ticker-pill__value">—</span>
+                <span class="vf-ticker-pill__delta">
+                    <i class="vf-ticker-arrow bi bi-arrow-up-short"></i>
+                    <span class="vf-ticker-delta-text">—</span>
+                </span>
+                <svg class="vf-ticker-spark" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true">
+                    <path class="vf-ticker-spark__static" d="" fill="none" stroke-width="1" pathLength="100"/>
+                    <path class="vf-ticker-spark__sweep"  d="" fill="none" stroke-width="1.5" pathLength="100"/>
+                    <circle class="vf-ticker-spark__dot" r="2" cx="48" cy="10"/>
+                </svg>
+            </div>
+
+            {{-- SJC Gold pill --}}
+            <div class="vf-ticker-pill" data-metric="sjc" role="button" tabindex="0" aria-label="Giá vàng SJC">
+                <i class="bi bi-gem vf-ticker-pill__icon"></i>
+                <span class="vf-ticker-pill__label">SJC</span>
+                <span class="vf-ticker-pill__value">—</span>
+                <span class="vf-ticker-pill__delta">
+                    <i class="vf-ticker-arrow bi bi-arrow-up-short"></i>
+                    <span class="vf-ticker-delta-text">—</span>
+                </span>
+                <svg class="vf-ticker-spark" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true">
+                    <path class="vf-ticker-spark__static" d="" fill="none" stroke-width="1" pathLength="100"/>
+                    <path class="vf-ticker-spark__sweep"  d="" fill="none" stroke-width="1.5" pathLength="100"/>
+                    <circle class="vf-ticker-spark__dot" r="2" cx="48" cy="10"/>
+                </svg>
+            </div>
+        </div>
+
         <button class="navbar-toggler border-0 ms-auto me-2" type="button"
                 data-bs-toggle="collapse" data-bs-target="#vfNav" aria-expanded="false">
             <i class="bi bi-list" style="font-size:1.4rem;color:var(--text)"></i>
@@ -131,6 +168,22 @@
     </div>
 </div>
 @endunless
+
+{{-- Ticker Popover (position:fixed singleton, populated & repositioned by JS) --}}
+<div id="vf-ticker-popover" class="vf-ticker-popover" role="dialog" aria-hidden="true">
+    <button class="vf-ticker-popover__close" aria-label="Đóng">&times;</button>
+    <div class="vf-ticker-popover__header">
+        <span class="vf-ticker-popover__title"></span>
+        <span class="vf-ticker-popover__badge"></span>
+    </div>
+    <div class="vf-ticker-popover__values"></div>
+    <svg class="vf-ticker-popover__chart" viewBox="0 0 300 80" preserveAspectRatio="none" aria-hidden="true">
+        <path class="vf-ticker-spark__static" d="" fill="none" stroke-width="1.5" pathLength="100"/>
+        <path class="vf-ticker-spark__sweep"  d="" fill="none" stroke-width="2" pathLength="100"/>
+        <circle class="vf-ticker-spark__dot" r="3" cx="300" cy="40"/>
+    </svg>
+    <div class="vf-ticker-popover__meta"></div>
+</div>
 
 {{-- Flash Messages --}}
 @if(session('success'))

@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCommentReplyToggle();
     initVerificationModal();
     initConfirmModal();
+    initTicker();
 
     if (document.getElementById('infinite-scroll-anchor')) {
         initInfiniteScroll();
@@ -407,3 +408,235 @@ function vfConfirmForm(event, formOrEl, message, title) {
 
 window.vfConfirm     = vfConfirm;
 window.vfConfirmForm = vfConfirmForm;
+
+// ── Financial Ticker ──────────────────────────────────────────
+let _tickerOpenMetric = null;
+let _tickerData = {};
+
+function initTicker() {
+    const container = document.getElementById('vf-ticker');
+    if (!container) return;
+
+    try {
+        const raw = container.dataset.ticker;
+        if (raw) _tickerData = JSON.parse(raw);
+    } catch (_) {}
+
+    renderTicker(_tickerData);
+
+    // Poll every 60s for fresh data
+    setInterval(async () => {
+        try {
+            const res  = await fetch('/api/ticker', { headers: { Accept: 'application/json' } });
+            const data = await res.json();
+            _flashTickerChanges(_tickerData, data);
+            _tickerData = data;
+            renderTicker(data);
+            // Refresh open popover if any
+            if (_tickerOpenMetric) {
+                const pill = document.querySelector(`.vf-ticker-pill[data-metric="${_tickerOpenMetric}"]`);
+                if (pill) _populatePopover(pill, data);
+            }
+        } catch (e) {
+            console.warn('[Ticker] poll failed', e);
+        }
+    }, 60_000);
+
+    document.querySelectorAll('.vf-ticker-pill').forEach(pill => {
+        pill.addEventListener('click', () => _toggleTickerPopover(pill));
+        pill.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                _toggleTickerPopover(pill);
+            }
+        });
+    });
+
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.vf-ticker-pill') && !e.target.closest('#vf-ticker-popover')) {
+            _closeTickerPopover();
+        }
+    });
+
+    document.getElementById('vf-ticker-popover')
+        ?.querySelector('.vf-ticker-popover__close')
+        ?.addEventListener('click', _closeTickerPopover);
+}
+
+function renderTicker(data) {
+    _renderPill('usd', data?.usd);
+    _renderPill('sjc', data?.sjc);
+}
+
+function _renderPill(metric, d) {
+    const pill = document.querySelector(`.vf-ticker-pill[data-metric="${metric}"]`);
+    if (!pill) return;
+
+    if (!d) { pill.style.display = 'none'; return; }
+    pill.style.display = '';
+
+    const color = d.trend === 'up' ? '#22c55e' : 'var(--accent)';
+    pill.style.setProperty('--spark-color', color);
+
+    const valueEl  = pill.querySelector('.vf-ticker-pill__value');
+    const deltaSpan = pill.querySelector('.vf-ticker-delta-text');
+    const arrowIcon = pill.querySelector('.vf-ticker-arrow');
+
+    if (valueEl)   valueEl.textContent  = metric === 'usd' ? _fmtVND(d.value) : _fmtGold(d.sell);
+    if (deltaSpan) deltaSpan.textContent = (d.delta_pct >= 0 ? '+' : '') + (d.delta_pct ?? 0).toFixed(2) + '%';
+    if (arrowIcon) arrowIcon.className  = `vf-ticker-arrow bi bi-arrow-${d.trend === 'up' ? 'up' : 'down'}-short`;
+
+    _drawSparkline(pill.querySelector('.vf-ticker-spark'), d.history, 48, 20, 2.5);
+
+    const dot = pill.querySelector('.vf-ticker-spark__dot');
+    if (dot) dot.style.opacity = d.stale ? '0.25' : '';
+}
+
+function _drawSparkline(svg, history, W, H, pad) {
+    if (!svg || !history || history.length < 2) return;
+
+    const lo  = Math.min(...history);
+    const hi  = Math.max(...history);
+    const rng = hi - lo || 1;
+
+    const pts = history.map((v, i) => [
+        pad + (i / (history.length - 1)) * (W - 2 * pad),
+        H - pad - ((v - lo) / rng) * (H - 2 * pad),
+    ]);
+
+    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('');
+
+    svg.querySelector('.vf-ticker-spark__static')?.setAttribute('d', d);
+    svg.querySelector('.vf-ticker-spark__sweep')?.setAttribute('d', d);
+
+    const last = pts[pts.length - 1];
+    const dot  = svg.querySelector('.vf-ticker-spark__dot');
+    if (dot) { dot.setAttribute('cx', last[0].toFixed(1)); dot.setAttribute('cy', last[1].toFixed(1)); }
+}
+
+function _toggleTickerPopover(pill) {
+    const metric  = pill.dataset.metric;
+    const popover = document.getElementById('vf-ticker-popover');
+    if (!popover) return;
+
+    if (_tickerOpenMetric === metric && popover.classList.contains('open')) {
+        _closeTickerPopover();
+        return;
+    }
+
+    _tickerOpenMetric = metric;
+    _populatePopover(pill, _tickerData);
+
+    // Position below the pill (fixed coords from viewport)
+    const rect  = pill.getBoundingClientRect();
+    const popW  = 272;
+    const vw    = window.innerWidth;
+    let   left  = rect.left;
+    if (left + popW > vw - 12) left = vw - popW - 12;
+
+    popover.style.top  = `${rect.bottom + 8}px`;
+    popover.style.left = `${left}px`;
+    popover.style.display = 'block';
+    popover.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => popover.classList.add('open'));
+}
+
+function _populatePopover(pill, data) {
+    const metric  = pill.dataset.metric;
+    const d       = data?.[metric];
+    const popover = document.getElementById('vf-ticker-popover');
+    if (!popover || !d) return;
+
+    const color = d.trend === 'up' ? '#22c55e' : 'var(--accent)';
+    popover.style.setProperty('--spark-color', color);
+
+    popover.querySelector('.vf-ticker-popover__title').textContent =
+        metric === 'usd' ? 'Tỷ giá USD / VND' : 'Vàng SJC 9999';
+
+    popover.querySelector('.vf-ticker-popover__badge').innerHTML =
+        d.stale ? '<span class="vf-ticker-stale-tag">Dữ liệu cũ</span>' : '';
+
+    const valuesEl = popover.querySelector('.vf-ticker-popover__values');
+    const sign     = d.delta_pct >= 0 ? '+' : '';
+    const pctStr   = `${sign}${(d.delta_pct ?? 0).toFixed(4)}%`;
+
+    if (metric === 'usd') {
+        valuesEl.innerHTML = `
+            <div class="vf-ticker-pop-row">
+                <span class="vf-ticker-pop-label">1 USD</span>
+                <span class="vf-ticker-pop-val">${_fmtVND(d.value)}</span>
+            </div>
+            <div class="vf-ticker-pop-row">
+                <span class="vf-ticker-pop-label">Thay đổi</span>
+                <span class="vf-ticker-pop-delta" style="color:${color}">${pctStr}</span>
+            </div>`;
+    } else {
+        valuesEl.innerHTML = `
+            <div class="vf-ticker-pop-row">
+                <span class="vf-ticker-pop-label">Mua vào</span>
+                <span class="vf-ticker-pop-val">${_fmtGoldFull(d.buy)}</span>
+            </div>
+            <div class="vf-ticker-pop-row">
+                <span class="vf-ticker-pop-label">Bán ra</span>
+                <span class="vf-ticker-pop-val">${_fmtGoldFull(d.sell)}</span>
+            </div>
+            <div class="vf-ticker-pop-row">
+                <span class="vf-ticker-pop-label">Thay đổi</span>
+                <span class="vf-ticker-pop-delta" style="color:${color}">${pctStr}</span>
+            </div>`;
+    }
+
+    _drawSparkline(popover.querySelector('.vf-ticker-popover__chart'), d.history, 300, 80, 4);
+
+    popover.querySelector('.vf-ticker-popover__meta').innerHTML =
+        `<span class="vf-ticker-pop-updated">Cập nhật: ${_viTimeAgo(d.updated_at)}</span>` +
+        `<span class="vf-ticker-pop-source">Nguồn: ${escHtml(d.source)}</span>`;
+}
+
+function _closeTickerPopover() {
+    const popover = document.getElementById('vf-ticker-popover');
+    if (!popover) return;
+    popover.classList.remove('open');
+    popover.setAttribute('aria-hidden', 'true');
+    _tickerOpenMetric = null;
+    popover.addEventListener('transitionend', () => {
+        if (!popover.classList.contains('open')) popover.style.display = 'none';
+    }, { once: true });
+}
+
+function _flashTickerChanges(prev, next) {
+    ['usd', 'sjc'].forEach(metric => {
+        const p = prev?.[metric];
+        const n = next?.[metric];
+        if (!p || !n) return;
+
+        const changed = metric === 'usd' ? p.value !== n.value : p.sell !== n.sell;
+        if (!changed) return;
+
+        const valueEl = document.querySelector(`.vf-ticker-pill[data-metric="${metric}"] .vf-ticker-pill__value`);
+        if (!valueEl) return;
+        valueEl.style.opacity = '0';
+        setTimeout(() => { valueEl.style.opacity = ''; }, 300);
+    });
+}
+
+function _fmtVND(v) {
+    if (!v) return '—';
+    return new Intl.NumberFormat('vi-VN').format(v) + ' ₫';
+}
+function _fmtGold(v) {
+    if (!v) return '—';
+    return (v / 1_000_000).toFixed(1) + ' tr';
+}
+function _fmtGoldFull(v) {
+    if (!v) return '—';
+    return new Intl.NumberFormat('vi-VN').format(v) + ' ₫';
+}
+function _viTimeAgo(iso) {
+    if (!iso) return '—';
+    const diff = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60)    return 'vừa xong';
+    if (diff < 3600)  return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    return `${Math.floor(diff / 86400)} ngày trước`;
+}
