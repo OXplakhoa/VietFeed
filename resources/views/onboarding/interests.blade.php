@@ -29,8 +29,7 @@
                 @foreach($categories as $cat)
                 <div class="col-6 col-md-3">
                     <label class="interest-card w-100 {{ in_array($cat->id, $selected) ? 'selected' : '' }}"
-                           for="cat_{{ $cat->id }}"
-                           onclick="this.classList.toggle('selected')">
+                           for="cat_{{ $cat->id }}">
                         <input type="checkbox"
                                id="cat_{{ $cat->id }}"
                                name="categories[]"
@@ -58,9 +57,10 @@
     @push('scripts')
     <script>
         document.querySelectorAll('.interest-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const cb = card.querySelector('input[type="checkbox"]');
-                if (cb) cb.checked = !cb.checked;
+            const cb = card.querySelector('input[type="checkbox"]');
+            if (!cb) return;
+            cb.addEventListener('change', () => {
+                card.classList.toggle('selected', cb.checked);
             });
         });
     </script>
