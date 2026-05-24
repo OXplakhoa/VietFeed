@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="dark">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="light">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -164,6 +164,22 @@
             border-radius: 8px;
             font-size: 0.875rem;
         }
+
+        .pw-wrap { position: relative; }
+        .pw-toggle {
+            position: absolute;
+            top: 50%; right: 0.75rem;
+            transform: translateY(-50%);
+            background: none; border: none; padding: 0;
+            color: var(--text-muted); cursor: pointer;
+            line-height: 1; z-index: 5;
+        }
+        .pw-toggle:hover { color: var(--text); }
+        .pw-wrap .form-control { padding-right: 2.25rem; }
+        .pw-wrap .form-control.is-invalid {
+            background-image: none;
+            padding-right: 2.25rem;
+        }
     </style>
 </head>
 <body>
@@ -175,5 +191,20 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.querySelectorAll('.pw-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const input = btn.closest('.pw-wrap').querySelector('input');
+                const icon  = btn.querySelector('i');
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    icon.className = 'bi bi-eye-slash';
+                } else {
+                    input.type = 'password';
+                    icon.className = 'bi bi-eye';
+                }
+            });
+        });
+    </script>
 </body>
 </html>

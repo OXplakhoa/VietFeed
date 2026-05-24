@@ -9,11 +9,16 @@
 
         <div class="mb-4">
             <label for="password" class="form-label">Mật khẩu</label>
-            <input id="password" type="password" name="password"
-                   class="form-control @error('password') is-invalid @enderror"
-                   placeholder="••••••••" required autocomplete="current-password">
+            <div class="pw-wrap">
+                <input id="password" type="password" name="password"
+                       class="form-control @error('password') is-invalid @enderror"
+                       placeholder="••••••••" required autocomplete="current-password">
+                <button type="button" class="pw-toggle" tabindex="-1" aria-label="Hiện/ẩn mật khẩu">
+                    <i class="bi bi-eye"></i>
+                </button>
+            </div>
             @error('password')
-                <div class="invalid-feedback">{{ $message }}</div>
+                <div class="invalid-feedback d-block">{{ $message }}</div>
             @enderror
         </div>
 

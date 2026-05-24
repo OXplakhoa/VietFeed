@@ -29,19 +29,29 @@
 
         <div class="mb-3">
             <label for="password" class="form-label">Mật khẩu</label>
-            <input id="password" type="password" name="password"
-                   class="form-control @error('password') is-invalid @enderror"
-                   placeholder="Tối thiểu 8 ký tự" required autocomplete="new-password">
+            <div class="pw-wrap">
+                <input id="password" type="password" name="password"
+                       class="form-control @error('password') is-invalid @enderror"
+                       placeholder="Tối thiểu 8 ký tự" required autocomplete="new-password">
+                <button type="button" class="pw-toggle" tabindex="-1" aria-label="Hiện/ẩn mật khẩu">
+                    <i class="bi bi-eye"></i>
+                </button>
+            </div>
             @error('password')
-                <div class="invalid-feedback">{{ $message }}</div>
+                <div class="invalid-feedback d-block">{{ $message }}</div>
             @enderror
         </div>
 
         <div class="mb-4">
             <label for="password_confirmation" class="form-label">Xác nhận mật khẩu</label>
-            <input id="password_confirmation" type="password" name="password_confirmation"
-                   class="form-control" placeholder="Nhập lại mật khẩu"
-                   required autocomplete="new-password">
+            <div class="pw-wrap">
+                <input id="password_confirmation" type="password" name="password_confirmation"
+                       class="form-control" placeholder="Nhập lại mật khẩu"
+                       required autocomplete="new-password">
+                <button type="button" class="pw-toggle" tabindex="-1" aria-label="Hiện/ẩn mật khẩu">
+                    <i class="bi bi-eye"></i>
+                </button>
+            </div>
         </div>
 
         <button type="submit" class="btn btn-accent w-100">Tạo tài khoản</button>

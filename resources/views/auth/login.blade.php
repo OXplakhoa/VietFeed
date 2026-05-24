@@ -28,11 +28,16 @@
                     <a href="{{ route('password.request') }}" class="auth-link">Quên mật khẩu?</a>
                 @endif
             </div>
-            <input id="password" type="password" name="password"
-                   class="form-control mt-1 @error('password') is-invalid @enderror"
-                   placeholder="••••••••" required autocomplete="current-password">
+            <div class="pw-wrap mt-1">
+                <input id="password" type="password" name="password"
+                       class="form-control @error('password') is-invalid @enderror"
+                       placeholder="••••••••" required autocomplete="current-password">
+                <button type="button" class="pw-toggle" tabindex="-1" aria-label="Hiện/ẩn mật khẩu">
+                    <i class="bi bi-eye"></i>
+                </button>
+            </div>
             @error('password')
-                <div class="invalid-feedback">{{ $message }}</div>
+                <div class="invalid-feedback d-block">{{ $message }}</div>
             @enderror
         </div>
 
