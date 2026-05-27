@@ -298,7 +298,7 @@
                 <span class="ms-2">— Tổng hợp tin tức tiếng Việt</span>
             </div>
             <div class="col-md-6 text-md-end mt-2 mt-md-0">
-                <span>&copy; {{ date('Y') }} VietFeed &middot; Môn Lập trình mã nguồn mở</span>
+                <span>Nhóm XX &middot; &copy; {{ date('Y') }} VietFeed &middot; Môn Lập trình mã nguồn mở</span>
             </div>
         </div>
     </div>
