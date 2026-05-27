@@ -424,23 +424,9 @@ function initTicker() {
 
     renderTicker(_tickerData);
 
-    // Poll every 60s for fresh data
-    setInterval(async () => {
-        try {
-            const res  = await fetch('/api/ticker', { headers: { Accept: 'application/json' } });
-            const data = await res.json();
-            _flashTickerChanges(_tickerData, data);
-            _tickerData = data;
-            renderTicker(data);
-            // Refresh open popover if any
-            if (_tickerOpenMetric) {
-                const pill = document.querySelector(`.vf-ticker-pill[data-metric="${_tickerOpenMetric}"]`);
-                if (pill) _populatePopover(pill, data);
-            }
-        } catch (e) {
-            console.warn('[Ticker] poll failed', e);
-        }
-    }, 60_000);
+    // Fire immediately, then poll every 60s
+    _pollTicker();
+    setInterval(_pollTicker, 60_000);
 
     document.querySelectorAll('.vf-ticker-pill').forEach(pill => {
         pill.addEventListener('click', () => _toggleTickerPopover(pill));
@@ -461,6 +447,23 @@ function initTicker() {
     document.getElementById('vf-ticker-popover')
         ?.querySelector('.vf-ticker-popover__close')
         ?.addEventListener('click', _closeTickerPopover);
+}
+
+async function _pollTicker() {
+    try {
+        const res  = await fetch('/api/ticker', { headers: { Accept: 'application/json' } });
+        const data = await res.json();
+        _flashTickerChanges(_tickerData, data);
+        _tickerData = data;
+        renderTicker(data);
+        // Refresh open popover if any
+        if (_tickerOpenMetric) {
+            const pill = document.querySelector(`.vf-ticker-pill[data-metric="${_tickerOpenMetric}"]`);
+            if (pill) _populatePopover(pill, data);
+        }
+    } catch (e) {
+        console.warn('[Ticker] poll failed', e);
+    }
 }
 
 function renderTicker(data) {

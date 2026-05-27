@@ -8,13 +8,25 @@ use Illuminate\Support\Facades\Log;
 
 class TickerService
 {
-    /** Cache-only read — never triggers upstream. Used for first-paint via view composer. */
+    /** Cache-only read — never triggers upstream. Falls back to .bak so pills never
+     *  disappear on page load when primary TTL expires. Used for first-paint via view composer. */
     public function snapshot(): array
     {
         return [
-            'usd' => Cache::get('ticker.usd.v1'),
-            'sjc' => Cache::get('ticker.sjc.v1'),
+            'usd' => $this->readWithFallback('ticker.usd.v1'),
+            'sjc' => $this->readWithFallback('ticker.sjc.v1'),
         ];
+    }
+
+    private function readWithFallback(string $key): ?array
+    {
+        $primary = Cache::get($key);
+        if ($primary !== null) {
+            return $primary;
+        }
+
+        $bak = Cache::get("{$key}.bak");
+        return $bak ? array_merge($bak, ['stale' => true]) : null;
     }
 
     /** Cache-aware fetch — hits upstream on cache miss. Used by /api/ticker endpoint. */
@@ -46,6 +58,8 @@ class TickerService
             return $fresh;
         }
 
+        // Upstream failed — serve stale .bak if available; don't cache the stale
+        // result so the next poll retries fresh instead of serving stale for full TTL
         $bak = Cache::get("{$key}.bak");
         return $bak ? array_merge($bak, ['stale' => true]) : null;
     }
