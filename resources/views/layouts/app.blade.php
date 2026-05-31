@@ -81,43 +81,34 @@
 
         <div class="collapse navbar-collapse justify-content-end" id="vfNav">
 
-            {{-- Search Bar --}}
-            <div class="position-relative me-3 my-2 my-lg-0" style="width:240px">
-                <form action="{{ route('search') }}" method="GET" class="vf-search-form d-flex" autocomplete="off">
-                    <input id="live-search-input" type="text" name="q"
-                           class="form-control form-control-sm"
-                           placeholder="Tìm kiếm bài viết…"
-                           value="{{ request('q') }}"
-                           autocomplete="off">
-                    <button type="submit" class="btn btn-sm" aria-label="Tìm kiếm">
-                        <i class="bi bi-search"></i>
-                    </button>
-                </form>
-                <div id="live-search-results"
-                     class="position-absolute w-100"
-                     style="display:none;top:calc(100% + 6px);z-index:1050"></div>
-            </div>
+            <div class="d-flex align-items-center gap-3 mt-2 mt-lg-0 vf-navbar-actions">
+                 {{-- Search Bar --}}
+                <div class="position-relative vf-navbar-search-wrap my-2 my-lg-0">
+                    <form action="{{ route('search') }}" method="GET" class="vf-search-form" autocomplete="off">
+                        <span class="vf-search-form__icon"><i class="bi bi-search"></i></span>
+                        <input id="live-search-input" type="text" name="q"
+                               class="form-control form-control-sm"
+                               placeholder="Tìm kiếm bài viết"
+                               value="{{ request('q') }}"
+                               autocomplete="off">
+                    </form>
+                    <div id="live-search-results"
+                         class="position-absolute w-100"
+                         style="display:none;top:calc(100% + 8px);z-index:1050"></div>
+                </div>
 
-            {{-- Right side --}}
-            <div class="d-flex align-items-center gap-2 mt-2 mt-lg-0">
+                {{-- Right side --}}
+                <div class="d-flex align-items-center gap-2 vf-navbar-meta-actions">
                 <button id="dark-mode-toggle" aria-label="Chế độ tối/sáng">
                     <i class="bi bi-sun-fill icon sun"></i>
                     <i class="bi bi-moon-fill icon moon"></i>
                 </button>
 
                 @auth
-                    <a href="{{ route('bookmarks.index') }}"
-                       class="d-none d-lg-flex align-items-center gap-1"
-                       style="color:var(--text-muted);background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:.38rem .7rem;font-size:.85rem;text-decoration:none;transition:color .2s"
-                       title="Bài viết đã lưu">
-                        <i class="bi bi-bookmark"></i>
-                    </a>
                     <div class="dropdown vf-user-dropdown">
-                        <button class="btn btn-sm dropdown-toggle d-flex align-items-center gap-1"
-                                type="button" data-bs-toggle="dropdown"
-                                style="color:var(--text);background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;font-size:.85rem;padding:.38rem .75rem">
-                            <i class="bi bi-person-circle"></i>
-                            <span class="d-none d-md-inline">{{ auth()->user()->name }}</span>
+                        <button class="btn btn-sm dropdown-toggle vf-user-trigger"
+                                type="button" data-bs-toggle="dropdown">
+                            <span>{{ auth()->user()->name }}</span>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="{{ route('profile.edit') }}">
@@ -142,9 +133,12 @@
                         </ul>
                     </div>
                 @else
-                    <a href="{{ route('login') }}" class="btn-outline-accent" style="text-decoration:none">Đăng nhập</a>
-                    <a href="{{ route('register') }}" class="btn-accent" style="text-decoration:none">Đăng ký</a>
+                    <a href="{{ route('login') }}" class="vf-navbar-login-cta" style="text-decoration:none">
+                        <span class="vf-navbar-login-cta__kicker">VietFeed</span>
+                        <span class="vf-navbar-login-cta__label">Đăng nhập</span>
+                    </a>
                 @endauth
+                </div>
             </div>
 
         </div>

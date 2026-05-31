@@ -43,28 +43,37 @@ function initNavbarScroll() {
     let lastScrollY = window.scrollY;
     let ticking     = false;
 
+    const syncNavbarState = () => {
+        const y               = window.scrollY;
+        const delta           = y - lastScrollY;
+        const collapseStartAt = navbar.offsetHeight;
+
+        document.documentElement.style.setProperty('--vf-navbar-height', `${collapseStartAt}px`);
+        navbar.classList.toggle('scrolled', y > 50);
+
+        if (y <= collapseStartAt) {
+            navbar.classList.remove('navbar-hidden');
+            tabs?.classList.remove('navbar-collapsed');
+        } else if (delta > 0) {
+            navbar.classList.add('navbar-hidden');
+            tabs?.classList.add('navbar-collapsed');
+        } else if (delta < 0) {
+            navbar.classList.remove('navbar-hidden');
+            tabs?.classList.remove('navbar-collapsed');
+        }
+
+        lastScrollY = y;
+        ticking = false;
+    };
+
     window.addEventListener('scroll', () => {
         if (ticking) return;
         ticking = true;
-        requestAnimationFrame(() => {
-            const y     = window.scrollY;
-            const delta = y - lastScrollY;
-
-            navbar.classList.toggle('scrolled', y > 50);
-
-            if (y < 80) {
-                navbar.classList.remove('navbar-hidden');
-                tabs?.classList.remove('navbar-collapsed');
-            } else if (Math.abs(delta) > 10) {
-                const hide = delta > 0;
-                navbar.classList.toggle('navbar-hidden', hide);
-                tabs?.classList.toggle('navbar-collapsed', hide);
-            }
-
-            lastScrollY = y;
-            ticking     = false;
-        });
+        requestAnimationFrame(syncNavbarState);
     }, { passive: true });
+
+    window.addEventListener('resize', syncNavbarState, { passive: true });
+    syncNavbarState();
 }
 
 // ── Bookmark Toggle (AJAX) ─────────────────────────────────────
