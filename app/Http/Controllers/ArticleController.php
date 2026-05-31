@@ -17,7 +17,7 @@ class ArticleController extends Controller
             $q = $request->q;
             $query->where(function ($qb) use ($q) {
                 $qb->where('title', 'LIKE', "%{$q}%")
-                   ->orWhere('description', 'LIKE', "%{$q}%");
+                    ->orWhere('description', 'LIKE', "%{$q}%");
             });
         }
 
@@ -36,7 +36,7 @@ class ArticleController extends Controller
             : [];
 
         $categories = Category::all();
-        $sources    = Source::where('is_active', true)->orderBy('name')->get();
+        $sources = Source::where('is_active', true)->orderBy('name')->get();
 
         return view('articles.index', compact('articles', 'bookmarkedIds', 'categories', 'sources'));
     }
@@ -58,12 +58,23 @@ class ArticleController extends Controller
             ? auth()->user()->bookmarks()->where('article_id', $article->id)->exists()
             : false;
 
-        $related = Article::where('category_id', $article->category_id)
+        $related = Article::with(['source', 'category'])
+            ->where('category_id', $article->category_id)
             ->where('id', '!=', $article->id)
-            ->whereNotNull('image_url')
             ->latest('published_at')
-            ->take(4)
+            ->take(10)
             ->get();
+
+        if ($related->count() < 10) {
+            $related = $related->concat(
+                Article::with(['source', 'category'])
+                    ->where('id', '!=', $article->id)
+                    ->whereNotIn('id', $related->pluck('id'))
+                    ->latest('published_at')
+                    ->take(10 - $related->count())
+                    ->get()
+            );
+        }
 
         return view('articles.show', compact('article', 'isBookmarked', 'related'));
     }

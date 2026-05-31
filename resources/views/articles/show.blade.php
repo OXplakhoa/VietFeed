@@ -127,31 +127,57 @@
             {{-- Related Articles Sidebar --}}
             <div class="col-lg-4">
                 <div class="sidebar-sticky">
-                @if($related->count())
-                <div class="trending-sidebar">
-                    <div class="sidebar-title">Bài viết liên quan</div>
-                    @foreach($related as $r)
-                    <a href="{{ route('articles.show', $r->slug) }}"
-                       class="d-flex gap-2 py-2 text-decoration-none"
-                       style="border-bottom:1px solid var(--border);color:var(--text)">
-                        @if($r->image_url)
-                        <div style="width:64px;height:56px;flex-shrink:0;border-radius:6px;overflow:hidden">
-                            <img src="{{ $r->image_url }}" alt="" style="width:100%;height:100%;object-fit:cover">
+                @if($related->isNotEmpty())
+                    @php
+                        $featuredRelated = $related->take(3);
+                        $compactRelated = $related->slice(3);
+                    @endphp
+                    <div class="trending-sidebar">
+                        <div class="sidebar-title">Bài viết liên quan</div>
+
+                        <div class="related-featured-list">
+                            @foreach($featuredRelated as $r)
+                            <a href="{{ route('articles.show', $r->slug) }}" class="related-featured-item text-decoration-none">
+                                <div class="related-featured-thumb">
+                                    @if($r->image_url)
+                                        <img src="{{ $r->image_url }}" alt="{{ $r->title }}">
+                                    @else
+                                        <div class="related-featured-thumb-placeholder"><i class="bi bi-newspaper"></i></div>
+                                    @endif
+                                </div>
+                                <div class="related-featured-body">
+                                    <div class="category-badge mb-1">{{ $r->category?->name }}</div>
+                                    <div class="related-featured-title">{{ $r->title }}</div>
+                                    <div class="related-featured-meta">
+                                        {{ $r->source?->name }}
+                                        @if($r->published_at)
+                                            &middot; {{ $r->published_at->diffForHumans() }}
+                                        @endif
+                                    </div>
+                                </div>
+                            </a>
+                            @endforeach
+                        </div>
+
+                        @if($compactRelated->isNotEmpty())
+                        <div class="related-compact-list">
+                            @foreach($compactRelated as $r)
+                            <a href="{{ route('articles.show', $r->slug) }}" class="related-compact-item text-decoration-none">
+                                <span class="related-compact-index">{{ str_pad($loop->iteration + 3, 2, '0', STR_PAD_LEFT) }}</span>
+                                <div>
+                                    <div class="related-compact-title">{{ $r->title }}</div>
+                                    <div class="related-compact-meta">
+                                        {{ $r->source?->name }}
+                                        @if($r->published_at)
+                                            &middot; {{ $r->published_at->diffForHumans() }}
+                                        @endif
+                                    </div>
+                                </div>
+                            </a>
+                            @endforeach
                         </div>
                         @endif
-                        <div>
-                            <div style="font-size:.85rem;font-weight:500;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">
-                                {{ $r->title }}
-                            </div>
-                            @if($r->published_at)
-                            <div style="font-size:.75rem;color:var(--text-muted);margin-top:.2rem">
-                                {{ $r->published_at->diffForHumans() }}
-                            </div>
-                            @endif
-                        </div>
-                    </a>
-                    @endforeach
-                </div>
+                    </div>
                 @endif
 
                 <div class="trending-sidebar">
