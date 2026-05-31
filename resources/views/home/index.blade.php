@@ -109,7 +109,7 @@
                             <i class="bi bi-fire" style="color:var(--accent)"></i> Đang thịnh hành
                         </div>
                         @foreach($trending as $i => $t)
-                        <a href="{{ route('articles.show', $t->slug) }}" class="trending-item">
+                        <a href="{{ route('articles.show', $t->slug) }}" class="trending-item trending-rank-{{ $i + 1 }}">
                             <span class="trending-num">{{ str_pad($i + 1, 2, '0', STR_PAD_LEFT) }}</span>
                             <div>
                                 <div class="trending-item-title">{{ $t->title }}</div>

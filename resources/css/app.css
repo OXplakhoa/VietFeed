@@ -692,9 +692,25 @@ small, .caption, .meta-text { font-size: 13px; color: var(--text-muted); }
 .trending-item:hover .trending-item-title { color: var(--accent); }
 .trending-num {
     font-family: 'Playfair Display', serif;
-    font-size: 1.3rem; font-weight: 700;
-    color: var(--border); line-height: 1;
-    min-width: 1.4rem;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: rgba(214,40,57,.82);
+    line-height: .92;
+    min-width: 1.8rem;
+    text-shadow: 0 1px 0 rgba(255,255,255,.08);
+}
+.trending-rank-1 .trending-num,
+.trending-rank-2 .trending-num,
+.trending-rank-3 .trending-num {
+    color: var(--accent);
+}
+.trending-rank-1 .trending-num { font-size: 1.9rem; }
+.trending-rank-2 .trending-num { opacity: .95; }
+.trending-rank-3 .trending-num { opacity: .9; }
+[data-theme="dark"] .trending-rank-1 .trending-num,
+[data-theme="dark"] .trending-rank-2 .trending-num,
+[data-theme="dark"] .trending-rank-3 .trending-num {
+    text-shadow: 0 0 16px rgba(230,57,70,.12);
 }
 .trending-item-title {
     font-size: 0.85rem; font-weight: 500; line-height: 1.4;
