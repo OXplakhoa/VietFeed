@@ -32,3 +32,4 @@ Thumbs.db
 /.antigravitycli/
 /skills-lock.json
 /tmp
+/.playwright-mcp

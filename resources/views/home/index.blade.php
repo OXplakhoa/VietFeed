@@ -3,14 +3,27 @@
 
     <div class="container-xl py-4">
 
+        @if($featured && $breakingArticles->isNotEmpty())
+        <div class="breaking-strip fade-in" aria-label="Tin nóng">
+            <div class="breaking-strip__label"><i class="bi bi-lightning-charge-fill"></i> Tin nóng</div>
+            <div class="breaking-strip__track">
+                @foreach($breakingArticles as $item)
+                <a href="{{ route('articles.show', $item->slug) }}" class="breaking-strip__item">
+                    <span>{{ $item->category->name }}</span>{{ $item->title }}
+                </a>
+                @endforeach
+            </div>
+        </div>
+        @endif
+
         {{-- ── Hero Grid ──────────────────────────────────────────────── --}}
         @if($featured)
-        <div class="hero-grid mb-4">
+        <div class="hero-grid mb-4 fade-in">
             {{-- Large featured article --}}
             <x-article-hero :article="$featured" />
 
-            {{-- 3 small articles stacked --}}
-            <div class="hero-stack">
+            {{-- 5 small articles stacked — hidden on mobile --}}
+            <div class="hero-stack d-none d-lg-flex">
                 @foreach($heroArticles as $h)
                 <a href="{{ route('articles.show', $h->slug) }}" class="article-hero-sm">
                     <div class="article-hero-sm-img">
@@ -32,6 +45,9 @@
                 @endforeach
             </div>
         </div>
+        @else
+        {{-- Empty state — no articles with images --}}
+        <x-welcome-banner />
         @endif
 
         {{-- ── Main Feed + Sidebar ─────────────────────────────────────── --}}

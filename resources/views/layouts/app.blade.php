@@ -33,8 +33,8 @@
 {{-- ── Glassmorphism Navbar ───────────────────────────────────── --}}
 <nav class="navbar navbar-expand-lg vf-navbar">
     <div class="container-xl">
-        <a class="navbar-brand" href="{{ route('home') }}">
-            Viet<span class="accent">Feed</span>
+        <a class="navbar-brand {{ request()->routeIs('home') ? 'vf-logo-run-catch' : '' }}" href="{{ route('home') }}">
+            <span class="logo-viet">Viet</span><span class="accent logo-feed">Feed</span>
         </a>
 
         {{-- ── Financial Ticker (lg+ only) ──────────────────────── --}}
@@ -298,7 +298,7 @@
                 <span class="ms-2">— Tổng hợp tin tức tiếng Việt</span>
             </div>
             <div class="col-md-6 text-md-end mt-2 mt-md-0">
-                <span>Nhóm XX &middot; &copy; {{ date('Y') }} VietFeed &middot; Môn Lập trình mã nguồn mở</span>
+                <span>Nhóm 09 &middot; &copy; {{ date('Y') }} VietFeed &middot; Môn Lập trình mã nguồn mở</span>
             </div>
         </div>
     </div>

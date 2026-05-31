@@ -11,23 +11,93 @@ class HomeController extends Controller
 {
     public function index()
     {
-        $featured = Article::whereNotNull('image_url')->latest('published_at')->first();
-
-        $heroIds = $featured ? [$featured->id] : [];
-        $heroArticles = Article::whereNotNull('image_url')
-            ->whereNotIn('id', $heroIds)
-            ->latest('published_at')
-            ->take(3)
-            ->get();
-
-        $query = Article::with(['source', 'category'])->withCount('bookmarks');
-
-        if (auth()->check() && auth()->user()->favoriteCategories()->count() > 0) {
-            $catIds = auth()->user()->favoriteCategories()->pluck('categories.id');
-            $query->whereIn('category_id', $catIds);
+        // Database-agnostic time decay: hours since published
+        $driver = config('database.default');
+        if ($driver === 'sqlite') {
+            $hoursOld = "((strftime('%s', 'now') - strftime('%s', articles.published_at)) / 3600.0)";
+        } else {
+            $hoursOld = 'TIMESTAMPDIFF(HOUR, articles.published_at, NOW())';
         }
 
-        $articles = $query->latest('published_at')->paginate(12);
+        // Inline subqueries for counts — withCount() aliases can't be referenced in SELECT list on MySQL
+        $bmCount = '(SELECT COUNT(*) FROM bookmarks WHERE bookmarks.article_id = articles.id)';
+        $cmCount = '(SELECT COUNT(*) FROM comments WHERE comments.article_id = articles.id)';
+        $scoreFormula = "({$bmCount} * 5) + ({$cmCount} * 2) + (sources.prestige * 4) - ({$hoursOld} * 0.5)";
+
+        $heroBase = Article::select('articles.*')
+            ->selectRaw($scoreFormula.' as sensational_score')
+            ->join('sources', 'articles.source_id', '=', 'sources.id')
+            ->whereNotNull('articles.image_url');
+
+        // Featured: most sensational across ALL categories
+        $featured = (clone $heroBase)->orderByDesc('sensational_score')->first();
+        $featuredId = $featured ? $featured->id : null;
+
+        // Small cards: personalized to user's favorite categories
+        $userCatIds = auth()->check()
+            ? auth()->user()->favoriteCategories()->pluck('categories.id')->toArray()
+            : [];
+
+        $heroArticles = (clone $heroBase)
+            ->when(! empty($userCatIds), fn ($q) => $q->whereIn('articles.category_id', $userCatIds))
+            ->when($featuredId, fn ($q) => $q->where('articles.id', '!=', $featuredId))
+            ->orderByDesc('sensational_score')
+            ->take(5)
+            ->get();
+
+        // Collect hero article IDs to exclude from main feed
+        $heroIds = collect();
+        if ($featuredId) {
+            $heroIds->push($featuredId);
+        }
+        $heroIds = $heroIds->merge($heroArticles->pluck('id'))->toArray();
+
+        $breakingArticles = collect();
+        if ($featured) {
+            $breakingArticles->push($featured);
+        }
+
+        $usedCategories = $breakingArticles->pluck('category_id')->filter()->all();
+        $usedArticleIds = $breakingArticles->pluck('id')->all();
+
+        $diverseBreaking = Article::with(['source', 'category'])
+            ->whereNotIn('id', array_merge($heroArticles->pluck('id')->all(), $usedArticleIds))
+            ->latest('published_at')
+            ->take(40)
+            ->get()
+            ->filter(function ($article) use (&$usedCategories) {
+                if (in_array($article->category_id, $usedCategories, true)) {
+                    return false;
+                }
+
+                $usedCategories[] = $article->category_id;
+
+                return true;
+            })
+            ->take(5 - $breakingArticles->count());
+
+        $breakingArticles = $breakingArticles->merge($diverseBreaking);
+
+        if ($breakingArticles->count() < 5) {
+            $fillers = Article::with(['source', 'category'])
+                ->whereNotIn('id', $breakingArticles->pluck('id')->merge($heroArticles->pluck('id'))->all())
+                ->latest('published_at')
+                ->take(5 - $breakingArticles->count())
+                ->get();
+
+            $breakingArticles = $breakingArticles->merge($fillers);
+        }
+
+        // Main feed
+        $query = Article::with(['source', 'category'])->withCount('bookmarks');
+
+        if (! empty($userCatIds)) {
+            $query->whereIn('category_id', $userCatIds);
+        }
+
+        $articles = $query->whereNotIn('id', $heroIds)
+            ->latest('published_at')
+            ->paginate(12);
 
         $trending = Article::withCount('bookmarks')
             ->orderByDesc('bookmarks_count')
@@ -42,7 +112,7 @@ class HomeController extends Controller
         $categories = Category::all();
 
         return view('home.index', compact(
-            'featured', 'heroArticles', 'articles', 'trending', 'bookmarkedIds', 'categories'
+            'featured', 'heroArticles', 'breakingArticles', 'articles', 'trending', 'bookmarkedIds', 'categories'
         ));
     }
 
@@ -62,16 +132,16 @@ class HomeController extends Controller
         $html = '';
         foreach ($articles->items() as $article) {
             $html .= '<div class="col-sm-6 col-lg-4 mb-4">'
-                . Blade::render(
+                .Blade::render(
                     '<x-article-card :article="$article" :bookmarked="$bm" />',
                     ['article' => $article, 'bm' => false]
                 )
-                . '</div>';
+                .'</div>';
         }
 
         return response()->json([
-            'html'     => $html,
-            'hasMore'  => $articles->hasMorePages(),
+            'html' => $html,
+            'hasMore' => $articles->hasMorePages(),
             'nextPage' => $page + 1,
         ]);
     }

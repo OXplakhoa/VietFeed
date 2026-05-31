@@ -50,6 +50,20 @@
     @error('category_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
 </div>
 
+<div class="mb-3">
+    <label class="form-label" style="font-size:.85rem;color:var(--text-muted);font-weight:500">
+        Độ uy tín nguồn <span style="color:var(--text-muted)">(1-5, mặc định 3)</span>
+    </label>
+    <select name="prestige" class="form-select"
+            style="background:var(--surface-alt);border-color:var(--border);color:var(--text)">
+        @for($i = 1; $i <= 5; $i++)
+        <option value="{{ $i }}" {{ old('prestige', $src?->prestige ?? 3) == $i ? 'selected' : '' }}>
+            {{ $i }} @if($i == 5)– Rất cao (VnExpress, Tuổi Trẻ)@elseif($i == 4)– Cao (Thanh Niên, Dân Trí)@elseif($i == 3)– Trung bình@elseif($i == 2)– Thấp@else– Rất thấp@endif
+        </option>
+        @endfor
+    </select>
+</div>
+
 <div class="form-check">
     <input type="hidden" name="is_active" value="0">
     <input class="form-check-input" type="checkbox" name="is_active" id="is_active" value="1"

@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    document.body.classList.add('vf-page-ready');
     initDarkMode();
     initNavbarScroll();
     initBookmarkToggle();

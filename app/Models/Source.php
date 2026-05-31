@@ -13,13 +13,14 @@ class Source extends Model
         'logo_url',
         'category_id',
         'is_active',
+        'prestige',
         'last_fetched_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_active'       => 'boolean',
+            'is_active' => 'boolean',
             'last_fetched_at' => 'datetime',
         ];
     }
