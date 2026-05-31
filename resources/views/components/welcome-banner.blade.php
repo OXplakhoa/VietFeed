@@ -10,7 +10,7 @@
             Nguồn tin tức tiếng Việt cá nhân hoá — theo dõi các chủ đề bạn quan tâm
         </p>
         <div class="d-flex justify-content-center gap-3 flex-wrap">
-            <a href="{{ route('categories.index') }}" class="btn btn-accent btn-lg">
+            <a href="{{ route('home') }}" class="btn btn-accent btn-lg">
                 <i class="bi bi-compass me-1"></i> Khám phá chủ đề
             </a>
             @guest

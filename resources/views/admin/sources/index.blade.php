@@ -8,9 +8,14 @@
             <h3 class="mb-0" style="font-family:'Playfair Display',serif">
                 <i class="bi bi-rss me-2" style="color:var(--accent)"></i>Nguồn tin
             </h3>
-            <a href="{{ route('admin.sources.create') }}" class="btn-accent" style="text-decoration:none;padding:.45rem 1rem;border-radius:8px;font-size:.875rem">
-                <i class="bi bi-plus-lg me-1"></i>Thêm nguồn
-            </a>
+            <div class="d-flex gap-2">
+                <a href="{{ route('admin.sources.health') }}" class="btn btn-sm" style="background:var(--surface-alt);color:var(--text);border:1px solid var(--border);border-radius:8px;text-decoration:none;padding:.45rem 1rem">
+                    <i class="bi bi-heart-pulse me-1"></i>Health Monitor
+                </a>
+                <a href="{{ route('admin.sources.create') }}" class="btn-accent" style="text-decoration:none;padding:.45rem 1rem;border-radius:8px;font-size:.875rem">
+                    <i class="bi bi-plus-lg me-1"></i>Thêm nguồn
+                </a>
+            </div>
         </div>
 
         {{-- Filter Bar --}}
@@ -86,11 +91,19 @@
                         <td style="vertical-align:middle;font-size:.85rem">{{ $src->category->name ?? '—' }}</td>
                         <td style="vertical-align:middle;font-size:.85rem">{{ number_format($src->articles_count) }}</td>
                         <td style="vertical-align:middle">
-                            @if($src->is_active)
-                                <span style="font-size:.75rem;background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:.2rem .55rem;font-weight:500">Hoạt động</span>
-                            @else
-                                <span style="font-size:.75rem;background:rgba(107,114,128,.12);color:var(--text-secondary);border:1px solid rgba(107,114,128,.3);border-radius:6px;padding:.2rem .55rem;font-weight:500">Tắt</span>
-                            @endif
+                            @php
+                                $statusMap = [
+                                    'healthy' => ['Ổn định', 'rgba(34,197,94,.12)', '#22c55e'],
+                                    'warning' => ['Cảnh báo', 'rgba(251,191,36,.12)', '#f59e0b'],
+                                    'failed' => ['Lỗi', 'rgba(239,68,68,.12)', '#ef4444'],
+                                    'stale' => ['Cũ', 'rgba(59,130,246,.12)', '#3b82f6'],
+                                    'critical' => ['Nghiêm trọng', 'rgba(168,85,247,.12)', '#a855f7'],
+                                    'disabled' => ['Tắt', 'rgba(107,114,128,.12)', '#6b7280'],
+                                    'never_fetched' => ['Chưa fetch', 'rgba(148,163,184,.12)', '#94a3b8'],
+                                ];
+                                [$label, $bg, $color] = $statusMap[$src->health_status] ?? ['Không rõ', 'rgba(107,114,128,.12)', '#6b7280'];
+                            @endphp
+                            <span style="font-size:.75rem;background:{{ $bg }};color:{{ $color }};border:1px solid {{ $color }}33;border-radius:6px;padding:.2rem .55rem;font-weight:500">{{ $label }}</span>
                         </td>
                         <td style="vertical-align:middle;font-size:.8rem;color:var(--text-secondary)">
                             {{ $src->last_fetched_at ? $src->last_fetched_at->diffForHumans() : 'Chưa lấy' }}
@@ -99,6 +112,9 @@
                             <a href="{{ route('admin.sources.edit', $src) }}"
                                style="color:#60a5fa;font-size:.8rem;text-decoration:none;margin-right:.75rem">
                                 <i class="bi bi-pencil me-1"></i>Sửa
+                            </a>
+                            <a href="{{ route('admin.sources.health') }}" style="color:var(--accent);font-size:.8rem;text-decoration:none;margin-right:.75rem">
+                                <i class="bi bi-heart-pulse me-1"></i>Health
                             </a>
                             <form action="{{ route('admin.sources.destroy', $src) }}" method="POST" class="d-inline"
                                   onsubmit="vfConfirmForm(event, this, 'Nguồn tin sẽ bị xóa. Các bài viết đã lấy sẽ không bị xóa.')">

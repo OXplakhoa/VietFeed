@@ -2,12 +2,13 @@
     <div class="d-flex flex-wrap gap-1">
         @php
         $navItems = [
-            ['route' => 'admin.dashboard',          'pattern' => 'admin.dashboard',      'icon' => 'bi-speedometer2', 'label' => 'Dashboard'],
-            ['route' => 'admin.sources.index',       'pattern' => 'admin.sources.*',       'icon' => 'bi-rss',          'label' => 'Nguồn tin'],
-            ['route' => 'admin.categories.index',    'pattern' => 'admin.categories.*',    'icon' => 'bi-tag',          'label' => 'Chủ đề'],
-            ['route' => 'admin.articles.index',      'pattern' => 'admin.articles.*',      'icon' => 'bi-newspaper',    'label' => 'Bài viết'],
-            ['route' => 'admin.comments.index',      'pattern' => 'admin.comments.*',      'icon' => 'bi-chat-dots',    'label' => 'Bình luận'],
-            ['route' => 'admin.users.index',         'pattern' => 'admin.users.*',         'icon' => 'bi-people',       'label' => 'Người dùng'],
+            ['route' => 'admin.dashboard',       'pattern' => 'admin.dashboard',      'icon' => 'bi-speedometer2', 'label' => 'Dashboard'],
+            ['route' => 'admin.sources.index',   'pattern' => 'admin.sources.index',  'icon' => 'bi-rss',          'label' => 'Nguồn tin'],
+            ['route' => 'admin.sources.health',  'pattern' => 'admin.sources.health', 'icon' => 'bi-heart-pulse',  'label' => 'Health'],
+            ['route' => 'admin.categories.index','pattern' => 'admin.categories.*',    'icon' => 'bi-tag',          'label' => 'Chủ đề'],
+            ['route' => 'admin.articles.index',  'pattern' => 'admin.articles.*',      'icon' => 'bi-newspaper',    'label' => 'Bài viết'],
+            ['route' => 'admin.comments.index',  'pattern' => 'admin.comments.*',      'icon' => 'bi-chat-dots',    'label' => 'Bình luận'],
+            ['route' => 'admin.users.index',     'pattern' => 'admin.users.*',         'icon' => 'bi-people',       'label' => 'Người dùng'],
         ];
         @endphp
         @foreach($navItems as $item)

@@ -35,6 +35,30 @@
             @endforeach
         </div>
 
+        {{-- Source Health Overview --}}
+        <div class="row g-3 mb-4">
+            @foreach([
+                ['label' => 'Healthy', 'value' => $healthCounts['healthy'], 'color' => '#22c55e'],
+                ['label' => 'Warning', 'value' => $healthCounts['warning'], 'color' => '#f59e0b'],
+                ['label' => 'Failed', 'value' => $healthCounts['failed'], 'color' => '#ef4444'],
+                ['label' => 'Stale', 'value' => $healthCounts['stale'], 'color' => '#3b82f6'],
+                ['label' => 'Critical', 'value' => $healthCounts['critical'], 'color' => '#a855f7'],
+            ] as $stat)
+            <div class="col-6 col-lg">
+                <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
+                    <div style="font-size:.75rem;color:var(--text-muted)">{{ $stat['label'] }}</div>
+                    <div style="font-size:1.5rem;font-weight:700;color:{{ $stat['color'] }}">{{ $stat['value'] }}</div>
+                </div>
+            </div>
+            @endforeach
+            <div class="col-12 col-lg-2">
+                <a href="{{ route('admin.sources.health') }}" class="d-flex h-100 align-items-center justify-content-center text-decoration-none"
+                   style="background:var(--surface);border:1px solid var(--border);border-radius:12px;color:var(--accent);font-weight:600">
+                    Mở Health Monitor →
+                </a>
+            </div>
+        </div>
+
         {{-- Charts Row 1: Articles / Users over time --}}
         <div class="row g-4 mb-4">
             <div class="col-lg-7">
@@ -128,21 +152,29 @@
             <div class="col-lg-4">
                 <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="d-flex align-items-center justify-content-between mb-3">
-                        <div class="sidebar-title mb-0">Trạng thái nguồn tin</div>
-                        <a href="{{ route('admin.sources.index') }}" style="font-size:.75rem;color:var(--accent);text-decoration:none">Quản lý →</a>
+                        <div class="sidebar-title mb-0">Nguồn cần chú ý</div>
+                        <a href="{{ route('admin.sources.health') }}" style="font-size:.75rem;color:var(--accent);text-decoration:none">Health Monitor →</a>
                     </div>
                     <div style="max-height:320px;overflow-y:auto">
-                        @foreach($sources as $src)
-                        <div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid var(--border)">
-                            <span class="d-inline-block rounded-circle" style="width:7px;height:7px;flex-shrink:0;background:{{ $src->is_active ? '#22c55e' : '#6b7280' }}"></span>
+                        @php
+                            $statusMap = [
+                                'healthy' => '#22c55e', 'warning' => '#f59e0b', 'failed' => '#ef4444',
+                                'stale' => '#3b82f6', 'critical' => '#a855f7', 'disabled' => '#6b7280', 'never_fetched' => '#94a3b8'
+                            ];
+                        @endphp
+                        @forelse($problemSources as $src)
+                        <div class="d-flex align-items-center gap-2 py-2" style="border-bottom:1px solid var(--border)">
+                            <span class="d-inline-block rounded-circle" style="width:8px;height:8px;flex-shrink:0;background:{{ $statusMap[$src->health_status] ?? '#6b7280' }}"></span>
                             <div class="flex-fill" style="min-width:0">
                                 <div style="font-size:.78rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ $src->name }}</div>
                                 <div style="font-size:.68rem;color:var(--text-muted)">
-                                    {{ $src->last_fetched_at ? $src->last_fetched_at->diffForHumans() : 'Chưa lấy' }}
+                                    {{ $src->health_status }} · {{ $src->last_error_type ?? ($src->last_successful_fetch_at?->diffForHumans() ?? 'Chưa fetch') }}
                                 </div>
                             </div>
                         </div>
-                        @endforeach
+                        @empty
+                        <p style="color:var(--text-muted);font-size:.85rem">Không có nguồn lỗi/cảnh báo.</p>
+                        @endforelse
                     </div>
                 </div>
             </div>

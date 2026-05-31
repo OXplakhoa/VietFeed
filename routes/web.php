@@ -34,6 +34,16 @@ Route::middleware('auth')->group(function () {
     Route::post('/bookmarks/toggle', [BookmarkController::class, 'toggle'])->name('bookmarks.toggle');
 });
 
+Route::get('/dashboard', function () {
+    $user = auth()->user();
+
+    if ($user?->isAdmin()) {
+        return redirect()->route('admin.dashboard');
+    }
+
+    return redirect()->route('home');
+})->middleware('auth')->name('dashboard');
+
 // ── Auth-required routes ───────────────────────────────────────
 Route::middleware(['auth', 'verified'])->group(function () {
     // Bookmarks
@@ -62,11 +72,16 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // Bulk-destroy must be before resource routes so 'bulk-destroy' isn't mistaken for an article ID
     Route::post('articles/bulk-destroy', [AdminArticle::class, 'bulkDestroy'])->name('articles.bulk-destroy');
 
-    Route::resource('sources',    AdminSource::class);
+    Route::get('sources/health', [AdminSource::class, 'health'])->name('sources.health');
+    Route::post('sources/{source}/test', [AdminSource::class, 'test'])->name('sources.test');
+    Route::post('sources/{source}/retry', [AdminSource::class, 'retry'])->name('sources.retry');
+    Route::patch('sources/{source}/toggle-active', [AdminSource::class, 'toggleActive'])->name('sources.toggle-active');
+
+    Route::resource('sources', AdminSource::class);
     Route::resource('categories', AdminCategory::class);
-    Route::resource('articles',   AdminArticle::class)->except(['create', 'store']);
-    Route::resource('comments',   AdminComment::class)->only(['index', 'destroy']);
-    Route::resource('users',      AdminUser::class)->only(['index', 'edit', 'update', 'destroy']);
+    Route::resource('articles', AdminArticle::class)->except(['create', 'store']);
+    Route::resource('comments', AdminComment::class)->only(['index', 'destroy']);
+    Route::resource('users', AdminUser::class)->only(['index', 'edit', 'update', 'destroy']);
 });
 
 require __DIR__.'/auth.php';
