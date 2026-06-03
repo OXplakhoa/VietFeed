@@ -72,6 +72,7 @@
                         ['Ngày đăng',   $article->published_at?->format('d/m/Y H:i') ?? '—'],
                         ['Tạo lúc',     $article->created_at->format('d/m/Y H:i')],
                         ['Boost',        $article->boosts_count . ' lượt'],
+                        ['Lượt mở bài',  $article->unlocks_count . ' lượt'],
                         ['Đã lưu',       $article->bookmarks_count . ' lượt'],
                         ['Bình luận',    $article->comments->count() . ' bình luận'],
                     ] as [$k, $v])

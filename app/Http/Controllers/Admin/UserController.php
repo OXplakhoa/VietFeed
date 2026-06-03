@@ -4,13 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\ReadingPassService;
 use Illuminate\Http\Request;
 
 class UserController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, ReadingPassService $readingPass)
     {
-        $query = User::withCount(['comments', 'bookmarks'])->latest();
+        $query = User::withCount(['comments', 'bookmarks', 'articleUnlocks'])->latest();
 
         if ($request->filled('q')) {
             $q = $request->q;
@@ -20,7 +21,17 @@ class UserController extends Controller
             );
         }
 
+        if ($request->string('plan')->toString() === 'pro') {
+            $query->whereHas('subscriptions', fn ($qb) => $qb
+                ->where('type', 'pro')
+                ->whereIn('stripe_status', ['active', 'trialing'])
+            );
+        }
+
         $users = $query->paginate(20)->withQueryString();
+        $users->getCollection()->each(function (User $user) use ($readingPass) {
+            $user->reading_pass_allowance = $readingPass->allowance($user);
+        });
 
         return view('admin.users.index', compact('users'));
     }
@@ -33,15 +44,15 @@ class UserController extends Controller
     public function update(Request $request, User $user)
     {
         $request->validate([
-            'name'  => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $user->id,
-            'role'  => 'required|in:user,admin',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email,'.$user->id,
+            'role' => 'required|in:user,admin',
         ], [
-            'name.required'   => 'Tên là bắt buộc.',
-            'email.required'  => 'Email là bắt buộc.',
-            'email.unique'    => 'Email đã được sử dụng.',
-            'role.required'   => 'Vui lòng chọn vai trò.',
-            'role.in'         => 'Vai trò không hợp lệ.',
+            'name.required' => 'Tên là bắt buộc.',
+            'email.required' => 'Email là bắt buộc.',
+            'email.unique' => 'Email đã được sử dụng.',
+            'role.required' => 'Vui lòng chọn vai trò.',
+            'role.in' => 'Vai trò không hợp lệ.',
         ]);
 
         $user->update($request->only(['name', 'email', 'role']));

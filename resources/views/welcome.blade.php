@@ -5,6 +5,8 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
         <title>{{ config('app.name', 'Laravel') }}</title>
+        <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}?v=laravel-2">
+        <link rel="alternate icon" href="{{ asset('favicon.ico') }}?v=laravel-2" sizes="32x32">
 
         @fonts
 

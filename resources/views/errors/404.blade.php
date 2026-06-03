@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>404 — Không tìm thấy trang</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}?v=laravel-2">
+    <link rel="alternate icon" href="{{ asset('favicon.ico') }}?v=laravel-2" sizes="32x32">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Be+Vietnam+Pro:wght@400;500&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>

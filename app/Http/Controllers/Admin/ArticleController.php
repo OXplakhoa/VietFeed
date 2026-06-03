@@ -55,7 +55,7 @@ class ArticleController extends Controller
     public function show(Article $article)
     {
         $article->load(['source', 'category', 'comments' => fn ($q) => $q->with('user')->latest()])
-            ->loadCount(['bookmarks', 'boosts']);
+            ->loadCount(['bookmarks', 'boosts', 'unlocks']);
 
         return view('admin.articles.show', compact('article'));
     }

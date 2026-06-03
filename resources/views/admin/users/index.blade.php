@@ -22,7 +22,11 @@
                         style="background:var(--accent);color:#fff;border:none;border-radius:6px">
                     <i class="bi bi-search"></i>
                 </button>
-                @if(request('q'))
+                <a href="{{ route('admin.users.index', array_filter(['q' => request('q'), 'plan' => request('plan') === 'pro' ? null : 'pro'])) }}" class="btn btn-sm"
+                   style="background:{{ request('plan') === 'pro' ? 'rgba(230,57,70,.12)' : 'var(--surface-alt)' }};color:{{ request('plan') === 'pro' ? 'var(--accent)' : 'var(--text-muted)' }};border:1px solid var(--border);border-radius:6px;text-decoration:none">
+                    <i class="bi bi-stars me-1"></i>Pro
+                </a>
+                @if(request('q') || request('plan'))
                 <a href="{{ route('admin.users.index') }}" class="btn btn-sm"
                    style="background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);border-radius:6px">
                     Xóa bộ lọc
@@ -39,6 +43,7 @@
                             <th class="ps-3 py-3">Người dùng</th>
                             <th>Vai trò</th>
                             <th>Xác minh</th>
+                            <th>Gói đọc</th>
                             <th><i class="bi bi-chat-dots"></i></th>
                             <th><i class="bi bi-bookmark"></i></th>
                             <th>Tham gia</th>
@@ -53,6 +58,9 @@
                                 {{ $u->name }}
                                 @if($u->is(auth()->user()))
                                 <span style="font-size:.7rem;color:var(--accent);margin-left:.3rem">(bạn)</span>
+                                @endif
+                                @if($u->isPro())
+                                <span class="vf-pro-badge vf-pro-badge--inline"><i class="bi bi-gem"></i> PRO</span>
                                 @endif
                             </div>
                             <div style="font-size:.75rem;color:var(--text-secondary)">{{ $u->email }}</div>
@@ -69,6 +77,26 @@
                             <i class="bi bi-check-circle-fill" style="color:#22c55e;font-size:.9rem" title="Đã xác minh"></i>
                             @else
                             <i class="bi bi-x-circle" style="color:var(--text-muted);font-size:.9rem" title="Chưa xác minh"></i>
+                            @endif
+                        </td>
+                        <td style="vertical-align:middle;min-width:135px">
+                            @php($rp = $u->reading_pass_allowance)
+                            <div style="font-size:.78rem;color:var(--text);font-weight:600">
+                                {{ $u->hasVerifiedEmail() ? 'Verified' : 'Unverified' }}
+                            </div>
+                            <div style="font-size:.72rem;color:var(--text-secondary)">
+                                @if($rp['limit'] === -1)
+                                    Không giới hạn
+                                @elseif($u->hasVerifiedEmail())
+                                    {{ $rp['used'] }}/{{ $rp['limit'] }} trong 5 giờ
+                                @else
+                                    {{ $rp['used'] }}/{{ $rp['limit'] }} hôm nay
+                                @endif
+                            </div>
+                            @if($u->stripeCustomerUrl())
+                            <a href="{{ $u->stripeCustomerUrl() }}" target="_blank" rel="noopener" style="font-size:.68rem;color:#60a5fa;text-decoration:none">
+                                Stripe <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
                             @endif
                         </td>
                         <td style="vertical-align:middle;font-size:.85rem">{{ $u->comments_count }}</td>
@@ -94,7 +122,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="7" class="text-center py-4" style="color:var(--text-muted)">Không tìm thấy người dùng.</td>
+                        <td colspan="8" class="text-center py-4" style="color:var(--text-muted)">Không tìm thấy người dùng.</td>
                     </tr>
                     @endforelse
                     </tbody>

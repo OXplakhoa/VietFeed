@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
+use App\Models\ArticleUnlock;
 use App\Models\Bookmark;
 use App\Models\Boost;
 use App\Models\Category;
@@ -26,6 +27,12 @@ class DashboardController extends Controller
             'sources' => Source::where('is_active', true)->count(),
             'bookmarks' => Bookmark::count(),
             'boosts' => Boost::count(),
+            'unlocks_today' => ArticleUnlock::where('unlocked_at', '>=', now('Asia/Ho_Chi_Minh')->startOfDay())->count(),
+            'unlocks_5h' => ArticleUnlock::where('unlocked_at', '>=', now()->subHours(5))->count(),
+            'pro_users' => User::whereHas('subscriptions', fn ($query) => $query
+                ->where('type', 'pro')
+                ->whereIn('stripe_status', ['active', 'trialing'])
+            )->count(),
         ];
 
         // Articles per day — last 30 days

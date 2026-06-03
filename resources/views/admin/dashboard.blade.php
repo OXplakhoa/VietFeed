@@ -1,6 +1,16 @@
 <x-app-layout>
     <x-slot name="title">Quản trị — VietFeed</x-slot>
 
+    @push('styles')
+    <style>
+        .admin-stat-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(230, 57, 70, .35) !important;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, .08);
+        }
+    </style>
+    @endpush
+
     <div class="container-xl py-4">
         @include('admin.partials.nav')
 
@@ -11,15 +21,18 @@
         {{-- Stats Cards --}}
         <div class="row g-3 mb-4">
             @foreach([
-                ['label' => 'Bài viết',     'value' => number_format($stats['articles']),  'icon' => 'bi-newspaper',    'color' => '#60a5fa'],
-                ['label' => 'Người dùng',   'value' => number_format($stats['users']),     'icon' => 'bi-people',       'color' => '#34d399'],
-                ['label' => 'Bình luận',    'value' => number_format($stats['comments']),  'icon' => 'bi-chat-dots',    'color' => '#fbbf24'],
-                ['label' => 'Đã lưu',       'value' => number_format($stats['bookmarks']), 'icon' => 'bi-bookmark',     'color' => '#a78bfa'],
-                ['label' => 'Boost',        'value' => number_format($stats['boosts']),    'icon' => 'bi-lightning-charge-fill', 'color' => 'var(--accent)'],
-                ['label' => 'Nguồn tin',    'value' => number_format($stats['sources']),   'icon' => 'bi-rss',          'color' => '#fb923c'],
+                ['label' => 'Bài viết',      'value' => number_format($stats['articles']),      'icon' => 'bi-newspaper', 'color' => '#60a5fa', 'href' => route('admin.articles.index')],
+                ['label' => 'Người dùng',    'value' => number_format($stats['users']),         'icon' => 'bi-people', 'color' => '#34d399', 'href' => route('admin.users.index')],
+                ['label' => 'Bình luận',     'value' => number_format($stats['comments']),      'icon' => 'bi-chat-dots', 'color' => '#fbbf24', 'href' => route('admin.comments.index')],
+                ['label' => 'Đã lưu',        'value' => number_format($stats['bookmarks']),     'icon' => 'bi-bookmark', 'color' => '#a78bfa', 'href' => route('admin.articles.index', ['sort' => 'bookmarks'])],
+                ['label' => 'Boost',         'value' => number_format($stats['boosts']),        'icon' => 'bi-lightning-charge-fill', 'color' => 'var(--accent)', 'href' => route('admin.articles.index', ['sort' => 'boosts'])],
+                ['label' => 'Mở bài hôm nay', 'value' => number_format($stats['unlocks_today']), 'icon' => 'bi-ticket-perforated', 'color' => '#38bdf8', 'href' => route('admin.articles.index')],
+                ['label' => 'Mở bài 5 giờ',  'value' => number_format($stats['unlocks_5h']),    'icon' => 'bi-hourglass-split', 'color' => '#f472b6', 'href' => route('admin.articles.index')],
+                ['label' => 'Pro users',     'value' => number_format($stats['pro_users']),     'icon' => 'bi-stars', 'color' => '#facc15', 'href' => route('admin.users.index', ['plan' => 'pro'])],
+                ['label' => 'Nguồn tin',     'value' => number_format($stats['sources']),       'icon' => 'bi-rss', 'color' => '#fb923c', 'href' => route('admin.sources.index')],
             ] as $stat)
             <div class="col-6 col-lg">
-                <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
+                <a href="{{ $stat['href'] }}" class="d-block p-3 h-100 admin-stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;text-decoration:none;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease">
                     <div class="d-flex align-items-center gap-3">
                         <div style="background:rgba(96,165,250,.08);border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                             <i class="bi {{ $stat['icon'] }}" style="font-size:1.3rem;color:{{ $stat['color'] }}"></i>
@@ -31,7 +44,7 @@
                             <div style="font-size:.75rem;color:var(--text-muted)">{{ $stat['label'] }}</div>
                         </div>
                     </div>
-                </div>
+                </a>
             </div>
             @endforeach
         </div>
@@ -46,10 +59,10 @@
                 ['label' => 'Critical', 'value' => $healthCounts['critical'], 'color' => '#a855f7'],
             ] as $stat)
             <div class="col-6 col-lg">
-                <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
+                <a href="{{ route('admin.sources.health') }}" class="d-block p-3 h-100 admin-stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;text-decoration:none;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease">
                     <div style="font-size:.75rem;color:var(--text-muted)">{{ $stat['label'] }}</div>
                     <div style="font-size:1.5rem;font-weight:700;color:{{ $stat['color'] }}">{{ $stat['value'] }}</div>
-                </div>
+                </a>
             </div>
             @endforeach
             <div class="col-12 col-lg-2">
