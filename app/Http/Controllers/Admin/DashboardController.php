@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Bookmark;
+use App\Models\Boost;
 use App\Models\Category;
 use App\Models\Comment;
 use App\Models\Source;
@@ -24,6 +25,7 @@ class DashboardController extends Controller
             'comments' => Comment::count(),
             'sources' => Source::where('is_active', true)->count(),
             'bookmarks' => Bookmark::count(),
+            'boosts' => Boost::count(),
         ];
 
         // Articles per day — last 30 days
@@ -54,6 +56,12 @@ class DashboardController extends Controller
         $perCategory = Category::withCount('articles')->get();
         $perSource = Source::withCount('articles')->orderByDesc('articles_count')->take(10)->get();
         $mostBookmarked = Article::withCount('bookmarks')->orderByDesc('bookmarks_count')->take(10)->get();
+        $mostBoosted = Article::withCount('boosts')
+            ->where('published_at', '>=', now()->subHours(72))
+            ->orderByDesc('boosts_count')
+            ->latest('published_at')
+            ->take(10)
+            ->get();
 
         $recentArticles = Article::with('source')->latest()->take(8)->get();
         $recentComments = Comment::with(['user', 'article'])->latest()->take(6)->get();
@@ -85,6 +93,7 @@ class DashboardController extends Controller
             'perCategory',
             'perSource',
             'mostBookmarked',
+            'mostBoosted',
             'healthCounts',
             'problemSources'
         ));

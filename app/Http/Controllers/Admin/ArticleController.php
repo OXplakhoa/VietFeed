@@ -13,7 +13,7 @@ class ArticleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Article::with(['source', 'category'])->withCount('bookmarks');
+        $query = Article::with(['source', 'category'])->withCount(['bookmarks', 'boosts']);
 
         if ($request->filled('q')) {
             $q = $request->q;
@@ -36,19 +36,26 @@ class ArticleController extends Controller
         }
 
         if ($request->filled('date_to')) {
-            $query->where('published_at', '<=', $request->date_to . ' 23:59:59');
+            $query->where('published_at', '<=', $request->date_to.' 23:59:59');
         }
 
-        $articles   = $query->latest('published_at')->paginate(20)->withQueryString();
+        match ($request->get('sort')) {
+            'boosts' => $query->orderByDesc('boosts_count')->latest('published_at'),
+            'bookmarks' => $query->orderByDesc('bookmarks_count')->latest('published_at'),
+            default => $query->latest('published_at'),
+        };
+
+        $articles = $query->paginate(20)->withQueryString();
         $categories = Category::orderBy('name')->get();
-        $sources    = Source::orderBy('name')->get();
+        $sources = Source::orderBy('name')->get();
 
         return view('admin.articles.index', compact('articles', 'categories', 'sources'));
     }
 
     public function show(Article $article)
     {
-        $article->load(['source', 'category', 'comments' => fn ($q) => $q->with('user')->latest()]);
+        $article->load(['source', 'category', 'comments' => fn ($q) => $q->with('user')->latest()])
+            ->loadCount(['bookmarks', 'boosts']);
 
         return view('admin.articles.show', compact('article'));
     }
@@ -56,7 +63,7 @@ class ArticleController extends Controller
     public function edit(Article $article)
     {
         $categories = Category::orderBy('name')->get();
-        $sources    = Source::orderBy('name')->get();
+        $sources = Source::orderBy('name')->get();
 
         return view('admin.articles.edit', compact('article', 'categories', 'sources'));
     }
@@ -64,20 +71,20 @@ class ArticleController extends Controller
     public function update(Request $request, Article $article)
     {
         $data = $request->validate([
-            'title'        => 'required|string|max:500',
-            'description'  => 'nullable|string',
-            'image_url'    => 'nullable|url|max:1000',
-            'category_id'  => 'required|exists:categories,id',
-            'source_id'    => 'required|exists:sources,id',
+            'title' => 'required|string|max:500',
+            'description' => 'nullable|string',
+            'image_url' => 'nullable|url|max:1000',
+            'category_id' => 'required|exists:categories,id',
+            'source_id' => 'required|exists:sources,id',
             'published_at' => 'nullable|date',
         ]);
 
         if ($request->title !== $article->title) {
             $slug = Str::slug($request->title);
             $base = $slug;
-            $i    = 1;
+            $i = 1;
             while (Article::where('slug', $slug)->where('id', '!=', $article->id)->exists()) {
-                $slug = $base . '-' . $i++;
+                $slug = $base.'-'.$i++;
             }
             $data['slug'] = $slug;
         }

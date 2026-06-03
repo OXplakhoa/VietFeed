@@ -22,13 +22,13 @@
         {{-- Filter Bar --}}
         <form method="GET" action="{{ route('admin.articles.index') }}" class="mb-4">
             <div class="row g-2">
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <input type="text" name="q" value="{{ request('q') }}"
                            class="form-control form-control-sm"
                            placeholder="Tìm theo tiêu đề hoặc mô tả…"
                            style="background:var(--surface);border-color:var(--border);color:var(--text)">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <select name="category" class="form-select form-select-sm"
                             style="background:var(--surface);border-color:var(--border);color:var(--text)">
                         <option value="">Tất cả chủ đề</option>
@@ -39,7 +39,7 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <select name="source" class="form-select form-select-sm"
                             style="background:var(--surface);border-color:var(--border);color:var(--text)">
                         <option value="">Tất cả nguồn</option>
@@ -48,6 +48,14 @@
                             {{ $src->name }}
                         </option>
                         @endforeach
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="sort" class="form-select form-select-sm"
+                            style="background:var(--surface);border-color:var(--border);color:var(--text)">
+                        <option value="">Mới nhất</option>
+                        <option value="boosts" {{ request('sort') === 'boosts' ? 'selected' : '' }}>Boost nhiều nhất</option>
+                        <option value="bookmarks" {{ request('sort') === 'bookmarks' ? 'selected' : '' }}>Lưu nhiều nhất</option>
                     </select>
                 </div>
                 <div class="col-md-1">
@@ -76,7 +84,7 @@
                                style="background:var(--surface);border-color:var(--border);color:var(--text)">
                     </div>
                 </div>
-                @if(request()->hasAny(['q','category','source','date_from','date_to']))
+                @if(request()->hasAny(['q','category','source','date_from','date_to','sort']))
                 <div class="col-auto d-flex align-items-center">
                     <a href="{{ route('admin.articles.index') }}" class="btn btn-sm"
                        style="background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);border-radius:6px">
@@ -111,7 +119,8 @@
                             <th>Tiêu đề</th>
                             <th>Chủ đề</th>
                             <th>Nguồn</th>
-                            <th><i class="bi bi-bookmark"></i></th>
+                            <th title="Boost"><i class="bi bi-lightning-charge"></i></th>
+                            <th title="Lượt lưu"><i class="bi bi-bookmark"></i></th>
                             <th>Ngày đăng</th>
                             <th class="pe-3 text-end">Hành động</th>
                         </tr>
@@ -136,6 +145,7 @@
                         <td style="vertical-align:middle;font-size:.78rem;color:var(--text-secondary);white-space:nowrap">
                             {{ Str::limit($a->source->name, 20) }}
                         </td>
+                        <td style="vertical-align:middle;font-size:.8rem;color:var(--accent);font-weight:700">{{ $a->boosts_count }}</td>
                         <td style="vertical-align:middle;font-size:.8rem">{{ $a->bookmarks_count }}</td>
                         <td style="vertical-align:middle;font-size:.78rem;color:var(--text-secondary);white-space:nowrap">
                             {{ $a->published_at?->format('d/m/Y') ?? '—' }}
@@ -160,7 +170,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="7" class="text-center py-4" style="color:var(--text-muted)">
+                        <td colspan="8" class="text-center py-4" style="color:var(--text-muted)">
                             Không tìm thấy bài viết nào.
                         </td>
                     </tr>

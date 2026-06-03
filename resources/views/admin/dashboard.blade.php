@@ -15,7 +15,8 @@
                 ['label' => 'Người dùng',   'value' => number_format($stats['users']),     'icon' => 'bi-people',       'color' => '#34d399'],
                 ['label' => 'Bình luận',    'value' => number_format($stats['comments']),  'icon' => 'bi-chat-dots',    'color' => '#fbbf24'],
                 ['label' => 'Đã lưu',       'value' => number_format($stats['bookmarks']), 'icon' => 'bi-bookmark',     'color' => '#a78bfa'],
-                ['label' => 'Nguồn tin',    'value' => number_format($stats['sources']),   'icon' => 'bi-rss',          'color' => 'var(--accent)'],
+                ['label' => 'Boost',        'value' => number_format($stats['boosts']),    'icon' => 'bi-lightning-charge-fill', 'color' => 'var(--accent)'],
+                ['label' => 'Nguồn tin',    'value' => number_format($stats['sources']),   'icon' => 'bi-rss',          'color' => '#fb923c'],
             ] as $stat)
             <div class="col-6 col-lg">
                 <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
@@ -94,7 +95,7 @@
         {{-- Bottom Row: Most bookmarked + Recent comments + Recent articles --}}
         <div class="row g-4 mb-4">
             {{-- Most bookmarked --}}
-            <div class="col-lg-4">
+            <div class="col-lg-3">
                 <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="sidebar-title mb-3">Top bài viết được lưu</div>
                     @forelse($mostBookmarked as $i => $a)
@@ -117,8 +118,31 @@
                 </div>
             </div>
 
+            {{-- Most boosted --}}
+            <div class="col-lg-3">
+                <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
+                    <div class="sidebar-title mb-3">Top Boost 72h</div>
+                    @forelse($mostBoosted as $i => $a)
+                    <div class="d-flex align-items-start gap-2 py-2" style="border-bottom:1px solid var(--border)">
+                        <span style="font-weight:700;color:var(--accent);font-size:.85rem;flex-shrink:0;width:20px">{{ $i + 1 }}</span>
+                        <div class="flex-fill" style="min-width:0">
+                            <a href="{{ route('admin.articles.show', $a) }}"
+                               style="font-size:.8rem;color:var(--text);text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
+                                {{ $a->title }}
+                            </a>
+                            <div style="font-size:.7rem;color:var(--text-secondary);margin-top:.15rem">
+                                <i class="bi bi-lightning-charge-fill me-1" style="color:var(--accent)"></i>{{ $a->boosts_count }} Boost
+                            </div>
+                        </div>
+                    </div>
+                    @empty
+                    <p style="color:var(--text-muted);font-size:.85rem">Chưa có Boost trong 72 giờ qua.</p>
+                    @endforelse
+                </div>
+            </div>
+
             {{-- Recent Comments --}}
-            <div class="col-lg-4">
+            <div class="col-lg-3">
                 <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="d-flex align-items-center justify-content-between mb-3">
                         <div class="sidebar-title mb-0">Bình luận mới nhất</div>
@@ -149,7 +173,7 @@
             </div>
 
             {{-- Source Health --}}
-            <div class="col-lg-4">
+            <div class="col-lg-3">
                 <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="d-flex align-items-center justify-content-between mb-3">
                         <div class="sidebar-title mb-0">Nguồn cần chú ý</div>

@@ -71,7 +71,9 @@
                         ['Slug',         $article->slug],
                         ['Ngày đăng',   $article->published_at?->format('d/m/Y H:i') ?? '—'],
                         ['Tạo lúc',     $article->created_at->format('d/m/Y H:i')],
-                        ['Đã lưu',       $article->comments->count() . ' bình luận'],
+                        ['Boost',        $article->boosts_count . ' lượt'],
+                        ['Đã lưu',       $article->bookmarks_count . ' lượt'],
+                        ['Bình luận',    $article->comments->count() . ' bình luận'],
                     ] as [$k, $v])
                     <div class="mb-2">
                         <div style="font-size:.72rem;color:var(--text-muted)">{{ $k }}</div>
