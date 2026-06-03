@@ -9,3 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('feeds:fetch')->everyThirtyMinutes();
+Schedule::command('unlocks:cleanup')->dailyAt('02:15');

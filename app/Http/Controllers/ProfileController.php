@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Services\ReadingPassService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -37,10 +38,18 @@ class ProfileController extends Controller
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }
 
+    public function readingPass(Request $request, ReadingPassService $readingPass): View
+    {
+        return view('profile.reading-pass', [
+            'user' => $request->user(),
+            'allowance' => $readingPass->allowance($request->user()),
+        ]);
+    }
+
     public function updatePreferences(Request $request): RedirectResponse
     {
         $request->validate([
-            'categories'   => 'array',
+            'categories' => 'array',
             'categories.*' => 'exists:categories,id',
         ]);
 

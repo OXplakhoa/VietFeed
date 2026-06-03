@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\DashboardController as AdminDashboard;
 use App\Http\Controllers\Admin\SourceController as AdminSource;
 use App\Http\Controllers\Admin\UserController as AdminUser;
 use App\Http\Controllers\ArticleController;
+use App\Http\Controllers\BillingController;
 use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\BoostController;
 use App\Http\Controllers\CategoryController;
@@ -24,6 +25,7 @@ Route::get('/articles', [ArticleController::class, 'index'])->name('articles.ind
 Route::get('/articles/{slug}', [ArticleController::class, 'show'])->name('articles.show');
 Route::get('/categories/{slug}', [CategoryController::class, 'show'])->name('categories.show');
 Route::get('/search', [SearchController::class, 'index'])->name('search');
+Route::get('/pricing', [BillingController::class, 'pricing'])->name('pricing');
 
 // ── AJAX API routes (no auth required for search) ──────────────
 Route::get('/api/live-search', [SearchController::class, 'liveSearch'])->name('search.live');
@@ -34,6 +36,7 @@ Route::get('/api/ticker', [TickerController::class, 'index'])->name('api.ticker'
 Route::middleware('auth')->group(function () {
     Route::post('/bookmarks/toggle', [BookmarkController::class, 'toggle'])->name('bookmarks.toggle');
     Route::post('/boosts/toggle', [BoostController::class, 'toggle'])->name('boosts.toggle');
+    Route::get('/profile/reading-pass', [ProfileController::class, 'readingPass'])->name('profile.reading-pass');
 });
 
 Route::get('/dashboard', function () {
@@ -48,6 +51,11 @@ Route::get('/dashboard', function () {
 
 // ── Auth-required routes ───────────────────────────────────────
 Route::middleware(['auth', 'verified'])->group(function () {
+    // Billing
+    Route::post('/billing/checkout', [BillingController::class, 'checkout'])->name('billing.checkout');
+    Route::get('/billing/portal', [BillingController::class, 'portal'])->name('billing.portal');
+    Route::get('/billing/success', [BillingController::class, 'success'])->name('billing.success');
+
     // Bookmarks
     Route::get('/bookmarks', [BookmarkController::class, 'index'])->name('bookmarks.index');
 

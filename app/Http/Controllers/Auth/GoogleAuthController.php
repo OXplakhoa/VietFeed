@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\ReadingPassService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,8 +21,10 @@ class GoogleAuthController extends Controller
             ->redirect();
     }
 
-    public function callback(): RedirectResponse
+    public function callback(ReadingPassService $readingPass): RedirectResponse
     {
+        $guestSessionId = request()->session()->getId();
+
         try {
             $googleUser = Socialite::driver('google')->user();
         } catch (Throwable $e) {
@@ -84,6 +87,7 @@ class GoogleAuthController extends Controller
 
         Auth::login($user, remember: true);
         request()->session()->regenerate();
+        $readingPass->transferGuestUnlocks($user, $guestSessionId);
 
         if ($wasRecentlyCreated) {
             return redirect()->route('onboarding.interests')->with('success', 'Chào mừng bạn đến với VietFeed. Hãy chọn chủ đề yêu thích.');

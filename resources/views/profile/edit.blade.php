@@ -69,6 +69,20 @@
             </form>
         </div>
 
+        {{-- Reading Pass --}}
+        <div class="mb-4 p-4" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
+            <h5 class="serif mb-1" style="color:var(--text)">Gói đọc VietFeed</h5>
+            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">
+                Xem số lượt mở bài còn lại, trạng thái Pro và thanh toán Stripe.
+                @if($user->isPro())
+                <span class="vf-pro-badge vf-pro-badge--inline"><i class="bi bi-gem"></i> PRO</span>
+                @endif
+            </p>
+            <a href="{{ route('profile.reading-pass') }}" class="btn-outline-accent" style="text-decoration:none">
+                <i class="bi bi-ticket-perforated me-1"></i>Xem Gói đọc
+            </a>
+        </div>
+
         {{-- Favourite Categories --}}
         <div class="mb-4 p-4" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
             <h5 class="serif mb-1" style="color:var(--text)">Chủ đề yêu thích</h5>

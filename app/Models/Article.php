@@ -50,6 +50,11 @@ class Article extends Model
         return $this->hasMany(Boost::class);
     }
 
+    public function unlocks()
+    {
+        return $this->hasMany(ArticleUnlock::class);
+    }
+
     protected function readingTime(): Attribute
     {
         return Attribute::make(

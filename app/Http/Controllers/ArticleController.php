@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Source;
+use App\Services\ReadingPassService;
 use Illuminate\Http\Request;
 
 class ArticleController extends Controller
@@ -45,18 +46,26 @@ class ArticleController extends Controller
         return view('articles.index', compact('articles', 'bookmarkedIds', 'boostedIds', 'categories', 'sources'));
     }
 
-    public function show(string $slug)
+    public function show(string $slug, ReadingPassService $readingPass)
     {
         $article = Article::where('slug', $slug)
-            ->with([
-                'source',
-                'category',
+            ->with(['source', 'category'])
+            ->withCount(['bookmarks', 'boosts'])
+            ->firstOrFail();
+
+        $readingPassState = $readingPass->accessOrLock($article, auth()->user());
+        $canAccessArticle = $readingPassState['canAccess'];
+        $readingPassAllowance = $readingPassState['allowance'];
+
+        if ($canAccessArticle) {
+            $article->load([
                 'comments' => fn ($q) => $q->whereNull('parent_id')
                     ->with(['user', 'replies.user'])
                     ->latest(),
-            ])
-            ->withCount(['bookmarks', 'boosts'])
-            ->firstOrFail();
+            ]);
+        } else {
+            $article->setRelation('comments', collect());
+        }
 
         $isBookmarked = auth()->check()
             ? auth()->user()->bookmarks()->where('article_id', $article->id)->exists()
@@ -84,6 +93,6 @@ class ArticleController extends Controller
             );
         }
 
-        return view('articles.show', compact('article', 'isBookmarked', 'isBoosted', 'related'));
+        return view('articles.show', compact('article', 'isBookmarked', 'isBoosted', 'related', 'canAccessArticle', 'readingPassAllowance'));
     }
 }

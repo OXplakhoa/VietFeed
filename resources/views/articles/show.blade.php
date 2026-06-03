@@ -39,6 +39,9 @@
                     <span><i class="bi bi-book me-1"></i>{{ $article->reading_time }} phút đọc</span>
                     <span><i class="bi bi-bookmark me-1"></i>{{ $article->bookmarks_count }} lượt lưu</span>
                     <span><i class="bi bi-lightning-charge me-1"></i><span class="boost-count">{{ $article->boosts_count }}</span> Boost</span>
+                    @if(isset($readingPassAllowance) && $readingPassAllowance['limit'] !== -1)
+                    <span style="color:var(--accent)"><i class="bi bi-ticket-perforated me-1"></i>{{ $readingPassAllowance['remaining'] }}/{{ $readingPassAllowance['limit'] }} lượt còn lại</span>
+                    @endif
                 </div>
 
                 {{-- Hero Image --}}
@@ -54,6 +57,7 @@
                 </div>
                 @endif
 
+                @if($canAccessArticle)
                 {{-- CTA + Actions --}}
                 <div class="d-flex flex-wrap align-items-center gap-3 mb-4 p-3"
                      style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
@@ -95,7 +99,56 @@
                         </a>
                     </div>
                 </div>
+                @else
+                <div class="mb-4 p-4 position-relative overflow-hidden"
+                     style="background:linear-gradient(135deg, rgba(230,57,70,.12), var(--surface));border:1px solid rgba(230,57,70,.28);border-radius:18px">
+                    <div style="position:absolute;inset:auto -40px -70px auto;font-family:'Playfair Display',serif;font-size:9rem;line-height:1;color:rgba(230,57,70,.08);pointer-events:none">PASS</div>
+                    <div class="d-flex align-items-center gap-2 mb-2" style="color:var(--accent);font-weight:700">
+                        <i class="bi bi-ticket-perforated-fill"></i>
+                        Gói đọc VietFeed đã hết lượt
+                    </div>
+                    <h2 class="serif mb-2" style="color:var(--text);font-size:1.35rem">Bạn đã dùng hết lượt mở bài trong Gói đọc hiện tại.</h2>
+                    <p class="mb-3" style="color:var(--text-muted);font-size:.92rem;max-width:620px">
+                        Tạo tài khoản, xác minh email hoặc nâng cấp Pro để tiếp tục dùng trải nghiệm đọc đầy đủ trong VietFeed.
+                    </p>
+                    <div class="mb-3" style="font-size:.86rem;color:var(--text-secondary)">
+                        <strong style="color:var(--text)">{{ $readingPassAllowance['window'] }}</strong>
+                        @if($readingPassAllowance['next_unlock_label'])
+                            · {{ $readingPassAllowance['next_unlock_label'] }}
+                        @else
+                            · {{ $readingPassAllowance['reset_label'] }}
+                        @endif
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        @guest
+                        <a href="{{ route('register') }}" class="btn-accent" style="text-decoration:none">
+                            Tạo tài khoản để có 8 lượt/ngày
+                        </a>
+                        <a href="{{ route('login') }}" class="btn-outline-accent" style="text-decoration:none">
+                            Đăng nhập
+                        </a>
+                        @else
+                            @if(!auth()->user()->hasVerifiedEmail())
+                            <a href="{{ route('verification.notice') }}" class="btn-accent" style="text-decoration:none">
+                                Xác minh email để có 15 lượt/5 giờ
+                            </a>
+                            @else
+                            <form method="POST" action="{{ route('billing.checkout') }}" class="m-0">
+                                @csrf
+                                <button type="submit" class="btn-accent">
+                                    Nâng cấp Pro không giới hạn
+                                </button>
+                            </form>
+                            <a href="{{ route('pricing') }}" class="btn-outline-accent" style="text-decoration:none">
+                                Xem bảng giá
+                            </a>
+                            @endif
+                        @endguest
+                    </div>
+                </div>
+                @endif
 
+                @if($canAccessArticle)
                 {{-- Comments --}}
                 <div class="mb-5">
                     <div class="section-header">
@@ -131,6 +184,7 @@
                     </div>
                     @endforelse
                 </div>
+                @endif
             </div>
 
             {{-- Related Articles Sidebar --}}
