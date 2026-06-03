@@ -45,4 +45,8 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
+    'stripe' => [
+        'pro_price_id' => env('STRIPE_PRO_PRICE_ID'),
+    ],
+
 ];

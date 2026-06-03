@@ -64,6 +64,25 @@
                     </form>
                 </div>
 
+                {{-- Billing observation --}}
+                <div class="mt-3 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
+                    <div class="sidebar-title mb-2">VietFeed Pro</div>
+                    <div class="d-flex justify-content-between py-1" style="border-bottom:1px solid var(--border);font-size:.82rem">
+                        <span style="color:var(--text-muted)">Trạng thái</span>
+                        <span style="color:{{ $user->isPro() ? 'var(--accent)' : 'var(--text)' }};font-weight:600">{{ $user->isPro() ? 'Pro active' : 'Không Pro' }}</span>
+                    </div>
+                    @if($user->stripeCustomerUrl())
+                    <a href="{{ $user->stripeCustomerUrl() }}" target="_blank" rel="noopener" style="display:inline-flex;margin-top:.6rem;color:#60a5fa;font-size:.8rem;text-decoration:none">
+                        Mở Stripe customer <i class="bi bi-box-arrow-up-right ms-1"></i>
+                    </a>
+                    @else
+                    <div class="mt-2" style="font-size:.78rem;color:var(--text-muted)">Chưa có Stripe customer.</div>
+                    @endif
+                    <div class="mt-2" style="font-size:.75rem;color:var(--text-muted)">
+                        Admin chỉ quan sát trạng thái, không chỉnh/hủy subscription trong VietFeed.
+                    </div>
+                </div>
+
                 {{-- User stats sidebar --}}
                 <div class="mt-3 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="sidebar-title mb-2">Thống kê</div>

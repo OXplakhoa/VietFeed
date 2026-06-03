@@ -7,11 +7,12 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Cashier\Billable;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use Billable, HasFactory, Notifiable;
 
     protected $fillable = [
         'name',
@@ -21,6 +22,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'avatar',
         'google_id',
         'email_verified_at',
+        'stripe_id',
+        'pm_type',
+        'pm_last_four',
+        'trial_ends_at',
     ];
 
     protected $hidden = [
@@ -33,6 +38,7 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'trial_ends_at' => 'datetime',
         ];
     }
 
@@ -44,6 +50,24 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isUser(): bool
     {
         return $this->role === 'user';
+    }
+
+    public function isPro(): bool
+    {
+        return $this->subscribed('pro');
+    }
+
+    public function stripeCustomerUrl(): ?string
+    {
+        if (! $this->stripe_id) {
+            return null;
+        }
+
+        $prefix = str_starts_with((string) config('cashier.secret'), 'sk_test_')
+            ? 'https://dashboard.stripe.com/test/customers/'
+            : 'https://dashboard.stripe.com/customers/';
+
+        return $prefix.$this->stripe_id;
     }
 
     public function bookmarks()
@@ -64,5 +88,10 @@ class User extends Authenticatable implements MustVerifyEmail
     public function favoriteCategories()
     {
         return $this->belongsToMany(Category::class, 'category_user');
+    }
+
+    public function articleUnlocks()
+    {
+        return $this->hasMany(ArticleUnlock::class);
     }
 }
