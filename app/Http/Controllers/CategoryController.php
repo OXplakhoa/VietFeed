@@ -13,7 +13,7 @@ class CategoryController extends Controller
 
         $articles = Article::where('category_id', $category->id)
             ->with(['source', 'category'])
-            ->withCount('bookmarks')
+            ->withCount(['bookmarks', 'boosts'])
             ->latest('published_at')
             ->paginate(12);
 
@@ -21,8 +21,12 @@ class CategoryController extends Controller
             ? auth()->user()->bookmarks()->pluck('article_id')->toArray()
             : [];
 
+        $boostedIds = auth()->check()
+            ? auth()->user()->boosts()->pluck('article_id')->toArray()
+            : [];
+
         $categories = Category::all();
 
-        return view('categories.show', compact('category', 'articles', 'bookmarkedIds', 'categories'));
+        return view('categories.show', compact('category', 'articles', 'bookmarkedIds', 'boostedIds', 'categories'));
     }
 }

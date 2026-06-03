@@ -53,7 +53,8 @@
             <div class="col-sm-6 col-lg-4 mb-1 fade-in">
                 <x-article-card
                     :article="$article"
-                    :bookmarked="in_array($article->id, $bookmarkedIds)" />
+                    :bookmarked="in_array($article->id, $bookmarkedIds)"
+                    :boosted="in_array($article->id, $boostedIds)" />
             </div>
             @endforeach
         </div>

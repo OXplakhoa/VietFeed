@@ -9,11 +9,12 @@ class SearchController extends Controller
 {
     public function index(Request $request)
     {
-        $q        = trim($request->get('q', ''));
+        $q = trim($request->get('q', ''));
         $articles = collect();
 
         if (strlen($q) >= 2) {
             $articles = Article::with(['source', 'category'])
+                ->withCount(['bookmarks', 'boosts'])
                 ->where('title', 'LIKE', "%{$q}%")
                 ->orWhere('description', 'LIKE', "%{$q}%")
                 ->latest('published_at')
@@ -25,7 +26,11 @@ class SearchController extends Controller
             ? auth()->user()->bookmarks()->pluck('article_id')->toArray()
             : [];
 
-        return view('search.index', compact('articles', 'q', 'bookmarkedIds'));
+        $boostedIds = auth()->check()
+            ? auth()->user()->boosts()->pluck('article_id')->toArray()
+            : [];
+
+        return view('search.index', compact('articles', 'q', 'bookmarkedIds', 'boostedIds'));
     }
 
     public function liveSearch(Request $request)
@@ -43,11 +48,11 @@ class SearchController extends Controller
             ->get(['id', 'title', 'slug', 'image_url', 'published_at', 'category_id']);
 
         return response()->json($results->map(fn ($a) => [
-            'title'    => $a->title,
-            'url'      => route('articles.show', $a->slug),
-            'image'    => $a->image_url,
+            'title' => $a->title,
+            'url' => route('articles.show', $a->slug),
+            'image' => $a->image_url,
             'category' => $a->category?->name,
-            'date'     => $a->published_at?->diffForHumans(),
+            'date' => $a->published_at?->diffForHumans(),
         ]));
     }
 }

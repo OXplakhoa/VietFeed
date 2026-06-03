@@ -38,6 +38,7 @@
                     @endif
                     <span><i class="bi bi-book me-1"></i>{{ $article->reading_time }} phút đọc</span>
                     <span><i class="bi bi-bookmark me-1"></i>{{ $article->bookmarks_count }} lượt lưu</span>
+                    <span><i class="bi bi-lightning-charge me-1"></i><span class="boost-count">{{ $article->boosts_count }}</span> Boost</span>
                 </div>
 
                 {{-- Hero Image --}}
@@ -60,6 +61,14 @@
                        class="btn-accent" style="text-decoration:none">
                         <i class="bi bi-box-arrow-up-right me-1"></i>Đọc bài đầy đủ
                     </a>
+
+                    <button class="boost-btn boost-btn--detail {{ $isBoosted ? 'active' : '' }}"
+                            data-article-id="{{ $article->id }}"
+                            @guest data-login-url="{{ route('login') }}" @endguest>
+                        <i class="bi bi-lightning-charge{{ $isBoosted ? '-fill' : '' }}"></i>
+                        <span>{{ $isBoosted ? 'Boosted' : 'Boost' }}</span>
+                        <span class="boost-count">{{ $article->boosts_count }}</span>
+                    </button>
 
                     @auth
                     <button class="bookmark-btn {{ $isBookmarked ? 'active' : '' }}"

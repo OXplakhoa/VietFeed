@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDarkMode();
     initNavbarScroll();
     initBookmarkToggle();
+    initBoostToggle();
     initLiveSearch();
     initFadeIn();
     initCommentReplyToggle();
@@ -130,6 +131,79 @@ function initBookmarkToggle() {
             showToast('Có lỗi xảy ra, vui lòng thử lại', 'error');
         }
     });
+}
+
+// ── Boost Toggle (AJAX) ────────────────────────────────────────
+function initBoostToggle() {
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+
+    document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.boost-btn');
+        if (!btn) return;
+        e.preventDefault();
+
+        if (btn.dataset.loginUrl) {
+            window.location.href = btn.dataset.loginUrl;
+            return;
+        }
+
+        const articleId = btn.dataset.articleId;
+        if (!articleId || btn.disabled) return;
+
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/boosts/toggle', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ article_id: articleId }),
+            });
+
+            if (res.status === 401) { window.location.href = '/login'; return; }
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.message || 'Không thể Boost bài viết lúc này', 'error');
+                return;
+            }
+
+            const boosted = data.action === 'added';
+            syncBoostButtons(articleId, boosted, data.count);
+            showBoostSpark(btn, boosted);
+        } catch {
+            showToast('Có lỗi xảy ra, vui lòng thử lại', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    });
+}
+
+function syncBoostButtons(articleId, active, count) {
+    document.querySelectorAll(`.boost-btn[data-article-id="${CSS.escape(String(articleId))}"]`).forEach(btn => {
+        btn.classList.toggle('active', active);
+        const icon = btn.querySelector('.bi');
+        if (icon) icon.className = `bi bi-lightning-charge${active ? '-fill' : ''}`;
+        btn.querySelectorAll('.boost-count').forEach(el => { el.textContent = count; });
+        const label = [...btn.querySelectorAll('span')].find(el => !el.classList.contains('boost-count'));
+        if (label && btn.classList.contains('boost-btn--detail')) label.textContent = active ? 'Boosted' : 'Boost';
+    });
+}
+
+function showBoostSpark(btn, boosted) {
+    btn.classList.remove('boost-zap', 'boost-unzap');
+    btn.querySelectorAll('.boost-floater').forEach(el => el.remove());
+    void btn.offsetWidth;
+    btn.classList.add(boosted ? 'boost-zap' : 'boost-unzap');
+
+    const floater = document.createElement('span');
+    floater.className = `boost-floater ${boosted ? 'boost-floater--up' : 'boost-floater--down'}`;
+    floater.textContent = boosted ? '+1' : '−1';
+    btn.appendChild(floater);
+    floater.addEventListener('animationend', () => floater.remove(), { once: true });
 }
 
 // ── Live Search ────────────────────────────────────────────────

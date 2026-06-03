@@ -45,6 +45,11 @@ class Article extends Model
         return $this->hasMany(Bookmark::class);
     }
 
+    public function boosts()
+    {
+        return $this->hasMany(Boost::class);
+    }
+
     protected function readingTime(): Attribute
     {
         return Attribute::make(

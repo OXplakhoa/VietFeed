@@ -11,7 +11,7 @@ class ArticleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Article::with(['source', 'category'])->withCount('bookmarks');
+        $query = Article::with(['source', 'category'])->withCount(['bookmarks', 'boosts']);
 
         if ($request->filled('q')) {
             $q = $request->q;
@@ -35,10 +35,14 @@ class ArticleController extends Controller
             ? auth()->user()->bookmarks()->pluck('article_id')->toArray()
             : [];
 
+        $boostedIds = auth()->check()
+            ? auth()->user()->boosts()->pluck('article_id')->toArray()
+            : [];
+
         $categories = Category::all();
         $sources = Source::where('is_active', true)->orderBy('name')->get();
 
-        return view('articles.index', compact('articles', 'bookmarkedIds', 'categories', 'sources'));
+        return view('articles.index', compact('articles', 'bookmarkedIds', 'boostedIds', 'categories', 'sources'));
     }
 
     public function show(string $slug)
@@ -51,11 +55,15 @@ class ArticleController extends Controller
                     ->with(['user', 'replies.user'])
                     ->latest(),
             ])
-            ->withCount('bookmarks')
+            ->withCount(['bookmarks', 'boosts'])
             ->firstOrFail();
 
         $isBookmarked = auth()->check()
             ? auth()->user()->bookmarks()->where('article_id', $article->id)->exists()
+            : false;
+
+        $isBoosted = auth()->check()
+            ? auth()->user()->boosts()->where('article_id', $article->id)->exists()
             : false;
 
         $related = Article::with(['source', 'category'])
@@ -76,6 +84,6 @@ class ArticleController extends Controller
             );
         }
 
-        return view('articles.show', compact('article', 'isBookmarked', 'related'));
+        return view('articles.show', compact('article', 'isBookmarked', 'isBoosted', 'related'));
     }
 }

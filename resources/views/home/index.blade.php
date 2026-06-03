@@ -50,6 +50,25 @@
         <x-welcome-banner />
         @endif
 
+        @if($communityBoosted->isNotEmpty())
+        <section class="community-boosted mb-4 fade-in" aria-label="Tin được cộng đồng Boost">
+            <div class="section-header">
+                <h2><i class="bi bi-lightning-charge-fill me-2" style="color:var(--accent)"></i>Cộng đồng Boost</h2>
+                <span class="community-boosted__hint ms-auto">Tin nổi bật trong 72 giờ qua</span>
+            </div>
+            <div class="row g-3">
+                @foreach($communityBoosted as $article)
+                <div class="col-sm-6 col-lg-4 mb-1">
+                    <x-article-card
+                        :article="$article"
+                        :bookmarked="in_array($article->id, $bookmarkedIds)"
+                        :boosted="in_array($article->id, $boostedIds)" />
+                </div>
+                @endforeach
+            </div>
+        </section>
+        @endif
+
         {{-- ── Main Feed + Sidebar ─────────────────────────────────────── --}}
         <div class="row g-4">
             {{-- Article Grid --}}
@@ -81,7 +100,8 @@
                     <div class="col-sm-6 col-lg-4 mb-1 fade-in card-stagger">
                         <x-article-card
                             :article="$article"
-                            :bookmarked="in_array($article->id, $bookmarkedIds)" />
+                            :bookmarked="in_array($article->id, $bookmarkedIds)"
+                            :boosted="in_array($article->id, $boostedIds)" />
                     </div>
                     @endforeach
                 </div>
@@ -114,7 +134,7 @@
                             <div>
                                 <div class="trending-item-title">{{ $t->title }}</div>
                                 <div style="font-size:.73rem;color:var(--text-muted);margin-top:.2rem">
-                                    {{ $t->bookmarks_count }} lượt lưu
+                                    ⚡ {{ $t->boosts_count }} Boost
                                 </div>
                             </div>
                         </a>

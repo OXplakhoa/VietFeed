@@ -1,4 +1,4 @@
-@props(['article', 'bookmarked' => false])
+@props(['article', 'bookmarked' => false, 'boosted' => false])
 
 <div class="article-card">
     <a href="{{ route('articles.show', $article->slug) }}" class="text-decoration-none">
@@ -25,6 +25,13 @@
                 <span class="sep">{{ $article->published_at->diffForHumans() }}</span>
             @endif
             <span class="sep">{{ $article->reading_time }} phút</span>
+            <button class="boost-btn {{ $boosted ? 'active' : '' }}"
+                    data-article-id="{{ $article->id }}"
+                    @guest data-login-url="{{ route('login') }}" @endguest
+                    title="{{ $boosted ? 'Bỏ Boost' : 'Boost bài viết' }}">
+                <i class="bi bi-lightning-charge{{ $boosted ? '-fill' : '' }}"></i>
+                <span class="boost-count">{{ $article->boosts_count ?? $article->boosts()->count() }}</span>
+            </button>
             @auth
             <button class="bookmark-btn ms-auto {{ $bookmarked ? 'active' : '' }}"
                     data-article-id="{{ $article->id }}"

@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\SourceController as AdminSource;
 use App\Http\Controllers\Admin\UserController as AdminUser;
 use App\Http\Controllers\ArticleController;
 use App\Http\Controllers\BookmarkController;
+use App\Http\Controllers\BoostController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\HomeController;
@@ -32,6 +33,7 @@ Route::get('/api/ticker', [TickerController::class, 'index'])->name('api.ticker'
 // ── Auth-only (controller handles its own verified check for friendlier UX) ──
 Route::middleware('auth')->group(function () {
     Route::post('/bookmarks/toggle', [BookmarkController::class, 'toggle'])->name('bookmarks.toggle');
+    Route::post('/boosts/toggle', [BoostController::class, 'toggle'])->name('boosts.toggle');
 });
 
 Route::get('/dashboard', function () {
