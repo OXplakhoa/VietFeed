@@ -17,6 +17,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? config('app.name', 'VietFeed') }}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}?v=laravel-2">
+    <link rel="alternate icon" href="{{ asset('favicon.ico') }}?v=laravel-2" sizes="32x32">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -99,6 +101,11 @@
 
                 {{-- Right side --}}
                 <div class="d-flex align-items-center gap-2 vf-navbar-meta-actions">
+                <a href="{{ route('pricing') }}" class="vf-pro-nav d-none d-md-inline-flex">
+                    <span class="vf-pro-nav__spark"><i class="bi bi-stars"></i></span>
+                    <span class="vf-pro-nav__text">Pro</span>
+                </a>
+
                 <button id="dark-mode-toggle" aria-label="Chế độ tối/sáng">
                     <i class="bi bi-sun-fill icon sun"></i>
                     <i class="bi bi-moon-fill icon moon"></i>
@@ -109,8 +116,36 @@
                         <button class="btn btn-sm dropdown-toggle vf-user-trigger"
                                 type="button" data-bs-toggle="dropdown">
                             <span>{{ auth()->user()->name }}</span>
+                            @if(auth()->user()->isPro())
+                            <span class="vf-pro-badge vf-pro-badge--nav"><i class="bi bi-gem"></i> PRO</span>
+                            @endif
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
+                            <li class="px-3 py-2" style="min-width:250px">
+                                <div style="font-size:.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em">Gói đọc VietFeed</div>
+                                <div class="d-flex align-items-center justify-content-between mt-1" style="font-size:.82rem;color:var(--text)">
+                                    @if($navbarReadingPass['limit'] === -1)
+                                        <strong>Không giới hạn</strong>
+                                    @else
+                                        <strong>{{ $navbarReadingPass['used'] }}/{{ $navbarReadingPass['limit'] }} lượt</strong>
+                                        <span style="color:var(--text-muted)">{{ $navbarReadingPass['remaining'] }} còn lại</span>
+                                    @endif
+                                </div>
+                                @if($navbarReadingPass['limit'] !== -1)
+                                <div class="mt-2" style="height:5px;background:var(--surface-alt);border-radius:999px;overflow:hidden">
+                                    <div style="width:{{ min(100, ($navbarReadingPass['used'] / max(1, $navbarReadingPass['limit'])) * 100) }}%;height:100%;background:var(--accent);border-radius:999px"></div>
+                                </div>
+                                @endif
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ route('profile.reading-pass') }}">
+                                <i class="bi bi-ticket-perforated me-2"></i>Gói đọc</a></li>
+                            <li><a class="dropdown-item" href="{{ route('pricing') }}">
+                                <i class="bi bi-stars me-2"></i>VietFeed Pro</a></li>
+                            @if(auth()->user()->stripe_id)
+                            <li><a class="dropdown-item" href="{{ route('billing.portal') }}">
+                                <i class="bi bi-credit-card me-2"></i>Thanh toán</a></li>
+                            @endif
                             <li><a class="dropdown-item" href="{{ route('profile.edit') }}">
                                 <i class="bi bi-person me-2"></i>Hồ sơ</a></li>
                             <li><a class="dropdown-item" href="{{ route('bookmarks.index') }}">

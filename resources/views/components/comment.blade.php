@@ -8,6 +8,9 @@
         <div class="flex-fill">
             <div class="comment-meta d-flex align-items-center gap-2 mb-1">
                 <strong style="font-size:.875rem;color:var(--text)">{{ $comment->user->name }}</strong>
+                @if($comment->user->isPro())
+                <span class="vf-pro-badge"><i class="bi bi-gem"></i> PRO</span>
+                @endif
                 <span>{{ $comment->created_at->diffForHumans() }}</span>
                 @if(auth()->id() === $comment->user_id)
                     <span class="badge rounded-pill" style="background:rgba(230,57,70,.15);color:var(--accent);font-size:.7rem">Của bạn</span>
