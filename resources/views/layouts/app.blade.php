@@ -147,6 +147,13 @@
                                 <i class="bi bi-credit-card me-2"></i>Thanh toán</a></li>
                             @endif
                             <li><a class="dropdown-item" href="{{ route('profile.edit') }}">
+                                @if(auth()->user()->hasVerifiedEmail())
+                                <i class="bi bi-check-circle me-2"></i>Đã xác minh
+                                @else
+                                <i class="bi bi-exclamation-circle me-2"></i>Chưa xác minh
+                                @endif
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ route('profile.edit') }}">
                                 <i class="bi bi-person me-2"></i>Hồ sơ</a></li>
                             <li><a class="dropdown-item" href="{{ route('bookmarks.index') }}">
                                 <i class="bi bi-bookmark me-2"></i>Bài đã lưu</a></li>
