@@ -71,9 +71,9 @@ class ReadingPassService
             'used' => $used,
             'remaining' => max(0, $limit - $used),
             'window' => match (true) {
-                $user && $user->hasVerifiedEmail() => 'đã dùng '.$used.'/'.$limit.' lượt trong 5 giờ qua',
-                $user => 'đã dùng '.$used.'/'.$limit.' lượt hôm nay',
-                default => 'đã dùng '.$used.'/'.$limit.' lượt hôm nay',
+                $user && $user->hasVerifiedEmail() => 'Đã dùng '.$used.'/'.$limit.' lượt trong 5 giờ qua',
+                $user => 'Đã dùng '.$used.'/'.$limit.' lượt hôm nay',
+                default => 'Đã dùng '.$used.'/'.$limit.' lượt hôm nay',
             },
             'reset_label' => $resetLabel,
             'next_unlock_label' => $nextUnlockLabel,

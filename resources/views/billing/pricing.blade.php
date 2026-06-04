@@ -108,9 +108,9 @@
                         </div>
                         <ul class="list-unstyled m-0" style="color:var(--text-secondary);font-size:.92rem">
                             <li class="mb-2"><i class="bi bi-check2-circle me-2" style="color:#22c55e"></i>Không giới hạn lượt mở bài</li>
-                            <li class="mb-2"><i class="bi bi-check2-circle me-2" style="color:#22c55e"></i>Dấu hiệu Pro trên hồ sơ và bình luận</li>
+                            <li class="mb-2"><i class="bi bi-check2-circle me-2" style="color:#22c55e"></i>Pro Badge trên hồ sơ và bình luận</li>
                             <li class="mb-2"><i class="bi bi-check2-circle me-2" style="color:#22c55e"></i>Quản lý/hủy qua Stripe Billing Portal</li>
-                            <li><i class="bi bi-check2-circle me-2" style="color:#22c55e"></i>Không tăng sức nặng Boost</li>
+                            <li><i class="bi bi-check2-circle me-2" style="color:#22c55e"></i>Và thêm nhiều tính năng khác...</li>
                         </ul>
                     </div>
                 </div>
