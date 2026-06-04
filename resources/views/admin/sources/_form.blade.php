@@ -57,8 +57,17 @@
     <select name="prestige" class="form-select"
             style="background:var(--surface-alt);border-color:var(--border);color:var(--text)">
         @for($i = 1; $i <= 5; $i++)
+        @php
+            $prestigeLabel = match ($i) {
+                5 => '– Rất cao (VnExpress, Tuổi Trẻ)',
+                4 => '– Cao (Thanh Niên, Dân Trí)',
+                3 => '– Trung bình',
+                2 => '– Thấp',
+                default => '– Rất thấp',
+            };
+        @endphp
         <option value="{{ $i }}" {{ old('prestige', $src?->prestige ?? 3) == $i ? 'selected' : '' }}>
-            {{ $i }} @if($i == 5)– Rất cao (VnExpress, Tuổi Trẻ)@elseif($i == 4)– Cao (Thanh Niên, Dân Trí)@elseif($i == 3)– Trung bình@elseif($i == 2)– Thấp@else– Rất thấp@endif
+            {{ $i }} {{ $prestigeLabel }}
         </option>
         @endfor
     </select>
