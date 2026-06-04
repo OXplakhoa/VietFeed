@@ -137,10 +137,20 @@ class FeedIngestionService
             throw new FeedFetchException('Source has no feed URL configured.', 'missing_feed_url');
         }
 
+        $request = Http::accept('application/rss+xml, application/xml, text/xml')
+            ->withUserAgent('Mozilla/5.0 (compatible; VietFeedBot/1.0; +https://vietfeed.test)')
+            ->timeout(15);
+
         try {
-            $response = Http::accept('application/rss+xml, application/xml, text/xml')
-                ->timeout(15)
-                ->get($source->feed_url);
+            $response = $request->get($source->feed_url);
+
+            // Some Vietnamese news sites, e.g. Lao Động, return a small HTML page that sets
+            // a Cloudrity cookie on the first request, then serves the XML feed on reload.
+            // Laravel's HTTP client does not execute that JavaScript, so we extract the
+            // cookie and retry once.
+            if ($cookie = $this->extractJavascriptCookie($response->body())) {
+                $response = $request->withHeader('Cookie', $cookie)->get($source->feed_url);
+            }
         } catch (ConnectionException $e) {
             throw new FeedFetchException('Connection to feed failed or timed out.', 'connection_error', true);
         }
@@ -165,6 +175,19 @@ class FeedIngestionService
         }
 
         return [$response, $itemsArray];
+    }
+
+    private function extractJavascriptCookie(string $body): ?string
+    {
+        if (! str_contains($body, 'document.cookie')) {
+            return null;
+        }
+
+        if (preg_match('/document\.cookie\s*=\s*"([^"]+)"/', $body, $matches)) {
+            return explode(';', $matches[1], 2)[0];
+        }
+
+        return null;
     }
 
     private function buildMetrics(array $items, Source $source, bool $dryRun): array
