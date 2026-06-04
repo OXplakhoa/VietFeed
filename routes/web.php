@@ -17,6 +17,7 @@ use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TickerController;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 // ── Public routes ──────────────────────────────────────────────
@@ -45,7 +46,7 @@ Route::middleware('auth')->group(function () {
 });
 
 Route::get('/dashboard', function () {
-    $user = auth()->user();
+    $user = Auth::user();
 
     if ($user?->isAdmin()) {
         return redirect()->route('admin.dashboard');

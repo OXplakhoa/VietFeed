@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Article;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class SearchController extends Controller
 {
@@ -22,12 +23,12 @@ class SearchController extends Controller
                 ->withQueryString();
         }
 
-        $bookmarkedIds = auth()->check()
-            ? auth()->user()->bookmarks()->pluck('article_id')->toArray()
+        $bookmarkedIds = Auth::check()
+            ? Auth::user()->bookmarks()->pluck('article_id')->toArray()
             : [];
 
-        $boostedIds = auth()->check()
-            ? auth()->user()->boosts()->pluck('article_id')->toArray()
+        $boostedIds = Auth::check()
+            ? Auth::user()->boosts()->pluck('article_id')->toArray()
             : [];
 
         return view('search.index', compact('articles', 'q', 'bookmarkedIds', 'boostedIds'));

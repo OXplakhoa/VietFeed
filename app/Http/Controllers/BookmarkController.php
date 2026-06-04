@@ -4,12 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Bookmark;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class BookmarkController extends Controller
 {
     public function index()
     {
-        $bookmarks = auth()->user()
+        $bookmarks = Auth::user()
             ->bookmarks()
             ->with(['article.source', 'article.category'])
             ->latest()
@@ -22,16 +23,16 @@ class BookmarkController extends Controller
 
     public function toggle(Request $request)
     {
-        if (! auth()->user()->hasVerifiedEmail()) {
+        if (! Auth::user()->hasVerifiedEmail()) {
             return response()->json([
-                'error'   => 'unverified',
+                'error' => 'unverified',
                 'message' => 'Vui lòng xác minh email để lưu bài viết',
             ], 403);
         }
 
         $request->validate(['article_id' => 'required|exists:articles,id']);
 
-        $existing = auth()->user()
+        $existing = Auth::user()
             ->bookmarks()
             ->where('article_id', $request->article_id)
             ->first();
@@ -40,7 +41,7 @@ class BookmarkController extends Controller
             $existing->delete();
             $action = 'removed';
         } else {
-            auth()->user()->bookmarks()->create(['article_id' => $request->article_id]);
+            Auth::user()->bookmarks()->create(['article_id' => $request->article_id]);
             $action = 'added';
         }
 

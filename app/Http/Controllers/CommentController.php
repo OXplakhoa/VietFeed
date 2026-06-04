@@ -5,20 +5,21 @@ namespace App\Http\Controllers;
 use App\Models\Article;
 use App\Models\Comment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class CommentController extends Controller
 {
     public function store(Request $request, Article $article)
     {
         $request->validate([
-            'body'      => 'required|string|max:2000',
+            'body' => 'required|string|max:2000',
             'parent_id' => 'nullable|exists:comments,id',
         ]);
 
         $article->comments()->create([
-            'user_id'   => auth()->id(),
+            'user_id' => Auth::id(),
             'parent_id' => $request->parent_id,
-            'body'      => $request->body,
+            'body' => $request->body,
         ]);
 
         return back()->with('success', 'Bình luận đã được đăng.');
@@ -26,7 +27,7 @@ class CommentController extends Controller
 
     public function update(Request $request, Comment $comment)
     {
-        abort_if($comment->user_id !== auth()->id(), 403);
+        abort_if($comment->user_id !== Auth::id(), 403);
 
         $request->validate(['body' => 'required|string|max:2000']);
 
@@ -37,7 +38,7 @@ class CommentController extends Controller
 
     public function destroy(Comment $comment)
     {
-        abort_if($comment->user_id !== auth()->id() && !auth()->user()->isAdmin(), 403);
+        abort_if($comment->user_id !== Auth::id() && ! Auth::user()->isAdmin(), 403);
 
         $comment->delete();
 

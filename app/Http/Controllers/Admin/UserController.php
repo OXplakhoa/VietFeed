@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\ReadingPassService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
@@ -63,7 +64,7 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
-        if ($user->is(auth()->user())) {
+        if ($user->is(Auth::user())) {
             return back()->with('error', 'Không thể xóa tài khoản đang đăng nhập.');
         }
 

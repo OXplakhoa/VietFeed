@@ -3,6 +3,7 @@
 namespace App\View\Components;
 
 use App\Services\ReadingPassService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\Component;
 use Illuminate\View\View;
 
@@ -14,7 +15,7 @@ class AppLayout extends Component
     public function render(): View
     {
         return view('layouts.app', [
-            'navbarReadingPass' => app(ReadingPassService::class)->allowance(auth()->user()),
+            'navbarReadingPass' => app(ReadingPassService::class)->allowance(Auth::user()),
         ]);
     }
 }
