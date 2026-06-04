@@ -37,6 +37,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/bookmarks/toggle', [BookmarkController::class, 'toggle'])->name('bookmarks.toggle');
     Route::post('/boosts/toggle', [BoostController::class, 'toggle'])->name('boosts.toggle');
     Route::get('/profile/reading-pass', [ProfileController::class, 'readingPass'])->name('profile.reading-pass');
+
+    // Profile must stay available to unverified users so they can resend verification.
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
 Route::get('/dashboard', function () {
@@ -68,10 +73,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/onboarding/interests', [OnboardingController::class, 'showInterests'])->name('onboarding.interests');
     Route::post('/onboarding/interests', [OnboardingController::class, 'saveInterests'])->name('onboarding.interests.save');
 
-    // Profile
-    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    // Profile preferences require verified email because they shape the personalised feed.
     Route::put('/profile/preferences', [ProfileController::class, 'updatePreferences'])->name('profile.preferences');
 });
 

@@ -22,13 +22,7 @@
                            class="vf-form-control" value="{{ old('email', $user->email) }}" required>
                     @if($user instanceof \Illuminate\Contracts\Auth\MustVerifyEmail && !$user->hasVerifiedEmail())
                     <div style="font-size:.8rem;color:var(--accent);margin-top:.35rem">
-                        Email chưa xác minh.
-                        <form action="{{ route('verification.send') }}" method="POST" class="d-inline">
-                            @csrf
-                            <button type="submit" style="background:none;border:none;color:var(--accent);font-size:.8rem;padding:0;text-decoration:underline;cursor:pointer">
-                                Gửi lại xác minh
-                            </button>
-                        </form>
+                        Email chưa xác minh. Bạn có thể gửi lại liên kết xác minh ở khung bên dưới.
                     </div>
                     @endif
                 </div>
@@ -38,6 +32,37 @@
                 @endif
             </form>
         </div>
+
+        @if($user instanceof \Illuminate\Contracts\Auth\MustVerifyEmail && !$user->hasVerifiedEmail())
+        {{-- Email Verification --}}
+        <div class="mb-4 p-4 position-relative overflow-hidden" style="background:linear-gradient(135deg, rgba(230,57,70,.10), var(--surface));border:1px solid rgba(230,57,70,.28);border-radius:14px">
+            <div style="position:absolute;right:-18px;bottom:-48px;font-family:'Playfair Display',serif;font-size:6rem;color:rgba(230,57,70,.07);line-height:1;pointer-events:none">MAIL</div>
+            <div class="d-flex align-items-start gap-3 position-relative" style="z-index:1">
+                <div style="width:44px;height:44px;border-radius:14px;background:rgba(230,57,70,.12);border:1px solid rgba(230,57,70,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--accent)">
+                    <i class="bi bi-envelope-check" style="font-size:1.25rem"></i>
+                </div>
+                <div class="flex-fill">
+                    <h5 class="serif mb-1" style="color:var(--text)">Xác minh email để mở đủ quyền</h5>
+                    <p class="mb-3" style="font-size:.88rem;color:var(--text-muted);line-height:1.65">
+                        Xác minh <strong style="color:var(--text)">{{ $user->email }}</strong> để bình luận, lưu trải nghiệm cá nhân và nhận 15 lượt đọc mỗi 5 giờ.
+                    </p>
+
+                    @if(session('status') === 'verification-link-sent')
+                    <div class="mb-3" style="font-size:.84rem;color:#22c55e;background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.24);border-radius:10px;padding:.55rem .7rem">
+                        <i class="bi bi-check-circle me-1"></i>Đã gửi email xác minh. Hãy kiểm tra Mailpit/hộp thư của bạn.
+                    </div>
+                    @endif
+
+                    <form action="{{ route('verification.send') }}" method="POST" class="m-0">
+                        @csrf
+                        <button type="submit" class="btn-accent">
+                            <i class="bi bi-send me-1"></i>Gửi email xác minh
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        @endif
 
         {{-- Change Password --}}
         <div class="mb-4 p-4" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
