@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Article;
 use App\Models\Category;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
@@ -35,9 +36,12 @@ class HomeController extends Controller
         $featured = (clone $heroBase)->orderByDesc('sensational_score')->first();
         $featuredId = $featured ? $featured->id : null;
 
+        /** @var User|null $user */
+        $user = Auth::user();
+
         // Small cards: personalized to user's favorite categories
-        $userCatIds = Auth::check()
-            ? Auth::user()->favoriteCategories()->pluck('categories.id')->toArray()
+        $userCatIds = $user
+            ? $user->favoriteCategories()->pluck('categories.id')->toArray()
             : [];
 
         $heroArticles = (clone $heroBase)
@@ -137,12 +141,12 @@ class HomeController extends Controller
             );
         }
 
-        $bookmarkedIds = Auth::check()
-            ? Auth::user()->bookmarks()->pluck('article_id')->toArray()
+        $bookmarkedIds = $user
+            ? $user->bookmarks()->pluck('article_id')->toArray()
             : [];
 
-        $boostedIds = Auth::check()
-            ? Auth::user()->boosts()->pluck('article_id')->toArray()
+        $boostedIds = $user
+            ? $user->boosts()->pluck('article_id')->toArray()
             : [];
 
         $categories = Category::all();
@@ -158,8 +162,11 @@ class HomeController extends Controller
 
         $query = Article::with(['source', 'category'])->withCount(['bookmarks', 'boosts']);
 
-        if (Auth::check() && Auth::user()->favoriteCategories()->count() > 0) {
-            $catIds = Auth::user()->favoriteCategories()->pluck('categories.id');
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        if ($user && $user->favoriteCategories()->count() > 0) {
+            $catIds = $user->favoriteCategories()->pluck('categories.id');
             $query->whereIn('category_id', $catIds);
         }
 

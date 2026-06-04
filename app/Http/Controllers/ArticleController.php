@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Source;
+use App\Models\User;
 use App\Services\ReadingPassService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -33,12 +34,15 @@ class ArticleController extends Controller
 
         $articles = $query->latest('published_at')->paginate(12)->withQueryString();
 
-        $bookmarkedIds = Auth::check()
-            ? Auth::user()->bookmarks()->pluck('article_id')->toArray()
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $bookmarkedIds = $user
+            ? $user->bookmarks()->pluck('article_id')->toArray()
             : [];
 
-        $boostedIds = Auth::check()
-            ? Auth::user()->boosts()->pluck('article_id')->toArray()
+        $boostedIds = $user
+            ? $user->boosts()->pluck('article_id')->toArray()
             : [];
 
         $categories = Category::all();
@@ -54,7 +58,10 @@ class ArticleController extends Controller
             ->withCount(['bookmarks', 'boosts'])
             ->firstOrFail();
 
-        $readingPassState = $readingPass->accessOrLock($article, Auth::user());
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $readingPassState = $readingPass->accessOrLock($article, $user);
         $canAccessArticle = $readingPassState['canAccess'];
         $readingPassAllowance = $readingPassState['allowance'];
 
@@ -68,12 +75,12 @@ class ArticleController extends Controller
             $article->setRelation('comments', collect());
         }
 
-        $isBookmarked = Auth::check()
-            ? Auth::user()->bookmarks()->where('article_id', $article->id)->exists()
+        $isBookmarked = $user
+            ? $user->bookmarks()->where('article_id', $article->id)->exists()
             : false;
 
-        $isBoosted = Auth::check()
-            ? Auth::user()->boosts()->where('article_id', $article->id)->exists()
+        $isBoosted = $user
+            ? $user->boosts()->where('article_id', $article->id)->exists()
             : false;
 
         $related = Article::with(['source', 'category'])

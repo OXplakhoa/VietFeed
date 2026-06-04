@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Article;
 use App\Models\Category;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 
 class CategoryController extends Controller
@@ -18,12 +19,15 @@ class CategoryController extends Controller
             ->latest('published_at')
             ->paginate(12);
 
-        $bookmarkedIds = Auth::check()
-            ? Auth::user()->bookmarks()->pluck('article_id')->toArray()
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $bookmarkedIds = $user
+            ? $user->bookmarks()->pluck('article_id')->toArray()
             : [];
 
-        $boostedIds = Auth::check()
-            ? Auth::user()->boosts()->pluck('article_id')->toArray()
+        $boostedIds = $user
+            ? $user->boosts()->pluck('article_id')->toArray()
             : [];
 
         $categories = Category::all();

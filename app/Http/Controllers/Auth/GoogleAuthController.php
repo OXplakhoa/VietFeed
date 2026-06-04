@@ -10,13 +10,17 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\GoogleProvider;
 use Throwable;
 
 class GoogleAuthController extends Controller
 {
     public function redirect(): RedirectResponse
     {
-        return Socialite::driver('google')
+        /** @var GoogleProvider $provider */
+        $provider = Socialite::driver('google');
+
+        return $provider
             ->scopes(['openid', 'profile', 'email'])
             ->redirect();
     }

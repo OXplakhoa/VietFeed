@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Article;
 use App\Models\Comment;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -38,7 +39,10 @@ class CommentController extends Controller
 
     public function destroy(Comment $comment)
     {
-        abort_if($comment->user_id !== Auth::id() && ! Auth::user()->isAdmin(), 403);
+        /** @var User $user */
+        $user = Auth::user();
+
+        abort_if($comment->user_id !== Auth::id() && ! $user->isAdmin(), 403);
 
         $comment->delete();
 
