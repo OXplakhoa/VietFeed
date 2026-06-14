@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lesson 1: Why Laravel & Eloquent?</title>
+    <style>
+        :root {
+            --bg-color: #fdfdfc;
+            --text-color: #111110;
+            --accent-color: #ff2d20; /* Laravel Red */
+            --border-color: #e5e5e5;
+            --code-bg: #f3f4f6;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        h1, h2, h3 {
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-top: 2em;
+        }
+        h1 {
+            font-size: 2.5rem;
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 0.5rem;
+        }
+        h2 {
+            font-size: 1.5rem;
+        }
+        p {
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+        }
+        .highlight {
+            background-color: #fff9c4;
+            padding: 0 4px;
+        }
+        .concept-box {
+            background-color: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            background-color: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .task-box {
+            border-left: 4px solid var(--accent-color);
+            padding-left: 1.5rem;
+            margin-top: 3rem;
+        }
+        .citation {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: -1rem;
+            margin-bottom: 2rem;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Lesson 1: Why Laravel & Eloquent?</h1>
+    <span class="citation">Primary Source: <a href="https://laravel.com/docs/11.x/readme" target="_blank">Laravel Official Documentation</a></span>
+
+    <p>Imagine you are standing in front of your lecturer. They look at your project, <strong>VietFeed</strong>, and ask the inevitable question:</p>
+
+    <blockquote>
+        <em>"There are hundreds of frameworks out there. Why did you choose Laravel for a News Aggregator? Why not write it in plain PHP, or use Node.js?"</em>
+    </blockquote>
+
+    <p>To defend your project, you need to articulate the strategic advantages of your technology stack. For a news aggregator, Laravel provides three massive architectural benefits.</p>
+
+    <div class="concept-box">
+        <h2>1. The "Batteries Included" Philosophy</h2>
+        <p>A news aggregator needs user authentication (to save bookmarks and preferences), a database (to store articles), and an admin panel. If you used raw PHP or a micro-framework (like Express in Node.js), you would have to build the login system, session management, and routing from scratch.</p>
+        <p>Laravel is a <strong>Full-Stack MVC Framework</strong>. It provides built-in tools like <span class="highlight">Laravel Breeze</span> for instant authentication, meaning you spent your time building the <em>business logic</em> (the RSS fetching) instead of reinventing the wheel.</p>
+    </div>
+
+    <div class="concept-box">
+        <h2>2. The Task Scheduler (Cron, Simplified)</h2>
+        <p>A core feature of VietFeed is fetching new articles from sources like VnExpress automatically. Traditionally, developers use messy server-level <code>cron</code> jobs for this.</p>
+        <p>Laravel provides a built-in <strong>Command Scheduler</strong>. You define your schedule fluently in PHP code (e.g., <code>$schedule->command('feeds:fetch')->everyThirtyMinutes();</code>). This makes the automated architecture of VietFeed explicit, version-controlled, and easy to explain.</p>
+    </div>
+
+    <div class="concept-box">
+        <h2>3. Eloquent ORM: Active Record pattern</h2>
+        <p>When fetching hundreds of RSS feeds, you must avoid saving duplicate articles into the database.</p>
+        <p>Instead of writing raw, complex SQL queries to check if an article exists before inserting it, Laravel uses <strong>Eloquent ORM</strong> (Object-Relational Mapper). Eloquent maps database tables to PHP Classes.</p>
+        <p>You can simply write: <br><br><code>Article::updateOrCreate(['original_url' => $link], [...])</code><br><br> This elegantly checks if an article with that URL exists, and if not, creates it. It turns complex SQL deduplication into a single, highly readable line of code.</p>
+    </div>
+
+    <div class="task-box">
+        <h3>Your Turn: Retrieval Practice</h3>
+        <p>To lock this into your long-term memory, I have a quick challenge for you. Answer the following question in our chat (without looking back at the text above!):</p>
+        <p><strong>If your lecturer asks how VietFeed prevents duplicate articles from being saved during an RSS fetch, what specific Eloquent feature/method will you mention, and why is it better than raw SQL?</strong></p>
+    </div>
+
+    <hr style="margin-top: 4rem; border: none; border-top: 1px solid #eee;">
+    <p style="font-size: 0.9rem; color: #888;">Return to your AI teacher and provide your answer. Remember, you can always ask follow-up questions if anything is unclear!</p>
+
+</body>
+</html>
