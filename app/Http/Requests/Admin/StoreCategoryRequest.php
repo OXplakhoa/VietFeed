@@ -16,6 +16,7 @@ class StoreCategoryRequest extends FormRequest
         return [
             'name' => 'required|string|max:100|unique:categories,name',
             'slug' => 'required|string|max:100|unique:categories,slug|regex:/^[a-z0-9-]+$/',
+            'is_active' => 'boolean',
         ];
     }
 

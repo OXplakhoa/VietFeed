@@ -12,6 +12,24 @@ class CommentController extends Controller
 {
     public function store(Request $request, Article $article)
     {
+        /** @var User $user */
+        $user = Auth::user();
+
+        if (! $user->canComment()) {
+            $sanction = $user->activeSanction();
+            $msg = 'Bạn không thể bình luận.';
+            if ($sanction) {
+                $msg = match ($sanction->type) {
+                    'mute' => 'Bạn đang bị cấm bình luận. Hết hạn: '.$sanction->expires_at?->format('d/m/Y H:i').'.',
+                    'temporary_ban' => 'Tài khoản bị hạn chế. Hết hạn: '.$sanction->expires_at?->format('d/m/Y H:i').'.',
+                    'permanent_ban' => 'Tài khoản đã bị cấm vĩnh viễn.',
+                    default => 'Bạn không thể bình luận.',
+                };
+            }
+
+            return back()->with('error', $msg);
+        }
+
         $request->validate([
             'body' => 'required|string|max:2000',
             'parent_id' => 'nullable|exists:comments,id',

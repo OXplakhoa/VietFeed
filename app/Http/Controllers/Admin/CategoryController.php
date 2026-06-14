@@ -18,6 +18,10 @@ class CategoryController extends Controller
             $query->where('name', 'LIKE', "%{$request->q}%");
         }
 
+        if ($request->filled('status')) {
+            $query->where('is_active', $request->status === 'active');
+        }
+
         $sort         = $request->input('sort', 'name');
         $dir          = $request->input('dir', 'asc') === 'desc' ? 'desc' : 'asc';
         $allowedSorts = ['name', 'articles_count'];
@@ -37,7 +41,7 @@ class CategoryController extends Controller
 
     public function store(StoreCategoryRequest $request)
     {
-        Category::create($request->validated());
+        Category::create($request->validated() + ['is_active' => true]);
 
         return redirect()->route('admin.categories.index')
             ->with('success', 'Đã thêm chủ đề mới.');
@@ -56,6 +60,13 @@ class CategoryController extends Controller
 
         return redirect()->route('admin.categories.index')
             ->with('success', 'Đã cập nhật chủ đề.');
+    }
+
+    public function toggleActive(Category $category)
+    {
+        $category->update(['is_active' => ! $category->is_active]);
+
+        return back()->with('success', $category->is_active ? 'Đã bật lại chủ đề. Người dùng sẽ thấy tin thuộc chủ đề này.' : 'Đã tắt chủ đề. Người dùng sẽ không thấy tin thuộc chủ đề này.');
     }
 
     public function destroy(Category $category)

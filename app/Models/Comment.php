@@ -27,4 +27,19 @@ class Comment extends Model
     {
         return $this->hasMany(Comment::class, 'parent_id');
     }
+
+    public function reports()
+    {
+        return $this->hasMany(Report::class);
+    }
+
+    public function scopeVisible($query)
+    {
+        return $query->where('is_hidden', false);
+    }
+
+    public function scopeHidden($query)
+    {
+        return $query->where('is_hidden', true);
+    }
 }

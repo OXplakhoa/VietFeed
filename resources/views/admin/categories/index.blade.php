@@ -23,6 +23,14 @@
                            style="background:var(--surface);border-color:var(--border);color:var(--text)">
                 </div>
                 <div class="col-md-2">
+                    <select name="status" class="form-select form-select-sm"
+                            style="background:var(--surface);border-color:var(--border);color:var(--text)">
+                        <option value="" {{ request('status') === null ? 'selected' : '' }}>Tất cả trạng thái</option>
+                        <option value="active" {{ request('status') === 'active' ? 'selected' : '' }}>Đang hiển thị</option>
+                        <option value="inactive" {{ request('status') === 'inactive' ? 'selected' : '' }}>Đã tắt</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
                     <select name="sort" class="form-select form-select-sm"
                             style="background:var(--surface);border-color:var(--border);color:var(--text)">
                         <option value="name"           {{ request('sort','name') === 'name'           ? 'selected' : '' }}>Tên</option>
@@ -42,7 +50,7 @@
                         <i class="bi bi-search"></i>
                     </button>
                 </div>
-                @if(request()->hasAny(['q','sort','dir']))
+                @if(request()->hasAny(['q','status','sort','dir']))
                 <div class="col-auto">
                     <a href="{{ route('admin.categories.index') }}" class="btn btn-sm"
                        style="background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);border-radius:6px">
@@ -62,6 +70,7 @@
                             <th>Slug</th>
                             <th>Bài viết</th>
                             <th>Nguồn tin</th>
+                            <th>Trạng thái</th>
                             <th class="pe-3 text-end">Hành động</th>
                         </tr>
                     </thead>
@@ -74,11 +83,32 @@
                         </td>
                         <td style="vertical-align:middle;font-size:.85rem">{{ number_format($cat->articles_count) }}</td>
                         <td style="vertical-align:middle;font-size:.85rem">{{ $cat->sources_count }}</td>
+                        <td style="vertical-align:middle">
+                            @if($cat->is_active)
+                                <span style="font-size:.75rem;background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:.2rem .55rem;font-weight:500">Đang hiển thị</span>
+                            @else
+                                <span style="font-size:.75rem;background:rgba(107,114,128,.12);color:#9ca3af;border:1px solid rgba(107,114,128,.3);border-radius:6px;padding:.2rem .55rem;font-weight:500">Đã tắt</span>
+                            @endif
+                        </td>
                         <td class="pe-3 text-end" style="vertical-align:middle;white-space:nowrap">
                             <a href="{{ route('admin.categories.edit', $cat) }}"
                                style="color:#60a5fa;font-size:.8rem;text-decoration:none;margin-right:.75rem">
                                 <i class="bi bi-pencil me-1"></i>Sửa
                             </a>
+                            <form action="{{ route('admin.categories.toggle-active', $cat) }}" method="POST" class="d-inline"
+                                  onsubmit="vfConfirmForm(
+                                      event,
+                                      this,
+                                      @js($cat->is_active ? 'Người dùng sẽ không thấy chủ đề và tin thuộc chủ đề này.' : 'Chủ đề và tin thuộc chủ đề này sẽ hiển thị lại cho người dùng.'),
+                                      @js($cat->is_active ? 'Xác nhận tắt' : 'Xác nhận mở'),
+                                      @js($cat->is_active ? 'Tắt' : 'Mở'),
+                                      @js($cat->is_active ? '🙈' : '👁️')
+                                  )">
+                                @csrf @method('PATCH')
+                                <button type="submit" style="color:{{ $cat->is_active ? '#f59e0b' : '#22c55e' }};font-size:.8rem;background:none;border:none;padding:0;cursor:pointer;margin-right:.75rem">
+                                    <i class="bi {{ $cat->is_active ? 'bi-eye-slash' : 'bi-eye' }} me-1"></i>{{ $cat->is_active ? 'Tắt' : 'Bật' }}
+                                </button>
+                            </form>
                             <form action="{{ route('admin.categories.destroy', $cat) }}" method="POST" class="d-inline"
                                   onsubmit="vfConfirmForm(event, this, 'Chủ đề này sẽ bị xóa vĩnh viễn.')">
                                 @csrf @method('DELETE')
@@ -90,7 +120,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="5" class="text-center py-4" style="color:var(--text-muted)">Chưa có chủ đề nào.</td>
+                        <td colspan="6" class="text-center py-4" style="color:var(--text-muted)">Chưa có chủ đề nào.</td>
                     </tr>
                     @endforelse
                     </tbody>

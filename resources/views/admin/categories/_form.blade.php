@@ -21,6 +21,18 @@
     @error('slug') <div class="invalid-feedback">{{ $message }}</div> @enderror
 </div>
 
+<div class="form-check">
+    <input type="hidden" name="is_active" value="0">
+    <input class="form-check-input" type="checkbox" name="is_active" id="cat-is-active" value="1"
+           {{ old('is_active', $cat?->is_active ?? true) ? 'checked' : '' }}>
+    <label class="form-check-label" for="cat-is-active" style="font-size:.875rem;color:var(--text)">
+        Hiển thị chủ đề cho người dùng
+    </label>
+    <div style="font-size:.75rem;color:var(--text-muted);margin-top:.2rem">
+        Nếu tắt, người dùng sẽ không thấy chủ đề và các tin thuộc chủ đề này trên trang public.
+    </div>
+</div>
+
 @push('scripts')
 <script>
 // Auto-slug from name — only fills if slug is still empty

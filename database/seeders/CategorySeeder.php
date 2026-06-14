@@ -21,7 +21,7 @@ class CategorySeeder extends Seeder
         ];
 
         foreach ($categories as $cat) {
-            Category::updateOrCreate(['slug' => $cat['slug']], ['name' => $cat['name']]);
+            Category::updateOrCreate(['slug' => $cat['slug']], ['name' => $cat['name'], 'is_active' => true]);
         }
     }
 }

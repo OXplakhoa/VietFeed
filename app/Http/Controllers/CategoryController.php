@@ -11,9 +11,10 @@ class CategoryController extends Controller
 {
     public function show(string $slug)
     {
-        $category = Category::where('slug', $slug)->firstOrFail();
+        $category = Category::active()->where('slug', $slug)->firstOrFail();
 
         $articles = Article::where('category_id', $category->id)
+            ->whereHas('source', fn ($qb) => $qb->active())
             ->with(['source', 'category'])
             ->withCount(['bookmarks', 'boosts'])
             ->latest('published_at')
@@ -30,7 +31,7 @@ class CategoryController extends Controller
             ? $user->boosts()->pluck('article_id')->toArray()
             : [];
 
-        $categories = Category::all();
+        $categories = Category::active()->get();
 
         return view('categories.show', compact('category', 'articles', 'bookmarkedIds', 'boostedIds', 'categories'));
     }
