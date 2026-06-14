@@ -156,19 +156,35 @@
                     </div>
 
                     @auth
-                    <div class="mb-4 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
-                        <form action="{{ route('comments.store', $article->slug) }}" method="POST">
-                            @csrf
-                            <div class="mb-2" style="font-size:.85rem;color:var(--text-muted)">
-                                Bình luận với tư cách <strong style="color:var(--text)">{{ auth()->user()->name }}</strong>
+                        @if(auth()->user()->canComment())
+                        <div class="mb-4 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
+                            <form action="{{ route('comments.store', $article->slug) }}" method="POST">
+                                @csrf
+                                <div class="mb-2" style="font-size:.85rem;color:var(--text-muted)">
+                                    Bình luận với tư cách <strong style="color:var(--text)">{{ auth()->user()->name }}</strong>
+                                </div>
+                                <textarea name="body" class="vf-textarea mb-2" rows="3"
+                                          placeholder="Viết bình luận của bạn…" required>{{ old('body') }}</textarea>
+                                <button type="submit" class="btn-accent">
+                                    <i class="bi bi-send me-1"></i>Đăng bình luận
+                                </button>
+                            </form>
+                        </div>
+                        @else
+                        @php $sanction = auth()->user()->activeSanction(); @endphp
+                        <div class="mb-4 p-4" style="background:linear-gradient(135deg, rgba(230,57,70,.10), var(--surface));border:1px solid rgba(230,57,70,.25);border-radius:12px">
+                            <div class="d-flex align-items-center gap-2 mb-2" style="color:var(--accent);font-weight:600">
+                                <i class="bi bi-mic-mute"></i>
+                                {{ $sanction->typeLabel() }}
                             </div>
-                            <textarea name="body" class="vf-textarea mb-2" rows="3"
-                                      placeholder="Viết bình luận của bạn…" required>{{ old('body') }}</textarea>
-                            <button type="submit" class="btn-accent">
-                                <i class="bi bi-send me-1"></i>Đăng bình luận
-                            </button>
-                        </form>
-                    </div>
+                            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:0">
+                                {{ $sanction->reason }}
+                                @if($sanction->expires_at)
+                                    <br><span style="color:var(--text)">Hết hạn: {{ $sanction->expires_at->format('d/m/Y H:i') }}</span>
+                                @endif
+                            </p>
+                        </div>
+                        @endif
                     @else
                     <div class="mb-4 p-3 text-center"
                          style="background:var(--surface);border:1px solid var(--border);border-radius:12px;color:var(--text-muted)">

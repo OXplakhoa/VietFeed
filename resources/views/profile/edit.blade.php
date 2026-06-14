@@ -119,6 +119,9 @@
             </a>
         </div>
 
+        {{-- Sanctions --}}
+        @include('profile._sanctions')
+
         {{-- Delete Account --}}
         <div class="p-4" style="background:var(--surface);border:1px solid rgba(230,57,70,.25);border-radius:12px">
             <h5 class="serif mb-2" style="color:var(--accent)">Xóa tài khoản</h5>

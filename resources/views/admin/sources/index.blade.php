@@ -116,6 +116,20 @@
                             <a href="{{ route('admin.sources.health') }}" style="color:var(--accent);font-size:.8rem;text-decoration:none;margin-right:.75rem">
                                 <i class="bi bi-heart-pulse me-1"></i>Health
                             </a>
+                            <form action="{{ route('admin.sources.toggle-active', $src) }}" method="POST" class="d-inline"
+                                  onsubmit="vfConfirmForm(
+                                      event,
+                                      this,
+                                      @js($src->is_active ? 'Nguồn này sẽ ngừng fetch và người dùng sẽ không thấy các tin thuộc nguồn này.' : 'Nguồn này sẽ được fetch lại và tin thuộc nguồn này sẽ hiển thị cho người dùng.'),
+                                      @js($src->is_active ? 'Xác nhận tắt nguồn' : 'Xác nhận mở nguồn'),
+                                      @js($src->is_active ? 'Tắt' : 'Mở'),
+                                      @js($src->is_active ? '🙈' : '👁️')
+                                  )">
+                                @csrf @method('PATCH')
+                                <button type="submit" style="color:{{ $src->is_active ? '#f59e0b' : '#22c55e' }};font-size:.8rem;background:none;border:none;padding:0;cursor:pointer;margin-right:.75rem">
+                                    <i class="bi {{ $src->is_active ? 'bi-eye-slash' : 'bi-eye' }} me-1"></i>{{ $src->is_active ? 'Tắt' : 'Mở' }}
+                                </button>
+                            </form>
                             <form action="{{ route('admin.sources.destroy', $src) }}" method="POST" class="d-inline"
                                   onsubmit="vfConfirmForm(event, this, 'Nguồn tin sẽ bị xóa. Các bài viết đã lấy sẽ không bị xóa.')">
                                 @csrf @method('DELETE')

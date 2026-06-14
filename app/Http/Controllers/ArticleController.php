@@ -14,7 +14,10 @@ class ArticleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Article::with(['source', 'category'])->withCount(['bookmarks', 'boosts']);
+        $query = Article::with(['source', 'category'])
+            ->whereHas('category', fn ($qb) => $qb->active())
+            ->whereHas('source', fn ($qb) => $qb->active())
+            ->withCount(['bookmarks', 'boosts']);
 
         if ($request->filled('q')) {
             $q = $request->q;
@@ -25,7 +28,7 @@ class ArticleController extends Controller
         }
 
         if ($request->filled('category')) {
-            $query->whereHas('category', fn ($qb) => $qb->where('slug', $request->category));
+            $query->whereHas('category', fn ($qb) => $qb->active()->where('slug', $request->category));
         }
 
         if ($request->filled('source')) {
@@ -45,8 +48,8 @@ class ArticleController extends Controller
             ? $user->boosts()->pluck('article_id')->toArray()
             : [];
 
-        $categories = Category::all();
-        $sources = Source::where('is_active', true)->orderBy('name')->get();
+        $categories = Category::active()->get();
+        $sources = Source::active()->orderBy('name')->get();
 
         return view('articles.index', compact('articles', 'bookmarkedIds', 'boostedIds', 'categories', 'sources'));
     }
@@ -55,6 +58,8 @@ class ArticleController extends Controller
     {
         $article = Article::where('slug', $slug)
             ->with(['source', 'category'])
+            ->whereHas('category', fn ($qb) => $qb->active())
+            ->whereHas('source', fn ($qb) => $qb->active())
             ->withCount(['bookmarks', 'boosts'])
             ->firstOrFail();
 
@@ -84,6 +89,8 @@ class ArticleController extends Controller
             : false;
 
         $related = Article::with(['source', 'category'])
+            ->whereHas('category', fn ($qb) => $qb->active())
+            ->whereHas('source', fn ($qb) => $qb->active())
             ->where('category_id', $article->category_id)
             ->where('id', '!=', $article->id)
             ->latest('published_at')
@@ -93,6 +100,8 @@ class ArticleController extends Controller
         if ($related->count() < 10) {
             $related = $related->concat(
                 Article::with(['source', 'category'])
+                    ->whereHas('category', fn ($qb) => $qb->active())
+                    ->whereHas('source', fn ($qb) => $qb->active())
                     ->where('id', '!=', $article->id)
                     ->whereNotIn('id', $related->pluck('id'))
                     ->latest('published_at')

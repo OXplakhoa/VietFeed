@@ -50,7 +50,7 @@ class ProfileController extends Controller
     {
         $request->validate([
             'categories' => 'array',
-            'categories.*' => 'exists:categories,id',
+            'categories.*' => 'exists:categories,id,is_active,1',
         ]);
 
         $request->user()->favoriteCategories()->sync($request->categories ?? []);

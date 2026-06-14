@@ -3,10 +3,31 @@
 
     @push('styles')
     <style>
+        .admin-stat-card {
+            min-height: 104px;
+        }
+
         .admin-stat-card:hover {
             transform: translateY(-2px);
             border-color: rgba(230, 57, 70, .35) !important;
             box-shadow: 0 10px 28px rgba(0, 0, 0, .08);
+        }
+
+        .admin-stat-content {
+            min-width: 0;
+        }
+
+        .admin-stat-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.25;
+        }
+
+        @media (max-width: 575.98px) {
+            .admin-stat-label {
+                white-space: normal;
+            }
         }
     </style>
     @endpush
@@ -31,17 +52,17 @@
                 ['label' => 'Pro users',     'value' => number_format($stats['pro_users']),     'icon' => 'bi-stars', 'color' => '#facc15', 'href' => route('admin.users.index', ['plan' => 'pro'])],
                 ['label' => 'Nguồn tin',     'value' => number_format($stats['sources']),       'icon' => 'bi-rss', 'color' => '#fb923c', 'href' => route('admin.sources.index')],
             ] as $stat)
-            <div class="col-6 col-lg">
+            <div class="col-6 col-md-4 col-xl-3 col-xxl-2">
                 <a href="{{ $stat['href'] }}" class="d-block p-3 h-100 admin-stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;text-decoration:none;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease">
-                    <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-3 h-100">
                         <div style="background:rgba(96,165,250,.08);border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                             <i class="bi {{ $stat['icon'] }}" style="font-size:1.3rem;color:{{ $stat['color'] }}"></i>
                         </div>
-                        <div>
-                            <div style="font-size:1.4rem;font-weight:700;font-family:'Playfair Display',serif;color:var(--text)">
+                        <div class="admin-stat-content">
+                            <div style="font-size:1.4rem;font-weight:700;font-family:'Playfair Display',serif;color:var(--text);line-height:1.1">
                                 {{ $stat['value'] }}
                             </div>
-                            <div style="font-size:.75rem;color:var(--text-muted)">{{ $stat['label'] }}</div>
+                            <div class="admin-stat-label" title="{{ $stat['label'] }}" style="font-size:.78rem;color:var(--text-muted)">{{ $stat['label'] }}</div>
                         </div>
                     </div>
                 </a>

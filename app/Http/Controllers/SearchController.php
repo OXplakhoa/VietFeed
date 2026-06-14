@@ -16,9 +16,13 @@ class SearchController extends Controller
 
         if (strlen($q) >= 2) {
             $articles = Article::with(['source', 'category'])
+                ->whereHas('category', fn ($qb) => $qb->active())
+                ->whereHas('source', fn ($qb) => $qb->active())
                 ->withCount(['bookmarks', 'boosts'])
-                ->where('title', 'LIKE', "%{$q}%")
-                ->orWhere('description', 'LIKE', "%{$q}%")
+                ->where(fn ($qb) => $qb
+                    ->where('title', 'LIKE', "%{$q}%")
+                    ->orWhere('description', 'LIKE', "%{$q}%")
+                )
                 ->latest('published_at')
                 ->paginate(12)
                 ->withQueryString();
@@ -46,7 +50,9 @@ class SearchController extends Controller
             return response()->json([]);
         }
 
-        $results = Article::where('title', 'LIKE', "%{$q}%")
+        $results = Article::whereHas('category', fn ($qb) => $qb->active())
+            ->whereHas('source', fn ($qb) => $qb->active())
+            ->where('title', 'LIKE', "%{$q}%")
             ->with('category')
             ->latest('published_at')
             ->take(6)

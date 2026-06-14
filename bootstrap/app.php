@@ -14,7 +14,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin'    => \App\Http\Middleware\AdminMiddleware::class,
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
+            'sanction' => \App\Http\Middleware\CheckUserSanction::class,
         ]);
+
+        $middleware->appendToGroup('web', \App\Http\Middleware\CheckUserSanction::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

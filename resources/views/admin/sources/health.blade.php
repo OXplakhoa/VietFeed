@@ -160,7 +160,18 @@
                                 <div class="d-flex flex-column gap-1 align-items-end">
                                     <form action="{{ route('admin.sources.test', $source) }}" method="POST">@csrf<button class="btn btn-sm" style="background:var(--surface-alt);color:var(--text);border:1px solid var(--border)">Test RSS</button></form>
                                     <form action="{{ route('admin.sources.retry', $source) }}" method="POST">@csrf<button class="btn btn-sm" style="background:var(--accent);color:#fff;border:none">Retry fetch</button></form>
-                                    <form action="{{ route('admin.sources.toggle-active', $source) }}" method="POST">@csrf @method('PATCH')<button class="btn btn-sm" style="background:none;color:{{ $source->is_active ? '#f59e0b' : '#22c55e' }};border:1px solid var(--border)">{{ $source->is_active ? 'Tắt nguồn' : 'Bật nguồn' }}</button></form>
+                                    <form action="{{ route('admin.sources.toggle-active', $source) }}" method="POST"
+                                          onsubmit="vfConfirmForm(
+                                              event,
+                                              this,
+                                              @js($source->is_active ? 'Nguồn này sẽ ngừng fetch và người dùng sẽ không thấy các tin thuộc nguồn này.' : 'Nguồn này sẽ được fetch lại và tin thuộc nguồn này sẽ hiển thị cho người dùng.'),
+                                              @js($source->is_active ? 'Xác nhận tắt nguồn' : 'Xác nhận mở nguồn'),
+                                              @js($source->is_active ? 'Tắt' : 'Mở'),
+                                              @js($source->is_active ? '🙈' : '👁️')
+                                          )">
+                                        @csrf @method('PATCH')
+                                        <button class="btn btn-sm" style="background:none;color:{{ $source->is_active ? '#f59e0b' : '#22c55e' }};border:1px solid var(--border)">{{ $source->is_active ? 'Tắt nguồn' : 'Mở nguồn' }}</button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>

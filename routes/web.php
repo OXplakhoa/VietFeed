@@ -4,6 +4,8 @@ use App\Http\Controllers\Admin\ArticleController as AdminArticle;
 use App\Http\Controllers\Admin\CategoryController as AdminCategory;
 use App\Http\Controllers\Admin\CommentController as AdminComment;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboard;
+use App\Http\Controllers\Admin\ReportController as AdminReport;
+use App\Http\Controllers\Admin\SanctionController as AdminSanction;
 use App\Http\Controllers\Admin\SourceController as AdminSource;
 use App\Http\Controllers\Admin\UserController as AdminUser;
 use App\Http\Controllers\ArticleController;
@@ -15,6 +17,8 @@ use App\Http\Controllers\CommentController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\SanctionAppealController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TickerController;
 use Illuminate\Support\Facades\Auth;
@@ -27,6 +31,12 @@ Route::get('/articles/{slug}', [ArticleController::class, 'show'])->name('articl
 Route::get('/categories/{slug}', [CategoryController::class, 'show'])->name('categories.show');
 Route::get('/search', [SearchController::class, 'index'])->name('search');
 Route::get('/pricing', [BillingController::class, 'pricing'])->name('pricing');
+
+// Banned page
+Route::get('/banned', function () {
+    $sanction = auth()->user()?->activeSanction();
+    return view('sanctions.banned', compact('sanction'));
+})->middleware('auth')->name('sanctions.banned');
 
 // ── AJAX API routes (no auth required for search) ──────────────
 Route::get('/api/live-search', [SearchController::class, 'liveSearch'])->name('search.live');
@@ -76,6 +86,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Profile preferences require verified email because they shape the personalised feed.
     Route::put('/profile/preferences', [ProfileController::class, 'updatePreferences'])->name('profile.preferences');
+
+    // Reports
+    Route::post('/comments/{comment}/report', [ReportController::class, 'store'])->name('reports.store');
+
+    // Sanction appeals
+    Route::post('/sanctions/{sanction}/appeal', [SanctionAppealController::class, 'store'])->name('sanctions.appeal');
 });
 
 // ── Admin routes ───────────────────────────────────────────────
@@ -91,10 +107,15 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::patch('sources/{source}/toggle-active', [AdminSource::class, 'toggleActive'])->name('sources.toggle-active');
 
     Route::resource('sources', AdminSource::class);
+    Route::patch('categories/{category}/toggle-active', [AdminCategory::class, 'toggleActive'])->name('categories.toggle-active');
     Route::resource('categories', AdminCategory::class);
     Route::resource('articles', AdminArticle::class)->except(['create', 'store']);
     Route::resource('comments', AdminComment::class)->only(['index', 'destroy']);
     Route::resource('users', AdminUser::class)->only(['index', 'edit', 'update', 'destroy']);
+
+    // Moderation
+    Route::resource('reports', AdminReport::class)->only(['index', 'show', 'update', 'destroy']);
+    Route::resource('sanctions', AdminSanction::class)->only(['index', 'store', 'show', 'update', 'destroy']);
 });
 
 require __DIR__.'/auth.php';

@@ -30,6 +30,8 @@ class HomeController extends Controller
             ->selectRaw($scoreFormula.' as sensational_score')
             ->withCount('boosts')
             ->join('sources', 'articles.source_id', '=', 'sources.id')
+            ->where('sources.is_active', true)
+            ->whereHas('category', fn ($qb) => $qb->active())
             ->whereNotNull('articles.image_url');
 
         // Featured: most sensational across ALL categories
@@ -41,7 +43,7 @@ class HomeController extends Controller
 
         // Small cards: personalized to user's favorite categories
         $userCatIds = $user
-            ? $user->favoriteCategories()->pluck('categories.id')->toArray()
+            ? $user->favoriteCategories()->where('categories.is_active', true)->pluck('categories.id')->toArray()
             : [];
 
         $heroArticles = (clone $heroBase)
@@ -67,6 +69,8 @@ class HomeController extends Controller
         $usedArticleIds = $breakingArticles->pluck('id')->all();
 
         $diverseBreaking = Article::with(['source', 'category'])
+            ->whereHas('category', fn ($qb) => $qb->active())
+            ->whereHas('source', fn ($qb) => $qb->active())
             ->whereNotIn('id', array_merge($heroArticles->pluck('id')->all(), $usedArticleIds))
             ->latest('published_at')
             ->take(40)
@@ -85,6 +89,8 @@ class HomeController extends Controller
         $breakingArticles = $breakingArticles->merge($diverseBreaking);
 
         $communityBoosted = Article::with(['source', 'category'])
+            ->whereHas('category', fn ($qb) => $qb->active())
+            ->whereHas('source', fn ($qb) => $qb->active())
             ->withCount('boosts')
             ->where('published_at', '>=', now()->subHours(72))
             ->orderByDesc('boosts_count')
@@ -95,6 +101,8 @@ class HomeController extends Controller
         if ($communityBoosted->count() < 6) {
             $communityBoosted = $communityBoosted->concat(
                 Article::with(['source', 'category'])
+                    ->whereHas('category', fn ($qb) => $qb->active())
+                    ->whereHas('source', fn ($qb) => $qb->active())
                     ->withCount('boosts')
                     ->whereNotIn('id', $communityBoosted->pluck('id'))
                     ->latest('published_at')
@@ -105,6 +113,8 @@ class HomeController extends Controller
 
         if ($breakingArticles->count() < 5) {
             $fillers = Article::with(['source', 'category'])
+                ->whereHas('category', fn ($qb) => $qb->active())
+                ->whereHas('source', fn ($qb) => $qb->active())
                 ->whereNotIn('id', $breakingArticles->pluck('id')->merge($heroArticles->pluck('id'))->all())
                 ->latest('published_at')
                 ->take(5 - $breakingArticles->count())
@@ -114,7 +124,10 @@ class HomeController extends Controller
         }
 
         // Main feed
-        $query = Article::with(['source', 'category'])->withCount(['bookmarks', 'boosts']);
+        $query = Article::with(['source', 'category'])
+            ->whereHas('category', fn ($qb) => $qb->active())
+            ->whereHas('source', fn ($qb) => $qb->active())
+            ->withCount(['bookmarks', 'boosts']);
 
         if (! empty($userCatIds)) {
             $query->whereIn('category_id', $userCatIds);
@@ -125,6 +138,8 @@ class HomeController extends Controller
             ->paginate(12);
 
         $trending = Article::withCount('boosts')
+            ->whereHas('category', fn ($qb) => $qb->active())
+            ->whereHas('source', fn ($qb) => $qb->active())
             ->where('published_at', '>=', now()->subHours(72))
             ->orderByDesc('boosts_count')
             ->latest('published_at')
@@ -134,6 +149,8 @@ class HomeController extends Controller
         if ($trending->count() < 5) {
             $trending = $trending->concat(
                 Article::withCount('boosts')
+                    ->whereHas('category', fn ($qb) => $qb->active())
+                    ->whereHas('source', fn ($qb) => $qb->active())
                     ->whereNotIn('id', $trending->pluck('id'))
                     ->latest('published_at')
                     ->take(5 - $trending->count())
@@ -149,7 +166,7 @@ class HomeController extends Controller
             ? $user->boosts()->pluck('article_id')->toArray()
             : [];
 
-        $categories = Category::all();
+        $categories = Category::active()->get();
 
         return view('home.index', compact(
             'featured', 'heroArticles', 'breakingArticles', 'communityBoosted', 'articles', 'trending', 'bookmarkedIds', 'boostedIds', 'categories'
@@ -160,13 +177,16 @@ class HomeController extends Controller
     {
         $page = max(1, (int) $request->get('page', 2));
 
-        $query = Article::with(['source', 'category'])->withCount(['bookmarks', 'boosts']);
+        $query = Article::with(['source', 'category'])
+            ->whereHas('category', fn ($qb) => $qb->active())
+            ->whereHas('source', fn ($qb) => $qb->active())
+            ->withCount(['bookmarks', 'boosts']);
 
         /** @var User|null $user */
         $user = Auth::user();
 
         if ($user && $user->favoriteCategories()->count() > 0) {
-            $catIds = $user->favoriteCategories()->pluck('categories.id');
+            $catIds = $user->favoriteCategories()->where('categories.is_active', true)->pluck('categories.id');
             $query->whereIn('category_id', $catIds);
         }
 

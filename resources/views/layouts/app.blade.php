@@ -194,7 +194,7 @@
         <nav class="nav flex-nowrap">
             <a href="{{ route('home') }}"
                class="nav-link {{ request()->routeIs('home') ? 'active' : '' }}">Tất cả</a>
-            @foreach(\App\Models\Category::all() as $cat)
+            @foreach(\App\Models\Category::active()->get() as $cat)
             <a href="{{ route('categories.show', $cat->slug) }}"
                class="nav-link {{ request()->is('categories/'.$cat->slug) ? 'active' : '' }}">
                 {{ $cat->name }}
@@ -294,7 +294,7 @@
 <div id="vf-confirm-backdrop" class="vf-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="vf-confirm-title">
     <div class="vf-modal">
         <button id="vf-confirm-close" class="vf-modal-close" aria-label="Đóng">&times;</button>
-        <span class="vf-modal-icon">🗑️</span>
+        <span id="vf-confirm-icon" class="vf-modal-icon">🗑️</span>
         <h2 id="vf-confirm-title" class="vf-modal-title">Xác nhận xóa</h2>
         <p id="vf-confirm-message" class="vf-confirm-body"></p>
         <div class="vf-confirm-actions">

@@ -11,7 +11,7 @@ class OnboardingController extends Controller
 {
     public function showInterests()
     {
-        $categories = Category::all();
+        $categories = Category::active()->get();
         /** @var User $user */
         $user = Auth::user();
         $selected = $user->favoriteCategories()->pluck('categories.id')->toArray();
@@ -23,7 +23,7 @@ class OnboardingController extends Controller
     {
         $request->validate([
             'categories' => 'array',
-            'categories.*' => 'exists:categories,id',
+            'categories.*' => 'exists:categories,id,is_active,1',
         ]);
 
         /** @var User $user */

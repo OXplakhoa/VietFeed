@@ -468,12 +468,14 @@ function initConfirmModal() {
     });
 }
 
-function vfConfirm({ title, message, onConfirm }) {
+function vfConfirm({ title, message, confirmText, icon, onConfirm }) {
     const backdrop = document.getElementById('vf-confirm-backdrop');
     if (!backdrop) { if (typeof onConfirm === 'function') onConfirm(); return; }
 
-    document.getElementById('vf-confirm-title').textContent  = title   || 'Xác nhận xóa';
-    document.getElementById('vf-confirm-message').textContent = message || 'Bạn có chắc muốn thực hiện hành động này?';
+    document.getElementById('vf-confirm-icon').textContent    = icon        || '🗑️';
+    document.getElementById('vf-confirm-title').textContent   = title       || 'Xác nhận xóa';
+    document.getElementById('vf-confirm-message').textContent = message     || 'Bạn có chắc muốn thực hiện hành động này?';
+    document.getElementById('vf-confirm-btn').textContent     = confirmText || 'Xóa';
     _confirmCallback = onConfirm;
     backdrop.classList.add('open');
     setTimeout(() => document.getElementById('vf-cancel-btn')?.focus(), 50);
@@ -484,10 +486,10 @@ function closeConfirmModal() {
     _confirmCallback = null;
 }
 
-function vfConfirmForm(event, formOrEl, message, title) {
+function vfConfirmForm(event, formOrEl, message, title, confirmText, icon) {
     event.preventDefault();
     const form = (formOrEl && formOrEl.tagName === 'FORM') ? formOrEl : formOrEl?.closest('form');
-    vfConfirm({ title, message, onConfirm: () => form?.submit() });
+    vfConfirm({ title, message, confirmText, icon, onConfirm: () => form?.submit() });
 }
 
 window.vfConfirm     = vfConfirm;
