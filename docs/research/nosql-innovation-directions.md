@@ -2,7 +2,8 @@
 
 > **Trạng thái tài liệu:** Đây là research/đề xuất ở giai đoạn khám phá. `docs/specs/vietfeed-nosql-storylens.md` là canonical implementation source of truth và được ưu tiên khi có mâu thuẫn.
 
-**Ngày nghiên cứu:** 2026-08-17  
+**Ngày nghiên cứu:** 2026-08-17
+
 **Phạm vi:** Nâng cấp VietFeed hiện tại; application layer tiếp tục là Laravel/PHP; hệ thống chỉ dùng bốn database MongoDB, Cassandra, Neo4j và Redis.
 
 ## Kết luận ngắn

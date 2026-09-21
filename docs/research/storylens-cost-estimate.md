@@ -1,6 +1,7 @@
 # Ước tính chi phí VietFeed StoryLens
 
-**Ngày kiểm tra:** 2026-08-18  
+**Ngày kiểm tra:** 2026-08-18
+
 **Phạm vi:** Đồ án sinh viên chạy local trong khoảng hai tháng; 100–300 RSS articles, 10–20 breaking-news events; MongoDB, Cassandra, Neo4j và Redis chạy bằng Docker; controlled-hybrid summary chỉ nhận evidence packet đã cấu trúc.
 
 > Giá, quota và điều khoản dịch vụ có thể thay đổi. Trước tuần demo cần kiểm tra lại các trang giá/quota chính thức và quota thực tế trong dashboard của tài khoản.

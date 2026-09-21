@@ -1,9 +1,12 @@
 # VietFeed NoSQL + StoryLens — Canonical Implementation Spec
 
-**Status:** Approved for implementation  
-**Audience:** Developers, reviewers, report authors, and implementation agents  
-**Application:** Laravel 13 / PHP 8.3+ / Blade  
-**Runtime databases:** MongoDB, Apache Cassandra, Neo4j, and Redis, all running through Docker  
+**Status:** Approved for implementation
+
+**Audience:** Developers, reviewers, report authors, and implementation agents
+
+**Application:** Laravel 13 / PHP 8.3+ / Blade
+
+**Runtime databases:** MongoDB, Apache Cassandra, Neo4j, and Redis, all running through Docker
 
 ## 1. Source-of-truth policy
 
