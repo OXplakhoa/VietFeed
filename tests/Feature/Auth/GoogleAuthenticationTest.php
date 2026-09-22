@@ -34,7 +34,7 @@ class GoogleAuthenticationTest extends TestCase
             'google_id' => 'google-123',
             'role' => 'user',
             'avatar' => 'https://example.com/avatar.jpg',
-        ]);
+        ], 'mongodb');
 
         $this->assertNotNull(User::where('email', 'google-user@example.com')->first()?->email_verified_at);
     }

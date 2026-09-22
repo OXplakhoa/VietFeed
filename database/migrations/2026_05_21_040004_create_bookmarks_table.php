@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('bookmarks', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            // Gate 3: users live on Mongo (string _id) — no SQL FK, no cascade (app-level later).
+            $table->string('user_id')->index();
             $table->foreignId('article_id')->constrained()->cascadeOnDelete();
             $table->timestamps();
 

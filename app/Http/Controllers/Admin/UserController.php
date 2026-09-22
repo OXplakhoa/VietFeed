@@ -46,7 +46,7 @@ class UserController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,'.$user->id,
+            'email' => 'required|email|unique:mongodb.users,email,'.$user->getKey().',_id',
             'role' => 'required|in:user,admin',
         ], [
             'name.required' => 'Tên là bắt buộc.',

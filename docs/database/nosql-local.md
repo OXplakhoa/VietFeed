@@ -60,6 +60,19 @@ Create one connection per DB (all host `127.0.0.1`, localhost-only):
 
 Set each password from your shell env / `.env`, never commit real values.
 
+## Gate 3 notes (mongo-foundation)
+- **Password broker stays SQL** (`password_reset_tokens` on the default SQL connection).
+  Reset flow is cross-store by design: token row in SQL keyed by email, user doc in
+  Mongo looked up by the same email. No custom broker; verified by PasswordResetTest.
+- **Test isolation**: `RefreshDatabase` wraps only the default SQL connection, so
+  `Tests\TestCase::tearDown` wipes the mongo `users` collection after each test.
+  Compose Mongo must be up for the suite (`MONGO_DB=vietfeed_test` under phpunit).
+- **`*_user_id` columns are strings** (bookmarks/comments/boosts/unlocks/reports/sanctions
+  migrations): Mongo `_id`s don't fit BIGINT and the users FK is dropped (cascade →
+  app-level, later slice). `category_user` pivot SQL kept (unwritten); favorites read
+  from embedded `favorite_category_ids`. Dev MySQL needs `migrate:fresh` to pick up
+  the column changes.
+
 ## Known deviations (approved in review)
 
 1. **Cassandra has no CQL auth locally.** The stock `cassandra:5.0` image offers no

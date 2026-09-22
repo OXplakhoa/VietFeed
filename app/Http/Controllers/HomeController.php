@@ -41,9 +41,9 @@ class HomeController extends Controller
         /** @var User|null $user */
         $user = Auth::user();
 
-        // Small cards: personalized to user's favorite categories
+        // Small cards: personalized to user's favorite categories (embedded ids).
         $userCatIds = $user
-            ? $user->favoriteCategories()->where('categories.is_active', true)->pluck('categories.id')->toArray()
+            ? Category::where('is_active', true)->whereIn('id', $user->favorite_category_ids ?? [])->pluck('id')->toArray()
             : [];
 
         $heroArticles = (clone $heroBase)
@@ -185,8 +185,9 @@ class HomeController extends Controller
         /** @var User|null $user */
         $user = Auth::user();
 
-        if ($user && $user->favoriteCategories()->count() > 0) {
-            $catIds = $user->favoriteCategories()->where('categories.is_active', true)->pluck('categories.id');
+        // Gate 3: favorites are embedded ids (pivot retired); active-only filter stays SQL.
+        if ($user && ! empty($user->favorite_category_ids)) {
+            $catIds = Category::where('is_active', true)->whereIn('id', $user->favorite_category_ids)->pluck('id');
             $query->whereIn('category_id', $catIds);
         }
 

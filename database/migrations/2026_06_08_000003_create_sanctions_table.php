@@ -10,8 +10,9 @@ return new class extends Migration
     {
         Schema::create('sanctions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('admin_id')->constrained('users')->cascadeOnDelete();
+            // Gate 3: users live on Mongo (string _id) — no SQL FK, no cascade (app-level later).
+            $table->string('user_id')->index();
+            $table->string('admin_id')->index();
             $table->foreignId('report_id')->nullable()->constrained('reports')->nullOnDelete();
             $table->enum('type', ['warning', 'mute', 'temporary_ban', 'permanent_ban']);
             $table->text('reason');
