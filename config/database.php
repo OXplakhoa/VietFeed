@@ -37,7 +37,7 @@ return [
         // holds URI-reserved chars (@ : /). Test runs override MONGO_DB (phpunit.xml).
         'mongodb' => [
             'driver' => 'mongodb',
-            'dsn' => env('MONGO_DSN', 'mongodb://'.env('MONGO_ROOT_USER', 'vietfeed').':'.env('MONGO_ROOT_PASSWORD', 'vietfeed-mongo-dev').'@'.env('MONGO_HOST', '127.0.0.1').':'.env('MONGO_PORT', '27017')), // ponytail: one composed DSN instead of a builder class; per-part keys add nothing the driver reads
+            'dsn' => env('MONGO_DSN', 'mongodb://'.env('MONGO_ROOT_USER', 'vietfeed').':'.env('MONGO_ROOT_PASSWORD', 'vietfeed-mongo-dev').'@'.env('MONGO_HOST', '127.0.0.1').':'.env('MONGO_PORT', '27017')),
             'database' => env('MONGO_DB', 'vietfeed'),
         ],
 

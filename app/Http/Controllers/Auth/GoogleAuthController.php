@@ -46,10 +46,11 @@ class GoogleAuthController extends Controller
         // Gate 3: no SQL transaction/lock on Mongo. The unique indexes on
         // users.email + users.google_id are the race guard; on duplicate key
         // whoever won the race owns the identity — re-read and continue.
-        $user = User::query()
+        $findByIdentity = fn () => User::query()
             ->where('google_id', $googleUser->getId())
-            ->orWhere('email', $googleUser->getEmail())
-            ->first();
+            ->orWhere('email', $googleUser->getEmail());
+
+        $user = $findByIdentity()->first();
 
         if (! $user) {
             $wasRecentlyCreated = true;
@@ -69,10 +70,7 @@ class GoogleAuthController extends Controller
                     throw $e;
                 }
 
-                $user = User::query()
-                    ->where('google_id', $googleUser->getId())
-                    ->orWhere('email', $googleUser->getEmail())
-                    ->firstOrFail();
+                $user = $findByIdentity()->firstOrFail();
             }
         } else {
             $updates = [];
