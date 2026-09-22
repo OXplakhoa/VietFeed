@@ -7,6 +7,7 @@ use Cassandra\Connection\StreamNodeConfig;
 use Cassandra\Consistency;
 use Cassandra\Exception\ServerException;
 use Cassandra\Value\Uuid;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 // Gate 2 spike (GitHub #2): pure-PHP CQL via mroosz/php-cassandra against the
@@ -37,7 +38,7 @@ class CassandraSpikeTest extends TestCase
         $admin->query('CREATE TABLE IF NOT EXISTS '.self::KEYSPACE.'.story_timeline (story_id uuid, event_time timeuuid, kind text, payload text, PRIMARY KEY (story_id, event_time)) WITH CLUSTERING ORDER BY (event_time ASC)');
 
         $conn = $this->connection(self::KEYSPACE);
-        $storyIdStr = self::fakerUuid();
+        $storyIdStr = Str::uuid()->toString();
         $storyId = new Uuid($storyIdStr);
         $payload = 'spike-'.bin2hex(random_bytes(4));
         $conn->query(
@@ -64,7 +65,7 @@ class CassandraSpikeTest extends TestCase
     public function test_disconnect_and_reconnect_rereads_partition(): void
     {
         $conn = $this->connection(self::KEYSPACE);
-        $storyId = new Uuid(self::fakerUuid());
+        $storyId = new Uuid(Str::uuid()->toString());
         $conn->query(
             'INSERT INTO story_timeline (story_id, event_time, kind, payload) VALUES (?, now(), ?, ?)',
             [$storyId, 'created', 'reconnect-probe'],
@@ -79,15 +80,5 @@ class CassandraSpikeTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame('reconnect-probe', $rows[0]['payload']);
-    }
-
-    private function fakerUuid(): string
-    {
-        return sprintf(
-            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-            mt_rand(0, 0xFFFF), mt_rand(0, 0xFFFF), mt_rand(0, 0xFFFF),
-            mt_rand(0, 0x0FFF) | 0x4000, mt_rand(0, 0x3FFF) | 0x8000,
-            mt_rand(0, 0xFFFF), mt_rand(0, 0xFFFF), mt_rand(0, 0xFFFF),
-        );
     }
 }
