@@ -1,7 +1,7 @@
 # STATUS — infra-cassandra-spike
 
-- Branch: `infra/compose-health-1`
-- Base commit: `f384f89` (main, "Reorganize repo root docs")
+- Branch: `infra/cassandra-spike-2`
+- Base commit: `8d62f1c` (main, merge of PR #3)
 - Classification: Small–Medium (infra only, no prod feature risk; preserved user's
   uncommitted change to `database/seeders/SourceSeeder.php` — still uncommitted)
 - Control session: pi-control
@@ -13,8 +13,8 @@
 
 ## Tickets
 
-- T1 (compose + health + DBeaver): GitHub #1 — DONE, review PASS_WITH_NOTES (review commit e877e3a)
-- T2 (Cassandra spike): GitHub #2 — ready to start after T1 PR merges (blocked by #1)
+- T1 (compose + health + DBeaver): GitHub #1 — MERGED via PR #3 (d9670f4, 2026-09-22). Gate 1 DONE.
+- T2 (Cassandra spike): GitHub #2 — PASS, checkpoint 2026-09-22 (see Gate 2 result below)
 
 ## Files changed (T1, all new except noted)
 
@@ -68,7 +68,7 @@
 
 - Gate 1 (reproducible infra): T1 REVIEWABLE — all #1 boxes green except MySQL-path
   full PASS (environment-blocked, D4; code paths proven on sqlite)
-- Gate 2 (Cassandra spike or documented fallback): OPEN (T2, not started)
+- Gate 2 (Cassandra spike or documented fallback): CLOSED — direct PHP client PASS (no adapter needed)
 
 ### #1 acceptance detail (2026-09-22 session)
 
@@ -97,6 +97,27 @@
   - vietfeed-cassandra CPU 4.17%  | MEM 1.301GiB / 1.5GiB (86.77%) — under ceiling, watch in T2
   - vietfeed-neo4j     CPU 1.25%  | MEM 535.3MiB / 1GiB   (52.27%)
 - Docker Desktop MemTotal here: ~3.9GiB (not 6GB); ceilings total ~3.5GiB — fits, no pressure observed
+
+## Gate 2 result (T2 spike, 2026-09-22) — PASS, direct PHP client
+
+- Decision: direct pure-PHP client, `mroosz/php-cassandra` pinned `^1.2` (require-dev,
+  protocol v5 vs Cassandra 5.0, no C++ ext). No Java/.NET adapter needed.
+- Files: `tests/Integration/CassandraSpikeTest.php` (container-backed, outside phpunit
+  suites so `composer run test` is unaffected) + `composer.json`/`composer.lock` (+1 dev dep).
+- Table: `vietfeed_spike.story_timeline (story_id uuid, event_time timeuuid, kind text,
+  payload text, PRIMARY KEY (story_id, event_time))` — query-first timeline shape.
+- `vendor/bin/phpunit tests/Integration/CassandraSpikeTest.php` → 3/3 PASS, 6 assertions,
+  ~0.2–3s: connect → create keyspace/table → prepared append → partition read (payload +
+  uuid round-trip) → invalid CQL raises typed `ServerException` → disconnect + fresh
+  connection re-reads partition. Ran 3x green. Pint clean.
+- Spike notes: driver returns uuid columns as canonical strings (not Uuid objects);
+  `USE <ks>` unsupported → second Connection with keyspace; no CQL auth locally (D1).
+- N1 watch: cassandra 1.43–1.45GiB/1.5GiB (95–96%) before AND after spike writes
+  (memtable 6 cells / 639 bytes — spike adds ~nothing). No GC-flakiness, no OOM, no bump
+  applied (pre-approved heap 768M→1G is conditional on flakiness; raising heap would push
+  RSS nearer the ceiling). Headroom stays the Gate 6 watch-item.
+- Post-spike `docker stats`: redis 10MiB/256MiB, mongo 123MiB/768MiB, neo4j 543MiB/1GiB,
+  cassandra 1.445GiB/1.5GiB — none at limit, machine responsive.
 
 ## Review (pi-review, 2026-09-22) — verdict PASS_WITH_NOTES
 
