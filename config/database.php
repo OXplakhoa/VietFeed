@@ -32,6 +32,15 @@ return [
 
     'connections' => [
 
+        // MongoDB via mongodb/laravel-mongodb (Gate 3). Env-only, no secrets.
+        // DSN is built from MONGO_* parts; set MONGO_DSN outright if the password
+        // holds URI-reserved chars (@ : /). Test runs override MONGO_DB (phpunit.xml).
+        'mongodb' => [
+            'driver' => 'mongodb',
+            'dsn' => env('MONGO_DSN', 'mongodb://'.env('MONGO_ROOT_USER', 'vietfeed').':'.env('MONGO_ROOT_PASSWORD', 'vietfeed-mongo-dev').'@'.env('MONGO_HOST', '127.0.0.1').':'.env('MONGO_PORT', '27017')), // ponytail: one composed DSN instead of a builder class; per-part keys add nothing the driver reads
+            'database' => env('MONGO_DB', 'vietfeed'),
+        ],
+
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DB_URL'),
