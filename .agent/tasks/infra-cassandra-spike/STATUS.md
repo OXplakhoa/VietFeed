@@ -13,8 +13,8 @@
 
 ## Tickets
 
-- T1 (compose + health + DBeaver): GitHub #1 — implemented, reviewable checkpoint 2026-09-22 (commit TBD by implement session)
-- T2 (Cassandra spike): GitHub #2 — not started — blocked by #1
+- T1 (compose + health + DBeaver): GitHub #1 — DONE, review PASS_WITH_NOTES (review commit e877e3a)
+- T2 (Cassandra spike): GitHub #2 — ready to start after T1 PR merges (blocked by #1)
 
 ## Files changed (T1, all new except noted)
 
@@ -97,3 +97,13 @@
   - vietfeed-cassandra CPU 4.17%  | MEM 1.301GiB / 1.5GiB (86.77%) — under ceiling, watch in T2
   - vietfeed-neo4j     CPU 1.25%  | MEM 535.3MiB / 1GiB   (52.27%)
 - Docker Desktop MemTotal here: ~3.9GiB (not 6GB); ceilings total ~3.5GiB — fits, no pressure observed
+
+## Review (pi-review, 2026-09-22) — verdict PASS_WITH_NOTES
+
+- Full report: .agent/tasks/infra-cassandra-spike/REVIEW.md (re-ran read-only, all green, secret-clean).
+- Standards PASS (Pint, bash -n, zero prod diff). D1 documented x3 + loopback verified live.
+- Probe 1: fast homepage was sqlite-backed (EXTRA_ENV fallback) — MySQL path untouched but full-path
+  unbroken only transitively proven. Probe 2: cassandra idle 1.309GiB/1.5GiB (87%) — ~190MiB headroom for T2.
+- Open notes: N1 (medium) cassandra headroom → watch in T2, pre-approved heap bump;
+  N2 (medium) re-run smoke on a MySQL host for full PASS (follow-up, not T2 blocker);
+  N3 (low) .env.example REDIS_PASSWORD=null reads literally → one-line fix now on T1 branch before PR.
