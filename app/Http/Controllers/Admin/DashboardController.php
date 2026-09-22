@@ -35,19 +35,15 @@ class DashboardController extends Controller
             )->count(),
         ];
 
-        // Articles per day — last 30 days
-        $articlesPerDayRaw = Article::selectRaw('DATE(created_at) as date, COUNT(*) as count')
-            ->where('created_at', '>=', now()->subDays(29)->startOfDay())
-            ->groupBy('date')
-            ->orderBy('date')
-            ->pluck('count', 'date');
+        // Articles per day — last 30 days (Gate 3 spillover: DATE() is SQL-only;
+        // range query on Mongo + bucket in PHP yields identical numbers).
+        $dayStart = now()->subDays(29)->startOfDay();
+        $articlesPerDayRaw = Article::where('created_at', '>=', $dayStart)->pluck('created_at')
+            ->map(fn ($date) => $date->format('Y-m-d'))->countBy();
 
-        // Users per day — last 30 days
-        $usersPerDayRaw = User::selectRaw('DATE(created_at) as date, COUNT(*) as count')
-            ->where('created_at', '>=', now()->subDays(29)->startOfDay())
-            ->groupBy('date')
-            ->orderBy('date')
-            ->pluck('count', 'date');
+        // Users per day — last 30 days (same spillover).
+        $usersPerDayRaw = User::where('created_at', '>=', $dayStart)->pluck('created_at')
+            ->map(fn ($date) => $date->format('Y-m-d'))->countBy();
 
         $chartDates = [];
         $chartArticles = [];
@@ -60,15 +56,30 @@ class DashboardController extends Controller
             $chartUsers[] = (int) ($usersPerDayRaw->get($date, 0));
         }
 
-        $perCategory = Category::withCount('articles')->get();
-        $perSource = Source::withCount('articles')->orderByDesc('articles_count')->take(10)->get();
-        $mostBookmarked = Article::withCount('bookmarks')->orderByDesc('bookmarks_count')->take(10)->get();
-        $mostBoosted = Article::withCount('boosts')
-            ->where('published_at', '>=', now()->subHours(72))
-            ->orderByDesc('boosts_count')
-            ->latest('published_at')
-            ->take(10)
-            ->get();
+        // Gate 3: articles live on Mongo — cross-store withCount can't join, so count
+        // on each store natively and stitch. Same view attributes, identical numbers.
+        $articlesByCategory = collect(iterator_to_array(Article::raw(fn ($collection) => $collection->aggregate([
+            ['$group' => ['_id' => '$category_id', 'n' => ['$sum' => 1]]],
+        ]))))->pluck('n', 'id');
+        $perCategory = Category::get()->each(fn ($category) => $category->articles_count = (int) ($articlesByCategory[$category->id] ?? 0));
+        $articlesBySource = collect(iterator_to_array(Article::raw(fn ($collection) => $collection->aggregate([
+            ['$group' => ['_id' => '$source_id', 'n' => ['$sum' => 1]]],
+        ]))))->pluck('n', 'id');
+        $perSource = Source::get()
+            ->each(fn ($source) => $source->articles_count = (int) ($articlesBySource[$source->id] ?? 0))
+            ->sortByDesc('articles_count')->take(10)->values();
+        $bookmarksByArticle = Bookmark::select('article_id')->selectRaw('COUNT(*) as n')
+            ->groupBy('article_id')->orderByDesc('n')->take(10)->pluck('n', 'article_id');
+        $mostBookmarked = Article::whereIn('_id', $bookmarksByArticle->keys())->get()
+            ->each(fn ($article) => $article->bookmarks_count = (int) $bookmarksByArticle[$article->getKey()])
+            ->sortByDesc('bookmarks_count')->values();
+        // pluck('id'): the package maps storage _id to the id attribute on read.
+        $recentIds = Article::where('published_at', '>=', now()->subHours(72))->pluck('id');
+        $boostsByArticle = Boost::select('article_id')->selectRaw('COUNT(*) as n')
+            ->whereIn('article_id', $recentIds)->groupBy('article_id')->orderByDesc('n')->take(10)->pluck('n', 'article_id');
+        $mostBoosted = Article::whereIn('_id', $boostsByArticle->keys())->get()
+            ->each(fn ($article) => $article->boosts_count = (int) $boostsByArticle[$article->getKey()])
+            ->sortBy([['boosts_count', 'desc'], ['published_at', 'desc']])->values();
 
         $recentArticles = Article::with('source')->latest()->take(8)->get();
         $recentComments = Comment::with(['user', 'article'])->latest()->take(6)->get();

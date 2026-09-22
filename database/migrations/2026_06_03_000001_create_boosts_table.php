@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             // Gate 3: users live on Mongo (string _id) — no SQL FK, no cascade (app-level later).
             $table->string('user_id')->index();
-            $table->foreignId('article_id')->constrained()->cascadeOnDelete();
+            $table->string('article_id')->index();
             $table->timestamps();
 
             $table->unique(['user_id', 'article_id']);

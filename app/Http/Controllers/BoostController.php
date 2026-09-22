@@ -9,11 +9,11 @@ class BoostController extends Controller
 {
     public function toggle(Request $request)
     {
-        $request->validate(['article_id' => 'required|exists:articles,id']);
+        $request->validate(['article_id' => 'required|string|exists:mongodb.articles,_id']);
 
         $existing = $request->user()
             ->boosts()
-            ->where('article_id', $request->integer('article_id'))
+            ->where('article_id', $request->string('article_id')->toString())
             ->first();
 
         if ($existing) {
@@ -21,12 +21,12 @@ class BoostController extends Controller
             $action = 'removed';
         } else {
             $request->user()->boosts()->create([
-                'article_id' => $request->integer('article_id'),
+                'article_id' => $request->string('article_id')->toString(),
             ]);
             $action = 'added';
         }
 
-        $count = Boost::where('article_id', $request->integer('article_id'))->count();
+        $count = Boost::where('article_id', $request->string('article_id')->toString())->count();
 
         return response()->json(['action' => $action, 'count' => $count]);
     }

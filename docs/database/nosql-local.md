@@ -72,6 +72,12 @@ Set each password from your shell env / `.env`, never commit real values.
   app-level, later slice). `category_user` pivot SQL kept (unwritten); favorites read
   from embedded `favorite_category_ids`. Dev MySQL needs `migrate:fresh` to pick up
   the column changes.
+- **`*_article_id` columns are strings** (bookmarks/comments/boosts/unlocks migrations):
+  Article `_id`s are UUIDv7 strings; articles-FKs dropped (same cascade note).
+- **Boot proof (T3): slice runs on Mongo users/articles/stories; still SQL:** sessions +
+  password_reset_tokens (drivers/broker untouched per non-goals), categories, sources,
+  bookmarks, comments, boosts, article_unlocks, reports, sanctions, subscriptions,
+  category_user, cache/jobs tables. Dashboard + article/show served green in-test.
 
 ## Known deviations (approved in review)
 
