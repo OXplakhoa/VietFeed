@@ -1,0 +1,128 @@
+# VietFeed local NoSQL dev stack (Gate 1 / GitHub #1).
+#
+# Single-node MongoDB + Cassandra + Neo4j + Redis for M1/8GB.
+# MySQL intentionally NOT in this file: it stays on the host (session/cache/queue
+# are `database` driver, so the app still boots from host MySQL).
+#
+# All services bind 127.0.0.1 only, use default ports, and read throwaway
+# local-only creds from the environment with dev-default fallbacks:
+#   MONGO_* / CASSANDRA_* / NEO4J_* / REDIS_*  (see .env.example, never commit real creds)
+#
+# Resource caps are CEILINGS, not reservations (see STATUS.md Decisions).
+# Total ceilings: 1.5g + 1g + 768m + 256m ~= 3.5 GB (Docker Desktop limit ~4-6 GB).
+#
+# Cassandra auth deviation (documented, T1): the stock cassandra image has no
+# env-switch for PasswordAuthenticator, so CQL runs WITHOUT auth, bound to
+# loopback only. CASSANDRA_* env names are reserved for the T2 spike config.
+# Do not expose 9042 beyond 127.0.0.1.
+#
+# Usage:
+#   docker compose config                       # validate
+#   docker compose up -d && ./scripts/nosql-health.sh --wait 120
+#   docker compose down                         # stop (keeps volumes)
+#   docker compose down -v && docker compose up -d && ./scripts/nosql-health.sh --wait 120   # reset
+
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: vietfeed-mongo
+    ports:
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-vietfeed}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-vietfeed-mongo-dev}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-vietfeed}
+    volumes:
+      - mongo-data:/data/db
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --eval \"db.adminCommand('connectionStatus').authInfo.authenticatedUsers.length\" | grep -q 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+    restart: "no"
+
+  cassandra:
+    image: cassandra:5.0
+    container_name: vietfeed-cassandra
+    ports:
+      - "127.0.0.1:${CASSANDRA_PORT:-9042}:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: ${CASSANDRA_CLUSTER_NAME:-vietfeed}
+      MAX_HEAP_SIZE: 768M
+      HEAP_NEWSIZE: 128M
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1.5g
+    # cqlsh is slow (JVM+python): generous start_period/timeout. No auth (see header).
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES'"]
+      interval: 15s
+      timeout: 30s
+      retries: 12
+      start_period: 120s
+    restart: "no"
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: vietfeed-neo4j
+    ports:
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"
+      - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-vietfeed-neo4j-dev}
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u \"${NEO4J_USER:-neo4j}\" -p \"${NEO4J_PASSWORD:-vietfeed-neo4j-dev}\" 'RETURN 1'"]
+      interval: 10s
+      timeout: 15s
+      retries: 12
+      start_period: 60s
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    container_name: vietfeed-redis
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-vietfeed-redis-dev}", "--maxmemory", "200mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"${REDIS_PASSWORD:-vietfeed-redis-dev}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: "no"
+
+volumes:
+  mongo-data:
+  cassandra-data:
+  neo4j-data:
+  neo4j-logs:
+  redis-data:
