@@ -71,3 +71,8 @@ Set each password from your shell env / `.env`, never commit real values.
 3. **Host MySQL**: `scripts/smoke-mysql-path.sh` uses the configured DB when reachable;
    with host MySQL down it verifies the same code paths on temp sqlite and labels the
    mysql leg SKIP. Re-run on a host with MySQL for the full-path PASS.
+4. **ext-mongodb ^2.4 required for CI/prod** (`mongodb/laravel-mongodb ^5.7` stack).
+   Exception: this host's Herd PHP pins ext-mongodb 2.3.3 — install with
+   `composer require "mongodb/laravel-mongodb:^5.7" --ignore-platform-req=ext-mongodb`
+   (all exercised paths runtime-validated). Do NOT pin `ext-mongodb` in composer.json
+   until the dev fleet is off 2.3.3. Revisit if any path hits a 2.4-only API.
