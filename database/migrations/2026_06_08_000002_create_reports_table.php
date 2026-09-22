@@ -10,9 +10,10 @@ return new class extends Migration
     {
         Schema::create('reports', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('reporter_id')->constrained('users')->cascadeOnDelete();
+            // Gate 3: users live on Mongo (string _id) — no SQL FK, no cascade (app-level later).
+            $table->string('reporter_id')->index();
             $table->foreignId('comment_id')->constrained('comments')->cascadeOnDelete();
-            $table->foreignId('admin_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('admin_id')->nullable()->index();
             $table->enum('reason', ['hate_speech', 'harassment', 'spam', 'misinformation', 'sexual_content', 'other']);
             $table->text('description')->nullable();
             $table->enum('status', ['pending', 'reviewed', 'actioned', 'dismissed', 'false_report'])->default('pending');

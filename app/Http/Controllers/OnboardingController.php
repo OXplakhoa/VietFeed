@@ -14,7 +14,8 @@ class OnboardingController extends Controller
         $categories = Category::active()->get();
         /** @var User $user */
         $user = Auth::user();
-        $selected = $user->favoriteCategories()->pluck('categories.id')->toArray();
+        // Gate 3: favorites are embedded on the user doc (category_user pivot retired).
+        $selected = $user->favorite_category_ids ?? [];
 
         return view('onboarding.interests', compact('categories', 'selected'));
     }
@@ -28,7 +29,7 @@ class OnboardingController extends Controller
 
         /** @var User $user */
         $user = Auth::user();
-        $user->favoriteCategories()->sync($request->categories ?? []);
+        $user->update(['favorite_category_ids' => array_values($request->categories ?? [])]);
 
         return redirect()->route('home')->with('success', 'Đã lưu sở thích của bạn!');
     }

@@ -5,14 +5,22 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Cashier\Billable;
+use MongoDB\Laravel\Auth\User as Authenticatable;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use Billable, HasFactory, Notifiable;
+
+    // Gate 3: canonical store is Mongo (T2). SQL users table kept until all refs migrate.
+    protected $connection = 'mongodb';
+
+    protected $primaryKey = '_id';
+
+    // Replaces the SQL column default ('user') — Mongo has no schema defaults.
+    protected $attributes = ['role' => 'user'];
 
     protected $fillable = [
         'name',
@@ -22,6 +30,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'avatar',
         'google_id',
         'email_verified_at',
+        'favorite_category_ids',
         'stripe_id',
         'pm_type',
         'pm_last_four',
@@ -37,6 +46,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'favorite_category_ids' => 'array',
             'password' => 'hashed',
             'trial_ends_at' => 'datetime',
         ];
@@ -68,6 +78,15 @@ class User extends Authenticatable implements MustVerifyEmail
             : 'https://dashboard.stripe.com/customers/';
 
         return $prefix.$this->stripe_id;
+    }
+
+    // Gate 3: related SQL models must stay on the default SQL connection.
+    // Stock newRelatedInstance() inherits the parent (mongo) connection, which
+    // silently repoints every hasMany/belongsToMany query at Mongo (PDO-less
+    // SQL grammar → fatal). SQL→mongo belongsTo is unaffected (User pins its own).
+    protected function newRelatedInstance($class)
+    {
+        return new $class;
     }
 
     public function bookmarks()

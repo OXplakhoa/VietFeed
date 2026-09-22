@@ -11,7 +11,8 @@ return new class extends Migration
         Schema::create('article_unlocks', function (Blueprint $table) {
             $table->id();
             $table->foreignId('article_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('user_id')->nullable()->constrained()->cascadeOnDelete();
+            // Gate 3: users live on Mongo (string _id) — no SQL FK, no cascade (app-level later).
+            $table->string('user_id')->nullable()->index();
             $table->string('session_id', 200)->nullable()->index();
             $table->timestamp('unlocked_at')->index();
             $table->timestamps();

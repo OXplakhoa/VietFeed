@@ -53,7 +53,7 @@ class ProfileController extends Controller
             'categories.*' => 'exists:categories,id,is_active,1',
         ]);
 
-        $request->user()->favoriteCategories()->sync($request->categories ?? []);
+        $request->user()->update(['favorite_category_ids' => array_values($request->categories ?? [])]);
 
         return back()->with('status', 'preferences-updated');
     }

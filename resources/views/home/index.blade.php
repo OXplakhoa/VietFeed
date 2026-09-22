@@ -76,7 +76,7 @@
                 <div class="section-header">
                     <h2>
                         @auth
-                            @if(auth()->user()->favoriteCategories()->count() > 0)
+                            @if(count(auth()->user()->favorite_category_ids ?? []) > 0)
                                 Dành cho bạn
                             @else
                                 Tin mới nhất
@@ -86,7 +86,7 @@
                         @endauth
                     </h2>
                     @auth
-                    @if(auth()->user()->favoriteCategories()->count() === 0)
+                    @if(count(auth()->user()->favorite_category_ids ?? []) === 0)
                     <a href="{{ route('onboarding.interests') }}"
                        style="font-size:.8rem;color:var(--accent);text-decoration:none;margin-left:auto">
                         <i class="bi bi-sliders me-1"></i>Tuỳ chỉnh feed

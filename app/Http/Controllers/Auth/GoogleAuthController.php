@@ -7,10 +7,10 @@ use App\Models\User;
 use App\Services\ReadingPassService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\GoogleProvider;
+use MongoDB\Driver\Exception\BulkWriteException as MongoBulkWriteException;
 use Throwable;
 
 class GoogleAuthController extends Controller
@@ -43,17 +43,20 @@ class GoogleAuthController extends Controller
 
         $wasRecentlyCreated = false;
 
-        $user = DB::transaction(function () use ($googleUser, &$wasRecentlyCreated) {
-            $user = User::query()
-                ->where('google_id', $googleUser->getId())
-                ->orWhere('email', $googleUser->getEmail())
-                ->lockForUpdate()
-                ->first();
+        // Gate 3: no SQL transaction/lock on Mongo. The unique indexes on
+        // users.email + users.google_id are the race guard; on duplicate key
+        // whoever won the race owns the identity — re-read and continue.
+        $findByIdentity = fn () => User::query()
+            ->where('google_id', $googleUser->getId())
+            ->orWhere('email', $googleUser->getEmail());
 
-            if (! $user) {
-                $wasRecentlyCreated = true;
+        $user = $findByIdentity()->first();
 
-                return User::create([
+        if (! $user) {
+            $wasRecentlyCreated = true;
+
+            try {
+                $user = User::create([
                     'name' => $googleUser->getName() ?: Str::before($googleUser->getEmail(), '@'),
                     'email' => $googleUser->getEmail(),
                     'password' => Str::random(40),
@@ -62,8 +65,14 @@ class GoogleAuthController extends Controller
                     'google_id' => $googleUser->getId(),
                     'email_verified_at' => now(),
                 ]);
-            }
+            } catch (MongoBulkWriteException $e) {
+                if ($e->getCode() !== 11000) {
+                    throw $e;
+                }
 
+                $user = $findByIdentity()->firstOrFail();
+            }
+        } else {
             $updates = [];
 
             if (! $user->google_id) {
@@ -86,8 +95,8 @@ class GoogleAuthController extends Controller
                 $user->forceFill($updates)->save();
             }
 
-            return $user->fresh();
-        });
+            $user = $user->fresh();
+        }
 
         Auth::login($user, remember: true);
         request()->session()->regenerate();

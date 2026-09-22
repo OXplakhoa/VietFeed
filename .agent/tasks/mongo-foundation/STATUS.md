@@ -1,7 +1,7 @@
 # STATUS — mongo-foundation
 
-- Branch: `mongo/package-5`
-- Base commit: `8ccb9c6` (main, merge of PR #4)
+- Branch: `mongo/auth-6`
+- Base commit: `2a29c39` (main, merge of PR #8)
 - Classification: Medium (touches auth + prod model paths; no billing/API/session-driver changes)
 - Control session: pi-control
 - Grill: SKIPPED by decision (spec + Gate 3 clear; frontier budget reserved)
@@ -14,7 +14,9 @@
 
 ## Tickets
 
-- T1 (package + config + indexes + test wiring): GitHub #5 — PASS, checkpoint 2026-09-22 (see T1 result below)
+- T1 (package + config + indexes + test wiring): GitHub #5 — MERGED via PR #8 (08a834b, 2026-09-22). Gate 3.1 DONE.
+- T2 (full auth surface on Mongo): GitHub #6 — PASS, checkpoint 2026-09-22 (see T2 result below)
+- T3 (Article/Story CRUD + UUIDv7 + Dashboard pilot): GitHub #7 — UNBLOCKED, parallelizable with T2
 - T2 (full auth surface on Mongo): GitHub #6 — not started — blocked by #5
 - T3 (Article/Story CRUD + UUIDv7 + Dashboard pilot): GitHub #7 — not started — blocked by #5, parallelizable with #6
 
@@ -40,7 +42,46 @@
 - Full Breeze register-via-HTTP on mongo needs T2's prod model move — T1 proves the
   login half (attempt + authenticated + doc in mongo) through the real provider stack.
 
+## Files changed (T2)
+
+- `app/Models/User.php` — mongo document (package Auth base, `mongodb` conn, `_id` key,
+  role default, `favorite_category_ids` fillable/cast, `newRelatedInstance` SQL pin)
+- `app/Http/Controllers/Auth/GoogleAuthController.php` — upsert/retry, no transaction/lock
+- `app/Http/Controllers/Auth/RegisteredUserController.php` — `unique:mongodb.users`
+- `app/Http/Requests/ProfileUpdateRequest.php` — `Rule::unique('mongodb.users')->ignore(key, '_id')`
+- `app/Http/Controllers/Admin/UserController.php` — `unique:mongodb.users,…,​_id`
+- `app/Http/Controllers/OnboardingController.php` — embedded ids read/write
+- `app/Http/Controllers/ProfileController.php` — preferences write embedded (spillover, 1 line)
+- `app/Http/Controllers/HomeController.php` + `resources/views/home/index.blade.php` —
+  favorites read from embedded ids (spillover; Home/Profile are not T3 files)
+- `database/migrations/2026_09_22_000001_create_mongodb_user_indexes.php` — durable unique indexes
+- 6 migrations: `*_user_id`/`reporter_id`/`admin_id` → string+index, users-FKs dropped
+  (category_user pivot + sessions table kept: Gate 5 / later slice)
+- `tests/TestCase.php` — mongo `users` wipe per test (RefreshDatabase is SQL-only)
+- `tests/Feature/Auth/GoogleAuthenticationTest.php` — assertDatabaseHas on `mongodb`
+- `tests/Feature/OnboardingInterestsTest.php` — new: interests round-trip
+- `docs/database/nosql-local.md` — Gate 3 notes (SQL broker, isolation, string ids)
+
+## Decisions (T2 session)
+
+- Cross-store relations: stock `newRelatedInstance` inherits parent mongo conn (root cause
+  of all middleware 500s) → pinned on User; single-point fix for every hasMany path.
+- Race retry: `catch (BulkWriteException 11000)` → re-read winner. No deterministic
+  single-process race test exists (find ⊇ unique fields ⇒ only true concurrency hits it);
+  enforcement covered by 11000 test; behavior by new/existing-user characterization tests.
+- `unique:Model::class` resolves against the DEFAULT (SQL) connection, not the model's —
+  all three validator sites now name `mongodb.users` explicitly (+ `_id` ignore key).
+- Spillover (flagged, not T3): Home/Profile favorites reads+writes follow the embed so the
+  retired pivot can't split-brain; SQL↔SQL FKs (article/comment/pivot) untouched.
+
 ## Decisions
+
+## Review T1 (pi-review, 2026-09-22) — verdict PASS_WITH_NOTES
+
+- REVIEW.md T1 section (secret-clean). Standards PASS, all #5 criteria green on re-run.
+- N1 (doc fix, NOT manifest): ext-mongodb ^2.4 requirement lives only in STATUS prose;
+  pinning ext in manifest would brick the Herd-pinned host. Fix = document requirement
+  in durable doc (not composer.json). No other notes.
 
 - Grill skipped (2026-09-22): Gate 3 checklist is executable as-is.
 - Session/cache/queue drivers stay untouched (Gate 5 owns that move).
@@ -54,12 +95,23 @@
 ## Acceptance criteria status
 
 - Gate 3 bullet 1 (package + config): T1 PASS — see T1 result below
-- Gate 3 bullet 2 (register/login on Mongo): OPEN (T2; login half proven on double)
+- Gate 3 bullet 2 (register/login on Mongo): T2 PASS — see T2 result below
 - Gate 3 bullet 3 (CRUD + UUIDv7): OPEN
 - Gate 3 bullet 4 (one join replacement): OPEN
 - Gate 3 bullet 5 (boot without SQLite/MySQL): OPEN
 
 ## Test results
+
+### T2 (2026-09-22, exact)
+
+- `php artisan test tests/Feature/Auth/RegistrationTest.php` → 2/2 (register creates mongo doc)
+- `php artisan test --filter=Auth` → 21/21 (7 files: register/login/logout/verify/reset/update/confirm/Google)
+- `php artisan test tests/Feature/Auth/GoogleAuthenticationTest.php` → 2/2 (new + existing user via rewritten callback)
+- `php artisan test tests/Feature/OnboardingInterestsTest.php` → 1/1 (embed + preselect round-trip)
+- `composer run test` → 45/45 PASS (44 + onboarding; Integration excluded by suite config)
+- `vendor/bin/pint --test` on all 19 touched PHP files → clean (other Pint hits are pre-existing debt)
+- Password reset e2e green with SQL broker (PasswordResetTest); billing untouched (ProSubscriptionTest green)
+- Role semantics: model `$attributes` default `user` replaces SQL default; `isAdmin/isUser` unchanged
 
 ### T1 (2026-09-22, exact)
 
