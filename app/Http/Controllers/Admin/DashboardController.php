@@ -11,6 +11,7 @@ use App\Models\Category;
 use App\Models\Comment;
 use App\Models\Source;
 use App\Models\User;
+use App\Support\MongoCounts;
 
 class DashboardController extends Controller
 {
@@ -58,13 +59,9 @@ class DashboardController extends Controller
 
         // Gate 3: articles live on Mongo — cross-store withCount can't join, so count
         // on each store natively and stitch. Same view attributes, identical numbers.
-        $articlesByCategory = collect(iterator_to_array(Article::raw(fn ($collection) => $collection->aggregate([
-            ['$group' => ['_id' => '$category_id', 'n' => ['$sum' => 1]]],
-        ]))))->pluck('n', 'id');
+        $articlesByCategory = MongoCounts::byField('category_id');
         $perCategory = Category::get()->each(fn ($category) => $category->articles_count = (int) ($articlesByCategory[$category->id] ?? 0));
-        $articlesBySource = collect(iterator_to_array(Article::raw(fn ($collection) => $collection->aggregate([
-            ['$group' => ['_id' => '$source_id', 'n' => ['$sum' => 1]]],
-        ]))))->pluck('n', 'id');
+        $articlesBySource = MongoCounts::byField('source_id');
         $perSource = Source::get()
             ->each(fn ($source) => $source->articles_count = (int) ($articlesBySource[$source->id] ?? 0))
             ->sortByDesc('articles_count')->take(10)->values();

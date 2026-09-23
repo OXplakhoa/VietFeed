@@ -78,6 +78,23 @@ class ArticleMongoTest extends TestCase
         $this->assertSame('draft', Story::find($story->getKey())->status);
     }
 
+    public function test_load_more_second_page(): void
+    {
+        $category = Category::create(['name' => 'LM', 'slug' => 'lm', 'is_active' => true]);
+        $source = Source::create(['name' => 'LM S', 'url' => 'https://lms', 'feed_url' => 'https://lms/rss', 'category_id' => $category->id, 'is_active' => true]);
+        foreach (range(1, 13) as $i) {
+            Article::create([
+                'title' => "LM $i", 'slug' => "lm-$i", 'original_url' => "https://ex.com/lm-$i",
+                'description' => 'd', 'published_at' => now(),
+                'category_id' => $category->id, 'source_id' => $source->id,
+            ]);
+        }
+
+        $response = $this->getJson(route('api.articles.load', ['page' => 2]));
+        $response->assertOk();
+        $response->assertJson(['hasMore' => false, 'nextPage' => 3]);
+    }
+
     public function test_dashboard_numbers(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);

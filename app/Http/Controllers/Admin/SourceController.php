@@ -6,11 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreSourceRequest;
 use App\Http\Requests\Admin\UpdateSourceRequest;
 use App\Jobs\FetchSourceFeedJob;
-use App\Models\Article;
 use App\Models\Category;
 use App\Models\Source;
 use App\Models\SourceFetchLog;
 use App\Services\Rss\FeedIngestionService;
+use App\Support\MongoCounts;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
@@ -27,9 +27,7 @@ class SourceController extends Controller
             $query->where('name', 'LIKE', "%{$request->q}%");
         }
 
-        $articlesBySource = collect(iterator_to_array(Article::raw(fn ($collection) => $collection->aggregate([
-            ['$group' => ['_id' => '$source_id', 'n' => ['$sum' => 1]]],
-        ]))))->pluck('n', 'id');
+        $articlesBySource = MongoCounts::byField('source_id');
 
         $sort = $request->input('sort', 'name');
         $dir = $request->input('dir', 'asc') === 'desc';
@@ -75,9 +73,7 @@ class SourceController extends Controller
 
         $sources = $query->get();
 
-        $articlesBySource = collect(iterator_to_array(Article::raw(fn ($collection) => $collection->aggregate([
-            ['$group' => ['_id' => '$source_id', 'n' => ['$sum' => 1]]],
-        ]))))->pluck('n', 'id');
+        $articlesBySource = MongoCounts::byField('source_id');
         $sources->each(fn ($source) => $source->articles_count = (int) ($articlesBySource[$source->id] ?? 0));
 
         if ($request->filled('status')) {
