@@ -76,4 +76,4 @@
 ## Checkpoint
 
 - Base: fcbb98f97d50b64f574f99cdd61aed41414d4f1d
-- Review SHA: (recorded on checkpoint commit below)
+- Review SHA: (this commit — checkpoint SHAs recorded)
