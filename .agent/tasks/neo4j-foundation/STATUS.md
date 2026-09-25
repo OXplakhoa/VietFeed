@@ -76,4 +76,14 @@
 ## Checkpoint
 
 - Base: fcbb98f97d50b64f574f99cdd61aed41414d4f1d
-- Review SHA: (this commit — checkpoint SHAs recorded)
+- Review SHA: 01cfab0a30a71bb1c580f69d04cd3cc62833475f (initial; fix loop below)
+- Fix SHA: (recorded on fix commit below)
+
+## Review swarm (2026-09-25, fixed point 01cfab0)
+
+- Standards: no P0/P1 (P2 cleanup dup, P3 x2). Spec: (2)(3)(4) PASS, P1 docs gap (F1).
+- Runtime owner 6/6 PASS: spike 4/4 x3, suite 51/51, pint file, 4/4 healthy, 4/4 READY.
+- Ponytail-review: notes only (P2 dup of standards P2, P3 single-query counts).
+- Fix loop x1: F1 rationale into spike header; F2 reconnect → try/finally + helper.
+  Re-verify final code: spike 3x (962/385/206ms), suite 51/51, pint file PASS.
+- Verdict: PASS_WITH_NOTES — see REVIEW.md (untracked, per slice convention).

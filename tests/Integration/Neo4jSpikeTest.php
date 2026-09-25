@@ -9,8 +9,12 @@ use Laudis\Neo4j\Exception\Neo4jException;
 use Symfony\Component\Uid\Uuid;
 use Tests\TestCase;
 
-// Gate 4 spike (GitHub #11): laudis/neo4j-php-client ^3.6 over Bolt against the
-// T1 single-node container. Container-backed; NOT in phpunit suites, run with:
+// Gate 4 spike (GitHub #11): laudis/neo4j-php-client ^3.6 (locked 3.6.1) over Bolt
+// against the T1 single-node container. Client why (3 lines): neo4j.com
+// community-drivers page recommends it as the PHP client over Bolt/HTTP; v3.x
+// supports Neo4j ^4.0/^5.0 + PHP ^8.1 (covers repo ^8.3/8.4); graphaware client
+// is ARCHIVED, laudis is its maintained, testkit-validated successor.
+// Container-backed; NOT in phpunit suites, run with:
 //   vendor/bin/phpunit tests/Integration/Neo4jSpikeTest.php
 // Requires neo4j healthy (`./scripts/nosql-health.sh`).
 class Neo4jSpikeTest extends TestCase
@@ -139,24 +143,20 @@ class Neo4jSpikeTest extends TestCase
     {
         $client = $this->client();
         $uuid = Uuid::v7()->toRfc4122();
+        $client->run('MERGE (a:Article {uuid: $uuid})', ['uuid' => $uuid]);
+        unset($client);
+
+        // Fresh client = fresh Bolt pool session; re-reads what the dropped one wrote.
+        $fresh = $this->client();
 
         try {
-            $client->run('MERGE (a:Article {uuid: $uuid})', ['uuid' => $uuid]);
-            unset($client);
-
-            // Fresh client = fresh Bolt pool session; re-reads what the dropped one wrote.
-            $fresh = $this->client();
             $count = $fresh->run(
                 'MATCH (a:Article) WHERE a.uuid = $uuid RETURN count(a) AS c', ['uuid' => $uuid]
             )->first()->get('c');
 
             $this->assertSame(1, $count);
+        } finally {
             $this->cleanup($fresh, [$uuid]);
-        } catch (\Throwable $e) {
-            $this->client()->run(
-                'MATCH (n) WHERE n.uuid = $uuid DETACH DELETE n', ['uuid' => $uuid]
-            );
-            throw $e;
         }
     }
 }
