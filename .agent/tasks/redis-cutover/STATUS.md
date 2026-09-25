@@ -14,8 +14,23 @@
 
 ## Tickets
 
-- T1 (client + sessions → Redis): GitHub #13 — goal-x TRIAL run pending (packet canonical; goal mirrors ticket; no code changed by this edit)
-- T2 (cache + queue → Redis + drain + pre-warm): GitHub #14 — blocked by #13
+- T1 (client + sessions → Redis): GitHub #13 — MERGED via PR #16 (2026-09-25). Gate 5.1 DONE. Control evidence: gh merge + issue CLOSED verified this session.
+
+## Goal-x trial verdict (2026-09-25) — KEEP for #14/#15
+
+- Auditor vs swarm: consistent (approved vs PASS_WITH_NOTES, notes carried). No conflict.
+- STOP rules held unassisted: main untouched at 0cdc2bf, no merge/push, no #14 commits, WIP safe.
+- Packet kept canonical (STATUS + REVIEW updated by goal session); goal archived to .pi/goals.
+- Empirical win: phpredis retained (ext-redis 6.3.0 host-verified) instead of predis switch.
+- Guardrails stay: packet canonical, STOP hard, auditor ON, supervised scope per ticket.
+- Evidence status of this edit: prose only. Test numbers below are goal-reported, NOT control-run.
+- Control evidence (commands actually run by control this session, results):
+  `git diff main...redis/sessions-13 --stat` → 5 files, +256/-4, all in T1 scope;
+  `git log main..redis/sessions-13` → 4 stacked commits (6ef55fb, 0a2dceb, 812b53d, b30de04);
+  `grep Verdict REVIEW.md` → PASS_WITH_NOTES; packet files present (REVIEW/STATUS/TASK/T1-T3).
+  Full test re-run explicitly NOT done by control (branch checkout would risk worktree);
+  assigned to the PR-open session on the branch itself.
+- T2 (cache + queue → Redis + drain + pre-warm): GitHub #14 — goal run in progress (branch `redis/cache-queue-14`)
 - T3 (streams + retry/DL + trending + flush/rebuild): GitHub #15 — blocked by #13
 
 ## Startup (2026-09-25 goal run)
@@ -100,3 +115,66 @@
 - Fix SHA: 0a2dceb303d5548e1cc4551c13481493ce6f3267 (F1 + final STATUS)
 - Verdict: PASS_WITH_NOTES (REVIEW.md; full swarm 3/3 landed: standards P3 fixed,
   spec no P0/P1, runtime owner 6/6 independent PASS with identical numbers)
+
+## T2 startup (2026-09-25 goal run)
+
+- Ponytail full adopted; enables: no slash tool in harness — offline guards apply.
+  Warden probe-flag honored (fwrite debug line removed same-turn); standing rule kept:
+  diagnosis via tinker/vendor reads, no scratch files.
+- `git checkout main` blocked by control's uncommitted STATUS annotations → stashed
+  single file, checked out main 6f0da52, branched, popped (annotations preserved).
+- Preserved WIP (prior STATUSes, CLAUDE.md, SourceSeeder.php) untouched, uncommitted.
+- `docker compose ps` — all 4 Up healthy (no start needed).
+
+## T2 drain procedure (exact commands) + execution
+
+- `php artisan tinker --execute="echo DB::table('jobs')->count();"` → dev MySQL
+  Connection refused (no server binary on host: no brew/opt mysql) — zero in-flight
+  jobs possible here; suite path unaffected (sqlite). MySQL-host procedure stands:
+  stop dispatch → `php artisan queue:work --stop-when-empty` → re-query count=0 → flip.
+- Executed here: dispatch test asserts `Queue::size()===1` post-dispatch and `===0`
+  post-worker (redis queue drains to zero) + `failed_jobs` count 0.
+
+## T2 files changed
+
+- `.env.example` — QUEUE_CONNECTION database→redis (+drain/failed_jobs comment),
+  CACHE_STORE database→redis (+pre-warm/.bak/RateLimiter comment). Placeholders only.
+- `tests/Feature/RedisQueueTest.php` (new, in-suite) — real dispatch (no Queue::fake)
+  + ticker pre-warm, DB15 isolation, flushdb tearDown.
+- `.agent/tasks/redis-cutover/STATUS.md` — this file.
+- Out-of-scope touched: NONE. TickerService/.bak untouched; schedule lines unchanged;
+  `composer dev` queue:listen line unchanged (driver-agnostic; flip flows via .env).
+  failed_jobs stays database-uuids (MySQL) — documented in .env.example.
+
+## T2 decisions
+
+- Queue redis uses `default` conn (DB 0, shared with sessions — matches scout blast
+  model); cache redis uses `cache` conn (DB 1). Tests isolate both on DB 15.
+- Real dispatch runs the worker IN-PROCESS (`queue:work --once`, redis) so Http::fake
+  applies — proves dispatch→run→side-effects without external network.
+- Ticker pre-warm = `TickerService::fetch()` once post-flip; `.bak` fallback untouched.
+  Note: `redis-cli KEYS 'ticker.*'` misses Laravel's key prefix — use `*ticker*`.
+- Root-caused test failures (app code correct throughout): SJC payload uses
+  `buy`/`sell` (not `value`); test-client sends no cookies (T1 syncCookies lesson
+  re-applied via real controller flow — dispatch path needs no jar).
+
+## T2 acceptance criteria status
+
+- Drain documented + executed: DONE (procedure above; redis queue 1→0 asserted).
+- Real dispatch green: DONE (FetchSourceFeedJob on redis worker, log success +
+  items_found 2, failed_jobs 0).
+- Ticker warm post-flip: DONE (usd/sjc/.bak keys on redis, `*ticker*` present).
+- Suite green; pint clean: DONE (57/57, pint file PASS).
+
+## T2 test results
+
+- `vendor/bin/phpunit tests/Feature/RedisQueueTest.php` — 2/2 pass, 11 assertions.
+- `php artisan test --filter=SourceHealthMonitor` — 3/3 pass, 9 assertions.
+- `composer run test` — 57/57 pass, 259 assertions (55 prior + 2 new).
+- `vendor/bin/pint --test tests/Feature/RedisQueueTest.php` — PASS.
+- `./scripts/nosql-health.sh` — 4/4 READY. No secrets (`.env` never read/written).
+
+## T2 checkpoint
+
+- Base: 6f0da5226e88b85f04f251ea9bb9d57c3577d2ab
+- Review SHA: (recorded on checkpoint commit below)
