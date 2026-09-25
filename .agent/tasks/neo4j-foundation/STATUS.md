@@ -77,7 +77,8 @@
 
 - Base: fcbb98f97d50b64f574f99cdd61aed41414d4f1d
 - Review SHA: 01cfab0a30a71bb1c580f69d04cd3cc62833475f (initial; fix loop below)
-- Fix SHA: (recorded on fix commit below)
+- Fix SHA: 12f022fa4b8fe7c9150ce1740da45be3a8c00556 (F1+F2, final code)
+- PR: https://github.com/OXplakhoa/VietFeed/pull/12 (OPEN, no merge per hard stops)
 
 ## Review swarm (2026-09-25, fixed point 01cfab0)
 
