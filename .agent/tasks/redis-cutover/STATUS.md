@@ -98,5 +98,5 @@
 - Base: 0cdc2bfc258c642be609079d7acf0b69f48ffe8d
 - Review SHA: 6ef55fbf2d24908735e1a58a323962ad38f0b8f5
 - Fix SHA: 0a2dceb303d5548e1cc4551c13481493ce6f3267 (F1 + final STATUS)
-- Verdict: PASS_WITH_NOTES (REVIEW.md; swarm 2/3 landed + supervisor exact evidence;
-  swarm runtime re-proof pending at stop, attaches as supplementary if it lands)
+- Verdict: PASS_WITH_NOTES (REVIEW.md; full swarm 3/3 landed: standards P3 fixed,
+  spec no P0/P1, runtime owner 6/6 independent PASS with identical numbers)
