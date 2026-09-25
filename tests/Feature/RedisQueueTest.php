@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
 
 // Gate 5.2 spike (GitHub #14): cache + queue on live Redis (CACHE_STORE=redis,
@@ -56,9 +57,9 @@ class RedisQueueTest extends TestCase
     protected function tearDown(): void
     {
         try {
-            DB::connection()->table('jobs')->delete();
-            app('redis')->connection('default')->flushdb();
-            app('redis')->connection('cache')->flushdb();
+            DB::table('jobs')->delete();
+            Redis::connection('default')->flushdb();
+            Redis::connection('cache')->flushdb();
         } finally {
             parent::tearDown();
         }
@@ -92,8 +93,9 @@ class RedisQueueTest extends TestCase
             '--once' => true,
         ]);
 
-        $this->assertSame('success', $log->fresh()->status);
-        $this->assertSame(2, (int) $log->fresh()->items_found);
+        $log->refresh();
+        $this->assertSame('success', $log->status);
+        $this->assertSame(2, (int) $log->items_found);
         $this->assertSame(0, Queue::size());
         $this->assertSame(0, DB::table('failed_jobs')->count());
     }
@@ -107,6 +109,6 @@ class RedisQueueTest extends TestCase
         $this->assertNotNull(Cache::get('ticker.usd.v1'));
         $this->assertNotNull(Cache::get('ticker.usd.v1.bak'));
         $this->assertNotNull(Cache::get('ticker.sjc.v1'));
-        $this->assertNotEmpty(app('redis')->connection('cache')->keys('*ticker.*'));
+        $this->assertNotEmpty(Redis::connection('cache')->keys('*ticker.*'));
     }
 }
