@@ -87,7 +87,8 @@
 
 - `vendor/bin/phpunit tests/Feature/RedisSessionTest.php` — 4/4 pass, 22 assertions.
 - `php artisan test --filter=Auth` — 21/21 pass, 57 assertions.
-- `composer run test` — 55/55 pass, 248 assertions (51 prior + 4 new).
+- `composer run test` — 55/55 pass, 248 assertions, green 3x consecutively at finalize.
+  W1: one transient error-code-2 (1 of 4 runs, uncaptured, no repro) — watch-item.
 - `vendor/bin/pint --test` on changed PHP files — PASS.
 - `./scripts/nosql-health.sh` — 4/4 READY (redis Up healthy).
 - No secrets committed (placeholders only; `.env` never read nor written).
@@ -95,4 +96,7 @@
 ## Checkpoint
 
 - Base: 0cdc2bfc258c642be609079d7acf0b69f48ffe8d
-- Review SHA: (recorded on checkpoint commit below)
+- Review SHA: 6ef55fbf2d24908735e1a58a323962ad38f0b8f5
+- Fix SHA: (recorded on fix commit below)
+- Verdict: PASS_WITH_NOTES (REVIEW.md; swarm 2/3 landed + supervisor exact evidence;
+  swarm runtime re-proof pending at stop, attaches as supplementary if it lands)

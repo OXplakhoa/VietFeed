@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 // Gate 5.1 spike (GitHub #13): sessions on live Redis (SESSION_DRIVER=redis).
@@ -41,7 +42,7 @@ class RedisSessionTest extends TestCase
         parent::tearDown();
     }
 
-    private function syncCookies($response): void
+    private function syncCookies(TestResponse $response): void
     {
         foreach ($response->headers->getCookies() as $cookie) {
             $this->withUnencryptedCookie($cookie->getName(), (string) $cookie->getValue());
