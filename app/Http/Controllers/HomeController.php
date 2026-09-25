@@ -3,7 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Article;
+use App\Models\Bookmark;
+use App\Models\Boost;
 use App\Models\Category;
+use App\Models\Comment;
+use App\Models\Source;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,30 +17,34 @@ class HomeController extends Controller
 {
     public function index()
     {
-        // Database-agnostic time decay: hours since published
-        $driver = config('database.default');
-        if ($driver === 'sqlite') {
-            $hoursOld = "((strftime('%s', 'now') - strftime('%s', articles.published_at)) / 3600.0)";
-        } else {
-            $hoursOld = 'TIMESTAMPDIFF(HOUR, articles.published_at, NOW())';
-        }
+        // Gate 3: articles live on Mongo — SQL score subqueries/joins can't run, so the
+        // same formula (bookmarks×5 + comments×2 + prestige×4 − age_hours×0.5) is scored
+        // in PHP over per-store counts. ponytail: full candidate scan; pre-aggregated
+        // counters when article volume demands it.
+        $activeSourceIds = Source::active()->pluck('id');
+        $activeCategoryIds = Category::active()->pluck('id');
 
-        // Inline subqueries for counts — withCount() aliases can't be referenced in SELECT list on MySQL
-        $bmCount = '(SELECT COUNT(*) FROM bookmarks WHERE bookmarks.article_id = articles.id)';
-        $cmCount = '(SELECT COUNT(*) FROM comments WHERE comments.article_id = articles.id)';
-        $scoreFormula = "({$bmCount} * 5) + ({$cmCount} * 2) + (sources.prestige * 4) - ({$hoursOld} * 0.5)";
+        $candidates = Article::with(['source', 'category'])
+            ->whereIn('source_id', $activeSourceIds)
+            ->whereIn('category_id', $activeCategoryIds)
+            ->whereNotNull('image_url')
+            ->get();
+        $bmCounts = Bookmark::select('article_id')->selectRaw('COUNT(*) as n')->groupBy('article_id')->pluck('n', 'article_id');
+        $cmCounts = Comment::select('article_id')->selectRaw('COUNT(*) as n')->groupBy('article_id')->pluck('n', 'article_id');
+        $now = now();
+        $ranked = $candidates->map(function ($article) use ($bmCounts, $cmCounts, $now) {
+            $hoursOld = max(0, ($now->timestamp - ($article->published_at?->timestamp ?? $now->timestamp)) / 3600);
+            $article->sensational_score = (($bmCounts[$article->getKey()] ?? 0) * 5)
+                + (($cmCounts[$article->getKey()] ?? 0) * 2)
+                + (($article->source->prestige ?? 3) * 4)
+                - ($hoursOld * 0.5);
 
-        $heroBase = Article::select('articles.*')
-            ->selectRaw($scoreFormula.' as sensational_score')
-            ->withCount('boosts')
-            ->join('sources', 'articles.source_id', '=', 'sources.id')
-            ->where('sources.is_active', true)
-            ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereNotNull('articles.image_url');
+            return $article;
+        })->sortByDesc('sensational_score')->values();
 
         // Featured: most sensational across ALL categories
-        $featured = (clone $heroBase)->orderByDesc('sensational_score')->first();
-        $featuredId = $featured ? $featured->id : null;
+        $featured = $ranked->first();
+        $featuredId = $featured?->getKey();
 
         /** @var User|null $user */
         $user = Auth::user();
@@ -46,12 +54,10 @@ class HomeController extends Controller
             ? Category::where('is_active', true)->whereIn('id', $user->favorite_category_ids ?? [])->pluck('id')->toArray()
             : [];
 
-        $heroArticles = (clone $heroBase)
-            ->when(! empty($userCatIds), fn ($q) => $q->whereIn('articles.category_id', $userCatIds))
-            ->when($featuredId, fn ($q) => $q->where('articles.id', '!=', $featuredId))
-            ->orderByDesc('sensational_score')
-            ->take(5)
-            ->get();
+        $heroArticles = $ranked
+            ->when(! empty($userCatIds), fn ($collection) => $collection->whereIn('category_id', $userCatIds))
+            ->reject(fn ($article) => $article->getKey() === $featuredId)
+            ->take(5)->values();
 
         // Collect hero article IDs to exclude from main feed
         $heroIds = collect();
@@ -69,9 +75,9 @@ class HomeController extends Controller
         $usedArticleIds = $breakingArticles->pluck('id')->all();
 
         $diverseBreaking = Article::with(['source', 'category'])
-            ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active())
-            ->whereNotIn('id', array_merge($heroArticles->pluck('id')->all(), $usedArticleIds))
+            ->whereIn('source_id', $activeSourceIds)
+            ->whereIn('category_id', $activeCategoryIds)
+            ->whereNotIn('_id', array_merge($heroArticles->map->getKey()->all(), $usedArticleIds))
             ->latest('published_at')
             ->take(40)
             ->get()
@@ -88,34 +94,33 @@ class HomeController extends Controller
 
         $breakingArticles = $breakingArticles->merge($diverseBreaking);
 
-        $communityBoosted = Article::with(['source', 'category'])
-            ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active())
-            ->withCount('boosts')
+        $boostCounts = Boost::select('article_id')->selectRaw('COUNT(*) as n')->groupBy('article_id')->pluck('n', 'article_id');
+        $withBoosts = fn ($articles) => $articles->each(fn ($article) => $article->boosts_count = (int) ($boostCounts[$article->getKey()] ?? 0));
+        $orderBoosts = fn ($articles) => $articles->sortBy([['boosts_count', 'desc'], ['published_at', 'desc']])->values();
+
+        $communityBoosted = $orderBoosts($withBoosts(Article::with(['source', 'category'])
+            ->whereIn('source_id', $activeSourceIds)
+            ->whereIn('category_id', $activeCategoryIds)
             ->where('published_at', '>=', now()->subHours(72))
-            ->orderByDesc('boosts_count')
-            ->latest('published_at')
-            ->take(6)
-            ->get();
+            ->get()))->take(6)->values();
 
         if ($communityBoosted->count() < 6) {
             $communityBoosted = $communityBoosted->concat(
-                Article::with(['source', 'category'])
-                    ->whereHas('category', fn ($qb) => $qb->active())
-                    ->whereHas('source', fn ($qb) => $qb->active())
-                    ->withCount('boosts')
-                    ->whereNotIn('id', $communityBoosted->pluck('id'))
+                $withBoosts(Article::with(['source', 'category'])
+                    ->whereIn('source_id', $activeSourceIds)
+                    ->whereIn('category_id', $activeCategoryIds)
+                    ->whereNotIn('_id', $communityBoosted->map->getKey()->all())
                     ->latest('published_at')
                     ->take(6 - $communityBoosted->count())
-                    ->get()
+                    ->get())
             );
         }
 
         if ($breakingArticles->count() < 5) {
             $fillers = Article::with(['source', 'category'])
-                ->whereHas('category', fn ($qb) => $qb->active())
-                ->whereHas('source', fn ($qb) => $qb->active())
-                ->whereNotIn('id', $breakingArticles->pluck('id')->merge($heroArticles->pluck('id'))->all())
+                ->whereIn('source_id', $activeSourceIds)
+                ->whereIn('category_id', $activeCategoryIds)
+                ->whereNotIn('_id', $breakingArticles->map->getKey()->merge($heroArticles->map->getKey())->all())
                 ->latest('published_at')
                 ->take(5 - $breakingArticles->count())
                 ->get();
@@ -123,38 +128,34 @@ class HomeController extends Controller
             $breakingArticles = $breakingArticles->merge($fillers);
         }
 
-        // Main feed
+        // Main feed (article-card falls back to live counts when unset).
         $query = Article::with(['source', 'category'])
-            ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active())
-            ->withCount(['bookmarks', 'boosts']);
+            ->whereIn('source_id', $activeSourceIds)
+            ->whereIn('category_id', $activeCategoryIds);
 
         if (! empty($userCatIds)) {
             $query->whereIn('category_id', $userCatIds);
         }
 
-        $articles = $query->whereNotIn('id', $heroIds)
+        $articles = $query->whereNotIn('_id', $heroIds)
             ->latest('published_at')
             ->paginate(12);
 
-        $trending = Article::withCount('boosts')
-            ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active())
+        $trending = $orderBoosts($withBoosts(Article::with(['source', 'category'])
+            ->whereIn('source_id', $activeSourceIds)
+            ->whereIn('category_id', $activeCategoryIds)
             ->where('published_at', '>=', now()->subHours(72))
-            ->orderByDesc('boosts_count')
-            ->latest('published_at')
-            ->take(5)
-            ->get();
+            ->get()))->take(5)->values();
 
         if ($trending->count() < 5) {
             $trending = $trending->concat(
-                Article::withCount('boosts')
-                    ->whereHas('category', fn ($qb) => $qb->active())
-                    ->whereHas('source', fn ($qb) => $qb->active())
-                    ->whereNotIn('id', $trending->pluck('id'))
+                $withBoosts(Article::with(['source', 'category'])
+                    ->whereIn('source_id', $activeSourceIds)
+                    ->whereIn('category_id', $activeCategoryIds)
+                    ->whereNotIn('_id', $trending->map->getKey()->all())
                     ->latest('published_at')
                     ->take(5 - $trending->count())
-                    ->get()
+                    ->get())
             );
         }
 
@@ -177,10 +178,11 @@ class HomeController extends Controller
     {
         $page = max(1, (int) $request->get('page', 2));
 
+        // Gate 3: withCount SQL subqueries can't join to Mongo; article-card falls
+        // back to live counts when unset.
         $query = Article::with(['source', 'category'])
             ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active())
-            ->withCount(['bookmarks', 'boosts']);
+            ->whereHas('source', fn ($qb) => $qb->active());
 
         /** @var User|null $user */
         $user = Auth::user();

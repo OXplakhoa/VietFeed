@@ -37,7 +37,7 @@ class BookmarkController extends Controller
             ], 403);
         }
 
-        $request->validate(['article_id' => 'required|exists:articles,id']);
+        $request->validate(['article_id' => 'required|string|exists:mongodb.articles,_id']);
 
         $existing = $user
             ->bookmarks()

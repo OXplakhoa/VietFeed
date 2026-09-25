@@ -7,12 +7,14 @@ use Illuminate\Support\Facades\DB;
 
 abstract class TestCase extends BaseTestCase
 {
-    // Gate 3: User docs live on Mongo (RefreshDatabase only wraps the default
-    // SQL connection), so wipe the users collection after each test for isolation.
+    // Gate 3: User/Article/Story docs live on Mongo (RefreshDatabase only wraps the
+    // default SQL connection), so wipe those collections after each test for isolation.
     // Compose Mongo must be up for the suite (documented prerequisite).
     protected function tearDown(): void
     {
-        DB::connection('mongodb')->table('users')->delete();
+        foreach (['users', 'articles', 'stories'] as $collection) {
+            DB::connection('mongodb')->table($collection)->delete();
+        }
 
         parent::tearDown();
     }

@@ -10,6 +10,7 @@ use App\Models\Category;
 use App\Models\Source;
 use App\Models\SourceFetchLog;
 use App\Services\Rss\FeedIngestionService;
+use App\Support\MongoCounts;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
@@ -18,20 +19,36 @@ class SourceController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Source::with('category')->withCount('articles');
+        // Gate 3: articles live on Mongo — withCount SQL subquery can't join; attach
+        // native counts and sort/paginate in PHP (identical numbers and order).
+        $query = Source::with('category');
 
         if ($request->filled('q')) {
             $query->where('name', 'LIKE', "%{$request->q}%");
         }
 
-        $sort = $request->input('sort', 'name');
-        $dir = $request->input('dir', 'asc') === 'desc' ? 'desc' : 'asc';
-        $allowedSorts = ['name', 'articles_count', 'last_fetched_at'];
-        if (in_array($sort, $allowedSorts, true)) {
-            $query->orderBy($sort, $dir);
-        }
+        $articlesBySource = MongoCounts::byField('source_id');
 
-        $sources = $query->paginate(20)->withQueryString();
+        $sort = $request->input('sort', 'name');
+        $dir = $request->input('dir', 'asc') === 'desc';
+        $sources = $query->get()
+            ->each(fn ($source) => $source->articles_count = (int) ($articlesBySource[$source->id] ?? 0))
+            ->sortBy(fn ($source) => match ($sort) {
+                'articles_count' => $source->articles_count,
+                'last_fetched_at' => optional($source->last_fetched_at)->timestamp ?? 0,
+                default => $source->name,
+            }, SORT_REGULAR, $dir)->values();
+
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $perPage = 20;
+        $sources = new LengthAwarePaginator(
+            $sources->forPage($page, $perPage),
+            $sources->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+        $sources->withQueryString();
 
         return view('admin.sources.index', compact('sources'));
     }
@@ -40,7 +57,7 @@ class SourceController extends Controller
     {
         $hasFetchLogsTable = Schema::hasTable('source_fetch_logs');
 
-        $query = Source::with('category')->withCount('articles');
+        $query = Source::with('category');
 
         if ($hasFetchLogsTable) {
             $query->with(['fetchLogs' => fn ($q) => $q->limit(5)]);
@@ -55,6 +72,9 @@ class SourceController extends Controller
         }
 
         $sources = $query->get();
+
+        $articlesBySource = MongoCounts::byField('source_id');
+        $sources->each(fn ($source) => $source->articles_count = (int) ($articlesBySource[$source->id] ?? 0));
 
         if ($request->filled('status')) {
             $sources = $sources->filter(fn (Source $source) => $source->health_status === $request->string('status')->toString())->values();

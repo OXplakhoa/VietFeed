@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Article;
+use App\Models\Bookmark;
+use App\Models\Boost;
 use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
@@ -56,12 +58,15 @@ class ArticleController extends Controller
 
     public function show(string $slug, ReadingPassService $readingPass)
     {
+        // Gate 3: articles live on Mongo — withCount SQL subqueries can't join;
+        // attach the same counts with native per-store queries.
         $article = Article::where('slug', $slug)
             ->with(['source', 'category'])
             ->whereHas('category', fn ($qb) => $qb->active())
             ->whereHas('source', fn ($qb) => $qb->active())
-            ->withCount(['bookmarks', 'boosts'])
             ->firstOrFail();
+        $article->bookmarks_count = Bookmark::where('article_id', $article->getKey())->count();
+        $article->boosts_count = Boost::where('article_id', $article->getKey())->count();
 
         /** @var User|null $user */
         $user = Auth::user();

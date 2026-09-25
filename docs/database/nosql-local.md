@@ -72,6 +72,20 @@ Set each password from your shell env / `.env`, never commit real values.
   app-level, later slice). `category_user` pivot SQL kept (unwritten); favorites read
   from embedded `favorite_category_ids`. Dev MySQL needs `migrate:fresh` to pick up
   the column changes.
+- **`*_article_id` columns are strings** (bookmarks/comments/boosts/unlocks migrations):
+  Article `_id`s are UUIDv7 strings; articles-FKs dropped (same cascade note).
+- **Boot proof (T3): slice runs on Mongo users/articles/stories; still SQL:** sessions +
+  password_reset_tokens (drivers/broker untouched per non-goals), categories, sources,
+  bookmarks, comments, boosts, article_unlocks, reports, sanctions, subscriptions,
+  category_user, cache/jobs tables. Dashboard + article/show served green in-test.
+- **`_id`/`id` trap:** the package maps storage `_id` → `id` attribute on read, so
+  projections use `pluck('id')` (raw `pluck('_id')` yields nulls) while filters use
+  `where('_id', …)` / `whereIn('_id', …)`.
+- **`newRelatedInstance` duplication:** stock Eloquent inherits the parent connection onto
+  related models, silently repointing SQL relations at Mongo — pinned on User + Article
+  (2×5 lines); no shared trait until a 4th document model needs it.
+- **Suite runs serially:** tearDown wipes shared compose-mongo collections without
+  transactions — no `paratest` against the shared DB (use per-process `MONGO_DB` if ever parallel).
 
 ## Known deviations (approved in review)
 

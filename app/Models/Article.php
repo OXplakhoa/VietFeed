@@ -3,10 +3,28 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Casts\Attribute;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+use MongoDB\Laravel\Eloquent\Model;
 
 class Article extends Model
 {
+    // Gate 3: canonical store is Mongo (T3). SQL articles table kept until all refs migrate.
+    protected $connection = 'mongodb';
+
+    protected $primaryKey = '_id';
+
+    protected static function booted(): void
+    {
+        // Canonical UUIDv7 string IDs generated in Laravel before persistence.
+        static::creating(fn (Article $article) => $article->_id ??= (string) Str::uuid7());
+    }
+
+    // Same cross-store pin as User (T2): related SQL models stay on default SQL.
+    protected function newRelatedInstance($class)
+    {
+        return new $class;
+    }
+
     protected $fillable = [
         'source_id',
         'category_id',
