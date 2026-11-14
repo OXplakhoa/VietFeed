@@ -16,10 +16,34 @@ use Tests\TestCase;
 // Requires cassandra healthy (`./scripts/nosql-health.sh`).
 class CassandraSpikeTest extends TestCase
 {
-    private const KEYSPACE = 'vietfeed_spike';
+    private const KEYSPACE = 'vietfeed_test';
+
+    private array $createdStoryIds = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $admin = $this->connection();
+        $admin->query('CREATE KEYSPACE IF NOT EXISTS '.self::KEYSPACE." WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}");
+        $admin->query('CREATE TABLE IF NOT EXISTS '.self::KEYSPACE.'.story_timeline (story_id uuid, event_time timeuuid, kind text, payload text, PRIMARY KEY (story_id, event_time)) WITH CLUSTERING ORDER BY (event_time ASC)');
+
+    }
+
+    protected function tearDown(): void
+    {
+        try {
+            foreach ($this->createdStoryIds as $id) {
+                $this->connection(self::KEYSPACE)->query('DELETE FROM story_timeline WHERE story_id = ?', [new Uuid($id)])->asVoidResult();
+            }
+        } finally {
+            parent::tearDown();
+        }
+    }
 
     private function connection(string $keyspace = ''): Connection
     {
+        $this->assertSame('testing', app()->environment());
+        $this->assertContains($keyspace, ['', 'vietfeed_test']);
         $cfg = config('nosql.cassandra');
         $conn = new Connection(
             [new StreamNodeConfig(host: $cfg['host'], port: (int) $cfg['port'])],
@@ -33,12 +57,9 @@ class CassandraSpikeTest extends TestCase
 
     public function test_timeline_append_and_partition_read(): void
     {
-        $admin = $this->connection();
-        $admin->query('CREATE KEYSPACE IF NOT EXISTS '.self::KEYSPACE." WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}");
-        $admin->query('CREATE TABLE IF NOT EXISTS '.self::KEYSPACE.'.story_timeline (story_id uuid, event_time timeuuid, kind text, payload text, PRIMARY KEY (story_id, event_time)) WITH CLUSTERING ORDER BY (event_time ASC)');
-
         $conn = $this->connection(self::KEYSPACE);
         $storyIdStr = Str::uuid()->toString();
+        $this->createdStoryIds[] = $storyIdStr;
         $storyId = new Uuid($storyIdStr);
         $payload = 'spike-'.bin2hex(random_bytes(4));
         $conn->query(
@@ -65,7 +86,9 @@ class CassandraSpikeTest extends TestCase
     public function test_disconnect_and_reconnect_rereads_partition(): void
     {
         $conn = $this->connection(self::KEYSPACE);
-        $storyId = new Uuid(Str::uuid()->toString());
+        $id = Str::uuid()->toString();
+        $this->createdStoryIds[] = $id;
+        $storyId = new Uuid($id);
         $conn->query(
             'INSERT INTO story_timeline (story_id, event_time, kind, payload) VALUES (?, now(), ?, ?)',
             [$storyId, 'created', 'reconnect-probe'],
