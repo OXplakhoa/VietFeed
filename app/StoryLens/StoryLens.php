@@ -7,9 +7,59 @@ use App\Models\Story;
 use App\StoryProcessing\StoryGraph;
 use App\StoryProcessing\StoryPipeline;
 use App\StoryProcessing\StoryTimeline;
+use Carbon\CarbonImmutable;
 
 final class StoryLens
 {
+    /** Safe presentation contract; operational error details never cross HTTP. */
+    public function readForPage(string $id): array
+    {
+        $read = $this->read($id);
+        foreach ($read['evidence'] as &$article) {
+            $article['published_at_display'] = CarbonImmutable::parse($article['published_at'])->timezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i');
+            $url = $article['original_url'];
+            $article['original_url'] = is_string($url)
+                && filter_var($url, FILTER_VALIDATE_URL)
+                && in_array(strtolower(parse_url($url, PHP_URL_SCHEME) ?? ''), ['http', 'https'], true)
+                ? $url : null;
+        }
+        unset($article);
+        $titles = array_column($read['evidence'], 'title', 'id');
+        foreach (['timeline', 'graph'] as $section) {
+            $value = $read['sections'][$section];
+            $read['sections'][$section] = [
+                'state' => $value['state'],
+                'projected_version' => $value['projected_version'],
+                'data' => [],
+            ];
+            if ($value['state'] !== 'ready') {
+                continue;
+            }
+            try {
+                $data = $value['data'];
+                if ($section === 'timeline') {
+                    foreach ($data as &$row) {
+                        if (! is_scalar($row['article_id']) || ! is_string($row['occurred_at']) || $row['occurred_at'] === '') {
+                            throw new \UnexpectedValueException('Invalid timeline row');
+                        }
+                        $row['article_title'] = $titles[$row['article_id']] ?? 'Bài viết chưa có trong danh sách nguồn';
+                        $time = CarbonImmutable::parse($row['occurred_at']);
+                        $row['occurred_at'] = $time->toIso8601String();
+                        $row['occurred_at_display'] = $time->timezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i');
+                    }
+                    unset($row);
+                }
+                $read['sections'][$section]['data'] = $data;
+            } catch (\Throwable) {
+                // Shaping failures have the same presentation as a derived read outage.
+                unset($row);
+                $read['sections'][$section]['state'] = 'failed';
+            }
+        }
+
+        return $read;
+    }
+
     public function read(string $id): array
     {
         $story = Story::findOrFail($id);

@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ArticleController as AdminArticle;
 use App\Http\Controllers\Admin\CategoryController as AdminCategory;
 use App\Http\Controllers\Admin\CommentController as AdminComment;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboard;
+use App\Http\Controllers\Admin\ProcessingController;
 use App\Http\Controllers\Admin\ReportController as AdminReport;
 use App\Http\Controllers\Admin\SanctionController as AdminSanction;
 use App\Http\Controllers\Admin\SourceController as AdminSource;
@@ -20,6 +21,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SanctionAppealController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\StoryController;
 use App\Http\Controllers\TickerController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -31,10 +33,13 @@ Route::get('/articles/{slug}', [ArticleController::class, 'show'])->name('articl
 Route::get('/categories/{slug}', [CategoryController::class, 'show'])->name('categories.show');
 Route::get('/search', [SearchController::class, 'index'])->name('search');
 Route::get('/pricing', [BillingController::class, 'pricing'])->name('pricing');
+Route::get('/stories/{story}', [StoryController::class, 'show'])->whereUuid('story')->name('stories.show');
+Route::get('/stories/{story}/sections', [StoryController::class, 'sections'])->whereUuid('story')->name('stories.sections');
 
 // Banned page
 Route::get('/banned', function () {
     $sanction = auth()->user()?->activeSanction();
+
     return view('sanctions.banned', compact('sanction'));
 })->middleware('auth')->name('sanctions.banned');
 
@@ -97,6 +102,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // ── Admin routes ───────────────────────────────────────────────
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/dashboard', [AdminDashboard::class, 'index'])->name('dashboard');
+    Route::get('/processing', [ProcessingController::class, 'index'])->name('processing.index');
+    Route::post('/processing/retry', [ProcessingController::class, 'retry'])->name('processing.retry');
 
     // Bulk-destroy must be before resource routes so 'bulk-destroy' isn't mistaken for an article ID
     Route::post('articles/bulk-destroy', [AdminArticle::class, 'bulkDestroy'])->name('articles.bulk-destroy');

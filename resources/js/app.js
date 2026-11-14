@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initVerificationModal();
     initConfirmModal();
     initTicker();
+    initStoryLens();
 
     if (document.getElementById('infinite-scroll-anchor')) {
         initInfiniteScroll();
@@ -728,4 +729,87 @@ function _viTimeAgo(iso) {
     if (diff < 3600)  return `${Math.floor(diff / 60)} phút trước`;
     if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
     return `${Math.floor(diff / 86400)} ngày trước`;
+}
+
+// StoryLens owns a single timer/request and never replaces canonical evidence.
+function initStoryLens() {
+    const root = document.getElementById('story-lens');
+    if (!root) return;
+    const names = ['timeline', 'graph'];
+    const elements = Object.fromEntries(names.map(name => [name, root.querySelector(`[data-section="${name}"]`)]));
+    const labels = { pending: 'Đang xử lý', ready: 'Sẵn sàng', failed: 'Tạm thời chưa thể tải mục này. Hệ thống sẽ thử lại.' };
+    let timer;
+    let request;
+    let stopped = names.every(name => elements[name].dataset.state === 'ready');
+    const delay = () => names.some(name => elements[name].dataset.state === 'failed') ? 10000 : 2000;
+    function schedule(ms = delay()) {
+        clearTimeout(timer);
+        if (!stopped && !document.hidden) timer = setTimeout(poll, ms);
+    }
+    async function poll() {
+        if (stopped || document.hidden || request) return;
+        const controller = new AbortController();
+        request = controller;
+        // A hung request also backs off rather than blocking recovery indefinitely.
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        let next = delay();
+        try {
+            const response = await fetch(root.dataset.pollUrl, {
+                headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal,
+            });
+            if (!response.ok) throw new Error('Unavailable');
+            const data = await response.json();
+            // Validate and prepare both sections before changing the last good render.
+            const updates = names.map(name => {
+                const section = data.sections?.[name];
+                if (!section || !Object.hasOwn(labels, section.state) || !Array.isArray(section.data)) throw new Error('Invalid response');
+                const fields = name === 'timeline'
+                    ? ['event_id', 'occurred_at', 'occurred_at_display', 'article_title']
+                    : ['uuid', 'name'];
+                const count = name === 'timeline' ? 'aggregate_version' : 'article_count';
+                if (!section.data.every(row => row && !Array.isArray(row) && typeof row === 'object'
+                    && fields.every(field => typeof row[field] === 'string')
+                    && Number.isSafeInteger(row[count]) && row[count] >= 0)) throw new Error('Invalid row');
+                const items = section.state === 'ready' ? section.data.map(row => {
+                    const item = document.createElement('li');
+                    if (name === 'timeline') {
+                        const time = document.createElement('time');
+                        time.dateTime = row.occurred_at;
+                        time.textContent = row.occurred_at_display;
+                        item.append(time, ` · Bổ sung bài viết · ${row.article_title}`);
+                    } else {
+                        item.textContent = `${row.name} · ${row.article_count} bài viết`;
+                    }
+                    return item;
+                }) : [];
+                if (section.state === 'ready' && !items.length) {
+                    const item = document.createElement('li');
+                    item.textContent = 'Chưa có dữ liệu.';
+                    items.push(item);
+                }
+                return { name, section, items };
+            });
+            if (document.hidden) return;
+            updates.forEach(({ name, section, items }) => {
+                const element = elements[name];
+                element.dataset.state = section.state;
+                element.querySelector('[data-section-status]').textContent = `${labels[section.state]} (${section.state})`;
+                element.querySelector('[data-section-data]').replaceChildren(...items);
+            });
+            stopped = names.every(name => elements[name].dataset.state === 'ready');
+            next = delay();
+        } catch {
+            next = 10000;
+        } finally {
+            clearTimeout(timeout);
+            request = null;
+            schedule(next);
+        }
+    }
+    document.addEventListener('visibilitychange', () => {
+        clearTimeout(timer);
+        if (document.hidden) request?.abort();
+        else schedule();
+    });
+    schedule();
 }

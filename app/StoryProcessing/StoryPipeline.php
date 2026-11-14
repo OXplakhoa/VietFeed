@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Redis;
 
 final class StoryPipeline
 {
+    public const OVERVIEW_STORY_LIMIT = 50;
+
     public const STREAM = 'stories:events:v1';
 
     public function __construct(private StoryTimeline $timeline, private StoryGraph $graph) {}
@@ -104,6 +106,46 @@ final class StoryPipeline
         $stories = $storyId ? Story::where('_id', $storyId)->get() : Story::whereNotNull('story_key')->get();
 
         return ['section' => $section, 'lengths' => $stream->lengths(), 'pending_entries' => $stream->pending(), 'dead_letter_entries' => $stream->deadLetters(), 'stories' => $stories->map(fn (Story $story) => ['id' => $story->id, 'version' => $story->version ?? 0, 'processing' => self::sections($story)])->all()];
+    }
+
+    /** Operational snapshot; stream inspection may initialize consumer groups at ID 0. */
+    public function overview(): array
+    {
+        $sections = [];
+        foreach (['timeline', 'graph'] as $section) {
+            $stream = $this->stream($section);
+            $inspection = ['lengths' => $stream->lengths(), 'pending_entries' => $stream->pending(), 'dead_letter_entries' => $stream->deadLetters()];
+            $dead = [];
+            foreach ($inspection['dead_letter_entries'] as $id => $entry) {
+                $event = json_decode($entry['event'] ?? '', true);
+                $dead[] = [
+                    'id' => $id, 'story' => $event['aggregate_id'] ?? null,
+                    'type' => $event['type'] ?? '—', 'version' => $event['aggregate_version'] ?? '—',
+                    'attempts' => $entry['attempts'] ?? null,
+                    'has_error' => ! empty($entry['last_error']),
+                ];
+            }
+            $sections[$section] = [
+                'lengths' => $inspection['lengths'], 'pending' => $inspection['pending_entries'], 'dead' => $dead,
+            ];
+        }
+        $stories = Story::query()->select(['_id', 'title', 'version', 'processing', 'created_at'])
+            ->orderByDesc('created_at')->orderByDesc('_id')->limit(self::OVERVIEW_STORY_LIMIT)->get()->map(fn (Story $story) => [
+                'id' => $story->id, 'title' => $story->title, 'version' => $story->version ?? 0,
+                'timeline' => self::sections($story)['timeline']['state'],
+                'graph' => self::sections($story)['graph']['state'],
+            ])->all();
+
+        $titles = array_column($stories, 'title', 'id');
+        foreach ($sections as &$section) {
+            foreach ($section['dead'] as &$entry) {
+                $entry['story_title'] = $titles[$entry['story']] ?? 'Story ngoài danh sách mới nhất';
+            }
+            unset($entry);
+        }
+        unset($section);
+
+        return ['sections' => $sections, 'stories' => $stories, 'story_limit' => self::OVERVIEW_STORY_LIMIT];
     }
 
     /** Pause consumers/writers first. Mongo history is the durable rebuild source. */

@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:storylens": "node tests/StoryLensPolling.cjs"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.2",
