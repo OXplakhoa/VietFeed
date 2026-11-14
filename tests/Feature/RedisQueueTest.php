@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
 use Mockery;
 use PHPUnit\Framework\AssertionFailedError;
+use Tests\Concerns\GuardsRedisTestDatabase;
 use Tests\TestCase;
 
 // Gate 5.2 spike (GitHub #14): cache + queue on live Redis (CACHE_STORE=redis,
@@ -28,6 +29,7 @@ use Tests\TestCase;
 //   vendor/bin/phpunit tests/Feature/RedisQueueTest.php
 class RedisQueueTest extends TestCase
 {
+    use GuardsRedisTestDatabase;
     use RefreshDatabase;
 
     private const FEED_XML = '<?xml version="1.0" encoding="UTF-8"?>
@@ -73,12 +75,6 @@ class RedisQueueTest extends TestCase
         } finally {
             parent::tearDown();
         }
-    }
-
-    private function flushTestDatabase(Connection $connection): void
-    {
-        $this->assertSame(15, $connection->client()->getDbNum(), 'Refusing to flush Redis outside DB15.');
-        $connection->flushdb();
     }
 
     public function test_flush_guard_rejects_database_zero_from_url(): void

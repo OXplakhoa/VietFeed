@@ -4,10 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\GuardsRedisTestDatabase;
 use Tests\TestCase;
 
 // Gate 5.1 spike (GitHub #13): sessions on live Redis (SESSION_DRIVER=redis).
@@ -23,6 +23,7 @@ use Tests\TestCase;
 // leave the real one orphaned.
 class RedisSessionTest extends TestCase
 {
+    use GuardsRedisTestDatabase;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -46,12 +47,6 @@ class RedisSessionTest extends TestCase
         } finally {
             parent::tearDown();
         }
-    }
-
-    private function flushTestDatabase(Connection $connection): void
-    {
-        $this->assertSame(15, $connection->client()->getDbNum(), 'Refusing to flush Redis outside DB15.');
-        $connection->flushdb();
     }
 
     private function syncCookies(TestResponse $response): void
