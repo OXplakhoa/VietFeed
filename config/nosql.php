@@ -32,12 +32,11 @@ return [
     ],
 
     'redis_nosql' => [
-        // The app's own cache/session/queue stay on the `database` driver.
-        // This stub is for the future ephemeral realtime store (same server, own DB index).
+        // Ephemeral interaction processing, separate from sessions DB0 and cache DB1.
         'host' => env('REDIS_HOST', '127.0.0.1'),
         'port' => env('REDIS_PORT', 6379),
         'password' => env('REDIS_PASSWORD'),
-        'database' => env('REDIS_NOSQL_DB', 1),
+        'database' => env('REDIS_NOSQL_DB', 2),
     ],
 
 ];

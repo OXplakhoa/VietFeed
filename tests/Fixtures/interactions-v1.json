@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "description": "Synthetic Gate 5 interaction facts; not real RSS or product history. Each aggregate is an independent interaction.",
+  "events": [
+    {
+      "event_id": "019a85c0-0000-7000-8000-000000000001",
+      "type": "boost",
+      "aggregate_id": "019a85c0-0001-7000-8000-000000000001",
+      "aggregate_version": 1,
+      "occurred_at": "2026-11-15T00:00:01Z",
+      "article_id": "article-a"
+    },
+    {
+      "event_id": "019a85c0-0000-7000-8000-000000000002",
+      "type": "view",
+      "aggregate_id": "019a85c0-0001-7000-8000-000000000002",
+      "aggregate_version": 1,
+      "occurred_at": "2026-11-15T00:00:02Z",
+      "article_id": "article-a"
+    },
+    {
+      "event_id": "019a85c0-0000-7000-8000-000000000003",
+      "type": "view",
+      "aggregate_id": "019a85c0-0001-7000-8000-000000000003",
+      "aggregate_version": 1,
+      "occurred_at": "2026-11-15T00:00:03Z",
+      "article_id": "article-a"
+    },
+    {
+      "event_id": "019a85c0-0000-7000-8000-000000000004",
+      "type": "boost",
+      "aggregate_id": "019a85c0-0001-7000-8000-000000000004",
+      "aggregate_version": 1,
+      "occurred_at": "2026-11-15T00:00:04Z",
+      "article_id": "article-b"
+    },
+    {
+      "event_id": "019a85c0-0000-7000-8000-000000000005",
+      "type": "view",
+      "aggregate_id": "019a85c0-0001-7000-8000-000000000005",
+      "aggregate_version": 1,
+      "occurred_at": "2026-11-15T00:00:05Z",
+      "article_id": "article-b"
+    }
+  ]
+}
