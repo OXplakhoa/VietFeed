@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Testing\TestResponse;
@@ -31,15 +32,26 @@ class RedisSessionTest extends TestCase
         config([
             'session.driver' => 'redis',
             'session.connection' => 'default',
+            'database.redis.default.url' => null,
             'database.redis.default.database' => 15,
         ]);
+
+        $this->assertSame(15, Redis::connection('default')->client()->getDbNum());
     }
 
     protected function tearDown(): void
     {
-        Redis::connection('default')->flushdb();
+        try {
+            $this->flushTestDatabase(Redis::connection('default'));
+        } finally {
+            parent::tearDown();
+        }
+    }
 
-        parent::tearDown();
+    private function flushTestDatabase(Connection $connection): void
+    {
+        $this->assertSame(15, $connection->client()->getDbNum(), 'Refusing to flush Redis outside DB15.');
+        $connection->flushdb();
     }
 
     private function syncCookies(TestResponse $response): void
@@ -111,7 +123,7 @@ class RedisSessionTest extends TestCase
         $this->assertNotNull($user->fresh()->remember_token);
 
         // Cutover/flush simulation: session gone, recaller cookie remains.
-        Redis::connection('default')->flushdb();
+        $this->flushTestDatabase(Redis::connection('default'));
 
         $response = $this->get('/dashboard');
 

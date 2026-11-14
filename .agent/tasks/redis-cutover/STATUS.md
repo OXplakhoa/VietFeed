@@ -181,3 +181,30 @@
 - Fix SHA: 747b4238c458c813fe5ce5ed7c82d6d669a4d861 (F1 + final STATUS)
 - Verdict: PASS_WITH_NOTES (REVIEW.md; full swarm 3/3: standards 3xP3 fixed,
   spec code PASS all criteria, runtime owner 6/6 with identical numbers)
+
+## Correction 2026-11-14
+
+SQL drain is **UNVERIFIED**. The historical MySQL connection refusal above does
+not prove the SQL `jobs` table is empty. The Redis test queue going from 1 to 0
+is separate evidence for Redis dispatch/worker behavior, not a SQL drain.
+The historical "Drain documented + executed: DONE" claim is superseded by this
+correction; historical lines are retained.
+
+Deployment-time gate for **each SQL-backed environment**, before changing its
+queue driver:
+
+1. Stop dispatch into the old SQL queue and quiesce competing workers.
+2. With that environment's SQL connection configured, run
+   `php artisan tinker --execute="echo DB::table('jobs')->count();"`.
+   The query must succeed; record the count. Connection refusal is a failed gate.
+3. Explicitly drain the old backend with
+   `php artisan queue:work database --queue=default --stop-when-empty`.
+4. Re-run `php artisan tinker --execute="echo DB::table('jobs')->count();"`.
+   This query must succeed and return **0** before the driver flip. An error or a
+   nonzero result blocks deployment; do not infer emptiness from an error.
+5. Inspect `failed_jobs` separately. Failed-job records retain their original
+   connection; `queue:retry` may requeue them onto `database` after the default
+   changes to Redis. Retry/drain those records with a database worker or make an
+   explicit operational decision about them before retiring SQL workers.
+
+No SQL drain was executed or certified by this review-fix round.

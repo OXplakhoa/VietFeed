@@ -7,12 +7,16 @@ use App\Models\Category;
 use App\Models\Source;
 use App\Services\TickerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Redis\Connections\Connection;
+use Illuminate\Redis\RedisManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
+use Mockery;
+use PHPUnit\Framework\AssertionFailedError;
 use Tests\TestCase;
 
 // Gate 5.2 spike (GitHub #14): cache + queue on live Redis (CACHE_STORE=redis,
@@ -39,10 +43,16 @@ class RedisQueueTest extends TestCase
         config([
             'queue.default' => 'redis',
             'cache.default' => 'redis',
+            'database.redis.default.url' => null,
             'database.redis.default.database' => 15,
+            'database.redis.cache.url' => null,
             'database.redis.cache.database' => 15,
             'services.exchangerate.key' => 'test-fake-key',
         ]);
+
+        foreach (['default', 'cache'] as $name) {
+            $this->assertSame(15, Redis::connection($name)->client()->getDbNum());
+        }
 
         Http::fake([
             'https://example.com/feed.xml' => Http::response(self::FEED_XML, 200),
@@ -58,10 +68,37 @@ class RedisQueueTest extends TestCase
     {
         try {
             DB::table('jobs')->delete();
-            Redis::connection('default')->flushdb();
-            Redis::connection('cache')->flushdb();
+            $this->flushTestDatabase(Redis::connection('default'));
+            $this->flushTestDatabase(Redis::connection('cache'));
         } finally {
             parent::tearDown();
+        }
+    }
+
+    private function flushTestDatabase(Connection $connection): void
+    {
+        $this->assertSame(15, $connection->client()->getDbNum(), 'Refusing to flush Redis outside DB15.');
+        $connection->flushdb();
+    }
+
+    public function test_flush_guard_rejects_database_zero_from_url(): void
+    {
+        $config = config('database.redis');
+        $config['default']['url'] = sprintf('redis://%s:%s/0', $config['default']['host'], $config['default']['port']);
+        $manager = new RedisManager($this->app, 'phpredis', $config);
+        $connection = $manager->connection('default');
+
+        try {
+            // URL /0 overrides the configured database=15. Only read DB0's index.
+            $this->assertSame(0, $connection->client()->getDbNum());
+            $guardedConnection = Mockery::mock(Connection::class);
+            $guardedConnection->shouldReceive('client')->once()->andReturn($connection->client());
+            $guardedConnection->shouldNotReceive('flushdb');
+            $this->expectException(AssertionFailedError::class);
+            $this->expectExceptionMessage('Refusing to flush Redis outside DB15.');
+            $this->flushTestDatabase($guardedConnection);
+        } finally {
+            $connection->disconnect();
         }
     }
 
@@ -109,6 +146,7 @@ class RedisQueueTest extends TestCase
         $this->assertNotNull(Cache::get('ticker.usd.v1'));
         $this->assertNotNull(Cache::get('ticker.usd.v1.bak'));
         $this->assertNotNull(Cache::get('ticker.sjc.v1'));
+        $this->assertNotNull(Cache::get('ticker.sjc.v1.bak'));
         $this->assertNotEmpty(Redis::connection('cache')->keys('*ticker.*'));
     }
 }
