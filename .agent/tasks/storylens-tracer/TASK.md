@@ -86,7 +86,60 @@ distributed fetch/projection lock.
 Product-scope change required; need to edit owner WIP; a failure not fixable in scope; Cassandra memory pressure
 (OOM/restart) — record `docker stats` before and after and stop if the container restarts.
 
-## PR-B — progressive rendering (later, separate branch)
+## PR-B — progressive rendering (branch `storylens/progressive-rendering`, stacked on PR-A head 659d5c0)
 
-Blade Story page rendering canonical evidence first, polling section states, admin processing/DLQ view with retry,
-and the full demo walkthrough of Scenario 1.
+Goal: the PR-A pipeline becomes visible through the existing Laravel/Blade app. A reader sees canonical evidence at
+once and watches derived sections settle; an admin sees stuck/dead projection work and can requeue it; Scenario 1 of
+`docs/demo/failure-scenarios.md` can be walked end to end. No SPA, no new database, no new dependency.
+
+### Required outcomes
+
+1. **Story page** — public `GET /stories/{story}` (canonical UUID; anything else, or an unknown id, is a 404) in the
+   existing `AppLayout`/Bootstrap style, Vietnamese copy. The server response already contains the Story title and
+   every source-attributed Article (title, link to the original, Source name, publication time, excerpt) read from
+   MongoDB through `App\StoryLens\StoryLens`. It must render when Cassandra, Neo4j or both are unreachable, and for
+   a legacy Gate 3 Story without tracer fields. Evidence comes first in the document; derived sections follow.
+2. **Section states** — the timeline and graph sections each show exactly one of `pending` / `ready` / `failed`,
+   server-rendered on first paint with the state the domain reports, never presented as complete unless `ready`.
+   `ready` shows the derived data (timeline events in order; Sources covering the Story). `failed` shows a generic
+   message only — no exception text, hostnames, queries or credentials.
+3. **Polling (spec §12.1 step 8)** — a JSON endpoint returns section states and data for one Story; the page polls
+   it and updates sections in place without a reload, including `failed` → `ready` after recovery. Polling stops
+   when both sections are `ready`, pauses while the tab is hidden, backs off on errors, and keeps the last good
+   render if a poll fails. Server data is inserted as text, never as HTML. Lives in `resources/js/app.js` (the
+   project keeps one client file) and only runs on the Story page.
+4. **Admin processing view** — `GET /admin/processing` behind the existing `auth` + `admin` middleware, linked from
+   the admin nav: per section the stream/pending/DLQ counts, pending deliveries, dead-letter entries (entry id,
+   Story, event type, version, attempts/last error if the consumer records them), and per Story the version and
+   both section states, each linking to its Story page. Guests are redirected to login; non-admins get 403.
+5. **Admin retry** — `POST` (CSRF-protected, admin only) requeues one dead-letter entry for a section through the
+   domain (`StoryPipeline`/`StreamConsumer::replay`). Section and entry id are validated; an unknown section or
+   entry gives a clean redirect with an error, not a 500. The controller does not run projections or touch
+   database clients: a consumer (`php artisan storylens consume`) does the work, as in production shape. If
+   requeueing an already-requeued entry is possible, it must not create duplicate canonical facts (rely on the
+   idempotent consumers; test it).
+6. **Controllers stay thin** — HTTP code calls `StoryLens` / `StoryPipeline` only. Add small domain methods where
+   the admin view needs data the domain does not expose yet; do not reach into Redis/Mongo/Cassandra/Neo4j clients
+   from controllers or views.
+7. **Tests** — feature tests (MongoDB `vietfeed_test` + Redis DB15, no Cassandra/Neo4j required, part of
+   `composer run test`): Story page with no consumer run shows evidence and both sections pending; 404 cases; legacy
+   Story; JSON endpoint shape; failed section shows the generic message and no error internals; admin page
+   authorisation (guest / user / admin) and DLQ listing; retry validation, CSRF and requeue effect. Container-backed
+   test under `tests/Integration/`: over HTTP, both sections `ready` with data after the consumers run, and Scenario
+   1 (graph failing → DLQ → page shows `failed` while timeline is `ready` → admin retry → consumer → page/JSON show
+   `ready`; Article/Story ids and counts unchanged).
+8. **Assets** — `npm run build` passes; no new npm or composer dependency.
+9. **Docs** — a Scenario 1 walkthrough (exact commands and what to look at in the browser at each of the seven
+   steps, how to make the graph consumer fail and how to restore it without destroying data) plus the new routes in
+   `docs/database/nosql-local.md` or a file under `docs/demo/`; `GATE-REPORT-6B.md` in this folder.
+
+### Non-goals (PR-B)
+
+Home/category/search integration of Stories, AI brief, real clustering, SSE/WebSocket, a long-running worker
+daemon or supervisor config, stream trimming, trending UI, Source/Category migration off SQL, restyling existing
+pages.
+
+### Test isolation and stop conditions
+
+Same as PR-A. Additionally: never ingest the fixture into, or run consumers against, the dev stores from a test or
+from the worker; the demo walkthrough is written, not executed against dev data.

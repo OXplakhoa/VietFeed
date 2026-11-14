@@ -603,3 +603,13 @@ retention and embedded Story history are intentionally suitable only for this ti
 tracer; no general scale/performance guarantee is claimed. Cassandra interaction
 replay for trending, Gate 5 move markers, distributed locking, progressive UI,
 admin controls, AI and real clustering remain deferred.
+
+### Gate 6 PR-B: progressive HTTP rendering
+
+Public Story and JSON section routes, admin inspection/retry, and the complete
+seven-step browser failure/recovery walkthrough are documented in
+[StoryLens progressive rendering](../demo/storylens-progressive-rendering.md).
+Run `vendor/bin/phpunit tests/Feature/StoryPageTest.php` for Mongo/Redis HTTP behavior
+(included in `composer run test`) and
+`vendor/bin/phpunit tests/Integration/StoryPageProjectionsTest.php` for tiny,
+isolated real-projection HTTP convergence, read outages and graph DLQ recovery.
