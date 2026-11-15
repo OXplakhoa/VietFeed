@@ -299,3 +299,307 @@ The second command invokes `interactions inspect` on the guarded live DB15,
 prints the terminal DLQ, then tests replay and cleans DB15. The suite asserts
 Mongo `vietfeed_test` and SQLite `:memory:` before RefreshDatabase migrations.
 This is isolated test evidence, not a development database flush procedure.
+
+## Gate 6 PR-A / #19 — canonical RSS → Story projections
+
+`App\Content\ContentCatalog::ingest(array $fixture)` is the Content Catalog entry
+point. `StoryPipeline` owns dispatch, projection versions, Mongo processing state,
+inspection and recovery; `StoryLens::read($storyUuid)` returns canonical evidence
+before any worker runs. `php artisan storylens read --story=<uuid>` exposes that
+read as JSON. PR-A adds no Blade/polling/admin UI; that is PR-B.
+
+### Frozen fixture and canonical identities
+
+`tests/Fixtures/storylens-rss-v1.json` contains ten captured public RSS items from
+VnExpress and Tuổi Trẻ world feeds, with capture time and feed URLs. It contains
+two **human-assigned** Story groups (US flight disruption and the Cambodia visit
+around the Francophonie summit), five Articles and two Sources in each. Publisher
+claims are evidence, not independently verified facts. Excerpts are at most 200
+characters, with no full bodies. Tuổi Trẻ's timezone-free RSS dates were interpreted
+as publisher local time (+07:00); this normalization is recorded in the fixture.
+
+Articles and Stories use Laravel-generated UUIDv7 strings. Articles embed
+`source_snapshot` and `category_snapshot`; Stories embed `article_ids`,
+`article_count`, `source_count`, aggregate `version`, immutable `events` and
+`processing.{timeline,graph}`. Each section has `state` and `projected_version`.
+The ingest boundary ensures unique `articles.original_url` and a unique partial
+`stories.story_key` index. A repeated ingest emits no new events and creates no
+new documents. An existing RSS Article can be attached without changing its ID.
+
+Source/Category remain SQL models. Their **interim** graph keys are deterministic
+UUIDv5 values in the URL namespace over `vietfeed:source:<exact feed_url>` and
+`vietfeed:category:<slug>`, embedded in the snapshots as `uuid`. This follows the
+existing Source identity (one row per feed, including category-specific feeds),
+avoids installation-specific SQL integers, and is independent of display names.
+When Source/Category migrate, assign canonical UUIDv7, retain an old-key → new-ID
+mapping, update snapshots and rebuild the graph. These interim keys are not a
+claim that Source/Category have already migrated.
+
+### Events, groups and state
+
+An immutable `story.article_added.v1` envelope contains UUIDv7 `event_id`,
+`aggregate_id` (Story UUIDv7), positive `aggregate_version`, explicit UTC
+millisecond `occurred_at`, and `article_id`. The event list and aggregate advance
+in the same Mongo Story write. A consumer validates the envelope against this
+canonical history before projecting. A newer version projects the entire durable
+prefix, so out-of-order delivery cannot silently omit earlier history. Lower/equal
+projected versions do nothing. A successful write updates only that section's
+Mongo state through a conditional field update. The success update compares against
+Story.version in the current Mongo document atomically: `ready` means that the
+recorded projected_version equalled that version at that write. An attachment
+atomically advances version/history and marks both sections pending, preserving
+consumer projected_version and retaining error together with failed_version
+through intervening ingests. Late successes cannot lower progress; late failures
+cannot overwrite an equal/newer success. Failures record `failed_version` alongside
+`error`; a lower-version failure cannot replace that marker. A success advances
+projected_version but retains the failed state, error and failed_version while
+that failure is newer. Only equal-or-newer success clears both marker fields and
+chooses ready/pending against the current Mongo version. The paused operator
+`reemit` reset explicitly clears both fields before dispatch. Read/inspect also downgrade a stale ready
+marker to pending when its version differs from their Mongo snapshot. Legacy Gate 3
+Stories with no processing/history/evidence list are readable with empty evidence,
+version 0 and pending sections; unknown events are rejected against empty history.
+
+This is not a cross-store read transaction: a writer may advance Mongo after the
+read snapshot, and derived data may change between reading state and reading a
+section. A projection may also finish before its Mongo success marker is written;
+the section stays pending/failed until retry records success. Independent same-section
+workers and concurrent rebuild operations remain outside this tracer's operational
+contract. Normal consumer/ingest progress is monotonic; an explicit paused `reemit`
+resets both sections to version 0 for rebuilding lost derived data.
+
+Logical Redis names below receive the configured phpredis key prefix:
+
+| Name | Purpose |
+|---|---|
+| `stories:events:v1` | Shared dispatch Stream |
+| `story-timeline-v1` | Timeline group, starts at 0 |
+| `story-graph-v1` | Graph group, starts at 0 |
+| `stories:dead:timeline:v1`, `stories:dead:graph:v1` | Per-section DLQ Streams |
+| `stories:errors:timeline:v1`, `stories:errors:graph:v1` | Pending failure messages |
+
+`App\Processing\StreamConsumer` is extracted from Gate 5, with Interaction's
+existing facade retained. Story groups ACK independently and **retain stream
+entries** so one group cannot delete another group's unread work. Therefore
+`lengths.stream` is retained input size, not backlog. Entries remain after ACK by
+**both** groups and are never trimmed; replay/reemit append more entries. Follow-up:
+implement safe trimming only once both groups have passed an entry (including
+pending deliveries), with Mongo re-emission as the durable recovery path. Interaction retains its
+original delete-after-ACK behavior. Recovery pages the pending list; retry is
+bounded to five handler attempts with exponential backoff (default base 1000 ms,
+then 2000/4000/8000 ms; `STORY_RETRY_MS` overrides the base). Process interruption
+on the final lease is terminalized without a sixth handler attempt. Consumers do
+not sleep or block waiting for backoff: invoke the bounded command again later.
+Inspection returns the oldest 1000 pending entries / 100 dead letters.
+
+Shared core operations check native phpredis result/error state, including
+publish, group creation, receive, claim, retry recording, ACK, DLQ, replay and
+inspection. The existing Gate 5 `RedisResult` helper is reused. A handled projection
+failure returns CLI exit 0 once recorded for retry/DLQ; stream/recording failures
+propagate to CLI exit 1. Inspect state/DLQ to distinguish successful projection
+from successfully recording a failed delivery.
+
+### Cassandra timeline and Neo4j topology
+
+Schema bootstrap is **explicit**; app boot and consumers do not create it:
+
+```bash
+php artisan storylens schema
+```
+
+The configured `CASSANDRA_KEYSPACE` defaults to `vietfeed`; tests use
+`vietfeed_test`. The single-node keyspace uses SimpleStrategy, replication 1.
+`story_events_by_story` has columns `story_id uuid`, `occurred_at timestamp`,
+`event_id uuid`, `aggregate_version bigint`, `type text`, `article_id uuid`.
+Primary key is `((story_id), occurred_at, event_id)`; clustering order is
+`occurred_at DESC, event_id DESC`. Explicit occurrence time is independent of
+UUIDv7 generation time. Redelivery uses the same primary key. CQL responses are
+typed results (DDL may be schema-change or void when already present); invalid
+queries throw, unlike phpredis's false results. `CassandraClient` is the single
+construction point; `StoryTimeline::events` is the partition read interface.
+The driver is now a runtime dependency at its unchanged `^1.2` constraint.
+
+Neo4j uses `MERGE` on `uuid` for Story, Article, Source and Category, plus
+`(Article)-[:PART_OF]->(Story)`, `(Article)-[:FROM]->(Source)` and
+`(Article)-[:IN]->(Category)`. A projection runs in one Cypher statement/transaction;
+Story's graph version prevents a lower version replacing a newer snapshot. No
+article bodies, SQL joins or internal node IDs are used. `StoryGraph::sources`
+returns Sources covering the same Story and their Article counts. `Neo4jClient`
+is the single construction point, returns a CypherList and surfaces exceptions.
+
+### Thin CLI and normal local use
+
+```bash
+php artisan storylens ingest
+php artisan storylens consume --section=timeline --consumer=timeline-local --limit=100
+php artisan storylens consume --section=graph --consumer=graph-local --limit=100
+php artisan storylens inspect --section=graph
+php artisan storylens read --story=<story-uuid>
+php artisan storylens replay --section=graph --id=<dead-letter-stream-id>
+php artisan storylens reemit --story=<story-uuid>
+# Omit --story to re-emit all tracer Stories; use --fixture=/path/to/frozen.json for ingest.
+```
+
+`reemit` requires paused writers/consumers and a reachable, writable Neo4j store.
+Before changing any Mongo processing state or publishing any events, it calls
+`StoryGraph::resetForRebuild` to reset the projection-side Story version to 0 for
+all affected Stories in one graph statement. A graph reset failure aborts with
+`Cannot rebuild: graph reset failed`; Mongo state and dispatch remain unchanged.
+Use ordinary retry/DLQ replay while a projection store is down; restore Neo4j
+before attempting this explicit rebuild. This precondition applies even when
+repairing only Cassandra or Redis dispatch.
+
+After the graph reset, reemit sets both Mongo sections pending with
+projected_version=0 and clears error/failed_version, then publishes the original
+stored event IDs, times and versions from Mongo. Every consumed prefix is MERGEd
+again, restoring missing PART_OF/FROM/IN relationships and missing Article,
+Source or Category projection nodes even when the Story survived at v5. Ordinary
+stale/duplicate redelivery still trusts an equal-or-newer graph marker and reports
+the prefix covered without rewriting it; only explicit rebuild resets that marker.
+Mongo advances through successfully consumed event versions and reaches ready
+only at the current version. Cassandra rewrites every original primary key,
+repairing individual lost rows over surviving rows without duplicates. Healthy
+rebuild converges with empty pending/DLQ and the full canonical fact set.
+
+Rebuild is additive: it does **not remove extra stale facts**, unwanted nodes,
+relationships or Cassandra rows, resolve duplicate graph identities introduced
+externally, or repair missing/corrupt canonical Mongo evidence/history. It does
+not re-ingest or create replacement canonical Articles/Stories or timestamps.
+The reset and later Mongo/Redis writes are not one cross-store transaction;
+a subsequent Mongo CAS or publish failure requires another paused reemit after
+fixing the cause. Repeating re-emission is safe for canonical projection facts.
+DLQ replay republishes into the shared Stream; the other group's duplicate is
+ignored. If Redis publish fails after Mongo commit, content remains readable with
+pending sections: restore Redis and Neo4j, pause writers/consumers and use reemit.
+Re-running ingest after this boundary is a no-op and does not repair lost dispatch.
+
+The earlier Article-save → Story-save interruption is repaired differently:
+`php artisan storylens ingest --fixture=/path/to/the-same-frozen.json` reuses the
+persisted Article UUID and its assigned Story UUID, then attaches it with exactly
+one durable event. `reemit` cannot recover an attachment absent from Story history.
+For the Story-save → Redis-publish interruption, pause writers/consumers and run
+`php artisan storylens reemit --story=<story-uuid>`, then resume both
+`php artisan storylens consume --section=timeline --limit=100` and
+`php artisan storylens consume --section=graph --limit=100`. Verify with
+`php artisan storylens read --story=<story-uuid>` and inspect pending/DLQ. After an
+external projection failure reaches DLQ, fix the cause and use
+`php artisan storylens replay --section=<timeline-or-graph> --id=<dlq-id>`, then consume.
+Graph validates all distinct canonical Article IDs before writing and requires the
+Cypher projected count to equal that prefix size when writing. The statement
+compares against its expected_count parameter and advances the Story version/title
+only on equality, inside the same transaction. A mismatch may leave idempotently
+MERGEd facts but cannot advance the marker; retry must project again rather than
+claim coverage. PHP checks both count and returned version before recording Mongo
+success. An ordinary covered result must hold at least the requested event version. Timeline validates the same
+canonical prefix and requires each CQL INSERT to return a successful void result;
+a later INSERT failure leaves partial idempotent rows but never marks success.
+Missing canonical Articles require restoring canonical evidence before retry/replay;
+reemit alone cannot invent missing evidence.
+
+### One characteristic native / DBeaver query per store
+
+Replace the UUID and logical key prefix with the current configured values;
+connect with the existing local credentials without printing them. Use
+`vietfeed_test` / Redis DB15 only for isolated tests; normal dev queries use their
+configured database/keyspace/Redis DB.
+
+```javascript
+// Mongo shell / DBeaver Mongo: immediate canonical evidence and processing state
+db.getSiblingDB('vietfeed').stories.find({_id: '<story-uuid>'},
+  {article_ids: 1, article_count: 1, source_count: 1, version: 1, processing: 1})
+db.getSiblingDB('vietfeed').articles.find({story_id: '<story-uuid>'},
+  {title: 1, original_url: 1, source_snapshot: 1, description: 1})
+```
+
+```sql
+-- CQL / DBeaver Cassandra: one partition, newest event first
+SELECT occurred_at, event_id, aggregate_version, type, article_id
+FROM vietfeed.story_events_by_story WHERE story_id = <story-uuid>;
+```
+
+```cypher
+// Neo4j Browser / cypher-shell / DBeaver Neo4j
+MATCH (:Story {uuid: '<story-uuid>'})<-[:PART_OF]-(a:Article)-[:FROM]->(src:Source)
+RETURN src.uuid, src.name, count(DISTINCT a) AS articles;
+```
+
+```text
+# Redis native interactive CLI, connected to the configured NoSQL DB:
+XINFO GROUPS <configured-prefix>stories:events:v1
+XPENDING <configured-prefix>stories:events:v1 story-graph-v1
+XRANGE <configured-prefix>stories:dead:graph:v1 - + COUNT 10
+```
+
+### Recovery walkthrough (Scenario 1, domain/CLI level)
+
+1. Bootstrap Cassandra explicitly, ingest the fixture once, save the Article/Story
+   IDs and counts, and read a Story: canonical evidence exists; both sections pending.
+2. Consume timeline. For a reversible connection fault, invoke only the graph
+   consumer with `NEO4J_BOLT_PORT=1 php artisan storylens consume --section=graph`.
+   Repeat after each backoff until the five-attempt bound. For the ten-item fixture
+   each event has its own budget; inspect until the relevant work is terminal.
+3. `storylens inspect --section=graph` shows failed section state and DLQ envelopes
+   with attempts=5. `storylens read --story=<uuid>` still returns canonical evidence
+   and a ready timeline. These commands use the normal working graph port.
+4. Remove the process-local port override. Replay each relevant DLQ ID using
+   `storylens replay --section=graph --id=<id>`, then consume graph again. It becomes
+   ready at the current version; canonical IDs and counts are unchanged. A later
+   timeline consume ignores the duplicate replay. There is no re-ingest step.
+5. For lost Redis or projection data, pause writers/consumers and use `reemit`,
+   then consume both groups. Never flush a dev Redis DB as part of this proof.
+
+The implementation also ran this walkthrough with separate real `php artisan`
+processes on isolated test stores and a one-item fixture subset to keep memory tiny.
+Only that run's Neo4j UUIDs and Cassandra partition were cleaned afterward.
+For a reproducible isolated CLI run, supply all of these process-local overrides:
+
+```bash
+export APP_ENV=testing DB_CONNECTION=sqlite DB_DATABASE=:memory: DB_URL=''
+export MONGO_DB=vietfeed_test CASSANDRA_KEYSPACE=vietfeed_test
+export REDIS_DB=15 REDIS_CACHE_DB=15 REDIS_NOSQL_DB=15 REDIS_URL=''
+export CACHE_STORE=array SESSION_DRIVER=array QUEUE_CONNECTION=sync
+export PULSE_ENABLED=false TELESCOPE_ENABLED=false NIGHTWATCH_ENABLED=false
+# Optional test-only acceleration (production/default base remains 1000 ms):
+export STORY_RETRY_MS=1
+```
+
+The command refuses a testing invocation unless there is no config cache, Mongo
+is `vietfeed_test`, SQLite is `:memory:`, Cassandra is `vietfeed_test`, and the live
+NoSQL Redis client reports DB15. New Cassandra operations independently recheck
+the test keyspace before access. Do not use these exports in a shell running the
+development app; a separate shell/process avoids changing its configuration.
+
+### Tests and boundaries
+
+```bash
+vendor/bin/phpunit tests/Feature/StoryCatalogTest.php
+vendor/bin/phpunit tests/Integration/StoryProjectionsTest.php
+```
+
+Feature coverage uses guarded Mongo/Redis and remains in `composer run test`.
+Cassandra/Neo4j projection/recovery coverage lives in Integration and is invoked
+explicitly. No new Mongo collections require teardown changes. Neo4j tests use
+unique per-run Source feed identities/Category slugs and clean only the tracked
+Story/Article/Source/Category UUIDs. Cassandra tests delete only their tiny
+`vietfeed_test` partitions, with a keyspace assertion before cleanup. The
+Cassandra spike now also uses guarded `vietfeed_test` and deletes only its created
+partitions in `story_timeline`; it no longer writes to `vietfeed_spike`.
+
+Limitations: this is a single-writer tracer, with no distributed fetch/projection
+lock, automatic outbox relay, stream retention policy or large-history design.
+Mongo Article and Story writes are separate (no cross-document/distributed
+transaction); rerunning fixture ingest can attach an already-written Article and
+reconstruct an interrupted initial Story using its assigned ID. Once the Story
+commit exists, its embedded history is sufficient for explicit dispatch/projection
+rebuild. Ingestion does not silently retry a rejected publish on duplicate ingest.
+Re-emission and schema bootstrap are operator actions, not boot side effects.
+A transient derived-read exception returns a failed section alongside canonical
+evidence; it does not overwrite the Mongo worker's recorded processing version.
+
+The inherited Lua moves are non-interleaved, not failure-atomic after every write;
+late server/ACL/transport faults may leave duplicate DLQ/replay work. Projection
+idempotence tolerates duplicate facts; move-marker redesign is deferred. Stream
+retention and embedded Story history are intentionally suitable only for this tiny
+tracer; no general scale/performance guarantee is claimed. Cassandra interaction
+replay for trending, Gate 5 move markers, distributed locking, progressive UI,
+admin controls, AI and real clustering remain deferred.

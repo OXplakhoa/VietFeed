@@ -1,0 +1,173 @@
+{
+  "format_version": 1,
+  "provenance": "real public RSS; publisher claims, not independently verified",
+  "captured_at": "2026-11-14T18:01:00.978147+00:00",
+  "feed_urls": [
+    "https://vnexpress.net/rss/the-gioi.rss",
+    "https://tuoitre.vn/rss/the-gioi.rss"
+  ],
+  "publication_time_note": "Tuoi Tre dates omit zone; interpreted as publisher local Asia/Ho_Chi_Minh (+07:00).",
+  "grouping": "human-assigned story_key for the tracer; no automatic clustering",
+  "items": [
+    {
+      "story_key": "us-flight-disruption",
+      "title": "Hỗn loạn tại loạt sân bay Mỹ vì lệnh đình chỉ bay toàn quốc",
+      "link": "https://vnexpress.net/hon-loan-tai-loat-san-bay-my-vi-lenh-dinh-chi-bay-toan-quoc-5144543.html",
+      "published_at": "2026-11-14T10:32:07+07:00",
+      "excerpt": "Hàng nghìn chuyến bay tại Mỹ bị hủy hoặc hoãn sau lệnh cấm cất cánh toàn quốc, khiến nhiều hành khách rơi vào cảnh mắc kẹt, hoang mang.",
+      "source": {
+        "name": "VnExpress – Thế giới",
+        "url": "https://vnexpress.net",
+        "feed_url": "https://vnexpress.net/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    },
+    {
+      "story_key": "us-flight-disruption",
+      "title": "Mỹ dỡ lệnh đình chỉ bay toàn quốc",
+      "link": "https://vnexpress.net/my-do-lenh-dinh-chi-bay-toan-quoc-5144580.html",
+      "published_at": "2026-11-14T09:51:55+07:00",
+      "excerpt": "Cơ quan Hàng không Liên bang Mỹ dỡ lệnh đình chỉ bay trên toàn quốc, vài giờ sau khi xảy ra gián đoạn hệ thống liên lạc quy mô lớn.",
+      "source": {
+        "name": "VnExpress – Thế giới",
+        "url": "https://vnexpress.net",
+        "feed_url": "https://vnexpress.net/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    },
+    {
+      "story_key": "us-flight-disruption",
+      "title": "Mỹ đình chỉ bay toàn quốc do sự cố liên lạc",
+      "link": "https://vnexpress.net/my-dinh-chi-bay-toan-quoc-do-su-co-lien-lac-5144518.html",
+      "published_at": "2026-11-14T06:31:29+07:00",
+      "excerpt": "Cơ quan Hàng không Liên bang Mỹ ban hành lệnh đình chỉ bay trên toàn quốc sau khi xảy ra gián đoạn hệ thống liên lạc quy mô lớn.",
+      "source": {
+        "name": "VnExpress – Thế giới",
+        "url": "https://vnexpress.net",
+        "feed_url": "https://vnexpress.net/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    },
+    {
+      "story_key": "us-flight-disruption",
+      "title": "Trải nghiệm đáng quên của hàng trăm nghìn người trong ngày hàng không Mỹ tê liệt",
+      "link": "https://tuoitre.vn/trai-nghiem-dang-quen-cua-hang-tram-nghin-nguoi-trong-ngay-hang-khong-my-te-liet-10026111415500439.htm",
+      "published_at": "2026-11-14T16:44:00+07:00",
+      "excerpt": "Sự cố liên lạc buộc FAA đình chỉ toàn bộ chuyến bay tại Mỹ trong khoảng 4 giờ, khiến gần 6.000 chuyến bay bị hủy và hàng trăm nghìn hành khách mắc kẹt tại các sân bay.",
+      "source": {
+        "name": "Tuổi Trẻ – Thế giới",
+        "url": "https://tuoitre.vn",
+        "feed_url": "https://tuoitre.vn/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    },
+    {
+      "story_key": "us-flight-disruption",
+      "title": "Sự cố không lưu ở Mỹ gây gián đoạn hàng không nhiều nước",
+      "link": "https://tuoitre.vn/su-co-khong-luu-o-my-gay-gian-doan-hang-khong-nhieu-nuoc-100261114121207095.htm",
+      "published_at": "2026-11-14T12:40:00+07:00",
+      "excerpt": "Sự cố không lưu ở Mỹ ảnh hưởng đến hoạt động hàng không tại nhiều quốc gia và tình trạng gián đoạn có thể kéo dài thêm nhiều ngày.",
+      "source": {
+        "name": "Tuổi Trẻ – Thế giới",
+        "url": "https://tuoitre.vn",
+        "feed_url": "https://tuoitre.vn/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    },
+    {
+      "story_key": "francophonie-cambodia-visit",
+      "title": "Tổng Bí thư, Chủ tịch nước hội kiến Chủ tịch Thượng viện Hun Sen",
+      "link": "https://vnexpress.net/tong-bi-thu-chu-tich-nuoc-hoi-kien-chu-tich-thuong-vien-hun-sen-5144755.html",
+      "published_at": "2026-11-14T22:17:04+07:00",
+      "excerpt": "Tổng Bí thư, Chủ tịch nước Tô Lâm và Chủ tịch Thượng viện Hun Sen nhất trí tiếp tục củng cố, tăng cường quan hệ song phương và phối hợp, ủng hộ lẫn nhau tại các diễn đàn đa phương.",
+      "source": {
+        "name": "VnExpress – Thế giới",
+        "url": "https://vnexpress.net",
+        "feed_url": "https://vnexpress.net/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    },
+    {
+      "story_key": "francophonie-cambodia-visit",
+      "title": "Tổng Bí thư, Chủ tịch nước hội kiến Quốc vương Campuchia",
+      "link": "https://vnexpress.net/tong-bi-thu-chu-tich-nuoc-hoi-kien-quoc-vuong-campuchia-5144737.html",
+      "published_at": "2026-11-14T19:13:59+07:00",
+      "excerpt": "Tổng Bí thư, Chủ tịch nước Tô Lâm mong muốn Quốc vương Norodom Sihamoni tiếp tục quan tâm, tạo điều kiện để bà con người Việt tại Campuchia ổn định cuộc sống.",
+      "source": {
+        "name": "VnExpress – Thế giới",
+        "url": "https://vnexpress.net",
+        "feed_url": "https://vnexpress.net/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    },
+    {
+      "story_key": "francophonie-cambodia-visit",
+      "title": "Tổng Bí thư, Chủ tịch nước đến Campuchia dự Hội nghị cấp cao Pháp ngữ",
+      "link": "https://vnexpress.net/tong-bi-thu-chu-tich-nuoc-den-campuchia-du-hoi-nghi-cap-cao-phap-ngu-5144690.html",
+      "published_at": "2026-11-14T16:01:26+07:00",
+      "excerpt": "Tổng Bí thư, Chủ tịch nước Tô Lâm đến thủ đô Phnom Penh, bắt đầu chuyến tham dự Hội nghị cấp cao Pháp ngữ lần thứ 20 tại Campuchia.",
+      "source": {
+        "name": "VnExpress – Thế giới",
+        "url": "https://vnexpress.net",
+        "feed_url": "https://vnexpress.net/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    },
+    {
+      "story_key": "francophonie-cambodia-visit",
+      "title": "Ông Hun Sen: Thành tựu của Việt Nam cũng là thành tựu và cơ hội phát triển cho Campuchia",
+      "link": "https://tuoitre.vn/ong-hun-sen-thanh-tuu-cua-viet-nam-cung-la-thanh-tuu-va-co-hoi-phat-trien-cho-campuchia-100261114195026461.htm",
+      "published_at": "2026-11-14T20:36:00+07:00",
+      "excerpt": "Ông Hun Sen khẳng định Campuchia luôn trân trọng, ghi nhớ sự ủng hộ, giúp đỡ to lớn, quý báu của Đảng, Nhà nước và Nhân dân Việt Nam.",
+      "source": {
+        "name": "Tuổi Trẻ – Thế giới",
+        "url": "https://tuoitre.vn",
+        "feed_url": "https://tuoitre.vn/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    },
+    {
+      "story_key": "francophonie-cambodia-visit",
+      "title": "Tổng Bí thư, Chủ tịch nước Tô Lâm: Việt Nam luôn ủng hộ một Campuchia hòa bình, ổn định và phát triển",
+      "link": "https://tuoitre.vn/tong-bi-thu-chu-tich-nuoc-to-lam-viet-nam-luon-ung-ho-mot-campuchia-hoa-binh-on-dinh-va-phat-trien-100261114174809658.htm",
+      "published_at": "2026-11-14T18:22:00+07:00",
+      "excerpt": "Việt Nam luôn nhất quán coi trọng, dành ưu tiên cao cho việc củng cố và phát triển quan hệ với Campuchia.",
+      "source": {
+        "name": "Tuổi Trẻ – Thế giới",
+        "url": "https://tuoitre.vn",
+        "feed_url": "https://tuoitre.vn/rss/the-gioi.rss"
+      },
+      "category": {
+        "slug": "the-gioi",
+        "name": "Thế giới"
+      }
+    }
+  ]
+}
