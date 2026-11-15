@@ -78,7 +78,7 @@ class DashboardController extends Controller
             ->each(fn ($article) => $article->boosts_count = (int) $boostsByArticle[$article->getKey()])
             ->sortBy([['boosts_count', 'desc'], ['published_at', 'desc']])->values();
 
-        $recentArticles = Article::with('source')->latest()->take(8)->get();
+        $recentArticles = Article::with(['source', 'category'])->latest()->take(8)->get();
         $recentComments = Comment::with(['user', 'article'])->latest()->take(6)->get();
         $sources = $allSources;
         $problemSources = $allSources

@@ -73,6 +73,23 @@ class Article extends Model
         return $this->hasMany(ArticleUnlock::class);
     }
 
+    protected function sourceName(): Attribute
+    {
+        return Attribute::make(get: fn () => $this->source?->name ?? $this->source_snapshot['name'] ?? '—');
+    }
+
+    protected function categoryName(): Attribute
+    {
+        return Attribute::make(get: fn () => $this->category?->name ?? $this->category_snapshot['name'] ?? '—');
+    }
+
+    protected function categoryUrl(): Attribute
+    {
+        // A snapshot slug alone does not establish a public SQL category route.
+        return Attribute::make(get: fn () => $this->category?->is_active && $this->category->slug
+            ? route('categories.show', $this->category->slug) : null);
+    }
+
     protected function readingTime(): Attribute
     {
         return Attribute::make(
