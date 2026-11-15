@@ -66,8 +66,8 @@
                 <div class="p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="sidebar-title mb-3">Chi tiết</div>
                     @foreach([
-                        ['Chủ đề',      $article->category->name],
-                        ['Nguồn',        $article->source->name],
+                        ['Chủ đề',      $article->category_name],
+                        ['Nguồn',        $article->source_name],
                         ['Slug',         $article->slug],
                         ['Ngày đăng',   $article->published_at?->format('d/m/Y H:i') ?? '—'],
                         ['Tạo lúc',     $article->created_at->format('d/m/Y H:i')],

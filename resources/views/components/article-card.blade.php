@@ -13,14 +13,18 @@
         </div>
     </a>
     <div class="article-card-body">
-        <a href="{{ route('categories.show', $article->category->slug) }}" class="category-badge">
-            {{ $article->category->name }}
+        @if($article->category_url)
+        <a href="{{ $article->category_url }}" class="category-badge">
+            {{ $article->category_name }}
         </a>
+        @else
+        <span class="category-badge">{{ $article->category_name }}</span>
+        @endif
         <h3 class="article-card-title">
             <a href="{{ route('articles.show', $article->slug) }}">{{ $article->title }}</a>
         </h3>
         <div class="article-card-meta">
-            <span>{{ $article->source->name }}</span>
+            <span>{{ $article->source_name }}</span>
             @if($article->published_at)
                 <span class="sep">{{ $article->published_at->diffForHumans() }}</span>
             @endif

@@ -139,11 +139,15 @@
                             </a>
                         </td>
                         <td style="vertical-align:middle;font-size:.8rem;white-space:nowrap">
-                            <a href="{{ route('categories.show', $a->category->slug) }}" target="_blank"
-                               style="color:var(--text-secondary);text-decoration:none">{{ $a->category->name }}</a>
+                            @if($a->category_url)
+                            <a href="{{ $a->category_url }}" target="_blank"
+                               style="color:var(--text-secondary);text-decoration:none">{{ $a->category_name }}</a>
+                            @else
+                            {{ $a->category_name }}
+                            @endif
                         </td>
                         <td style="vertical-align:middle;font-size:.78rem;color:var(--text-secondary);white-space:nowrap">
-                            {{ Str::limit($a->source->name, 20) }}
+                            {{ Str::limit($a->source_name, 20) }}
                         </td>
                         <td style="vertical-align:middle;font-size:.8rem;color:var(--accent);font-weight:700">{{ $a->boosts_count }}</td>
                         <td style="vertical-align:middle;font-size:.8rem">{{ $a->bookmarks_count }}</td>

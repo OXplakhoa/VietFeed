@@ -9,10 +9,10 @@
         @endif
     </div>
     <div class="article-hero-body">
-        <span class="category-badge mb-2 d-inline-block">{{ $article->category->name }}</span>
+        <span class="category-badge mb-2 d-inline-block">{{ $article->category_name }}</span>
         <div class="article-hero-title">{{ $article->title }}</div>
         <div class="article-hero-meta mt-2">
-            {{ $article->source->name }}
+            {{ $article->source_name }}
             @if($article->published_at)
                 &middot; {{ $article->published_at->diffForHumans() }}
             @endif

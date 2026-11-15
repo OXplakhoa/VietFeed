@@ -54,6 +54,9 @@
                                 <label class="form-label" style="font-size:.85rem;color:var(--text-muted);font-weight:500">Chủ đề <span style="color:var(--accent)">*</span></label>
                                 <select name="category_id" class="form-select @error('category_id') is-invalid @enderror"
                                         style="background:var(--surface-alt);border-color:var(--border);color:var(--text)">
+                                    @if(! $article->category_id)
+                                    <option value="" {{ old('category_id', $article->category_id) ? '' : 'selected' }}>{{ $article->category_name }}</option>
+                                    @endif
                                     @foreach($categories as $cat)
                                     <option value="{{ $cat->id }}" {{ old('category_id', $article->category_id) == $cat->id ? 'selected' : '' }}>{{ $cat->name }}</option>
                                     @endforeach
@@ -64,6 +67,9 @@
                                 <label class="form-label" style="font-size:.85rem;color:var(--text-muted);font-weight:500">Nguồn tin <span style="color:var(--accent)">*</span></label>
                                 <select name="source_id" class="form-select @error('source_id') is-invalid @enderror"
                                         style="background:var(--surface-alt);border-color:var(--border);color:var(--text)">
+                                    @if(! $article->source_id)
+                                    <option value="" {{ old('source_id', $article->source_id) ? '' : 'selected' }}>{{ $article->source_name }}</option>
+                                    @endif
                                     @foreach($sources as $src)
                                     <option value="{{ $src->id }}" {{ old('source_id', $article->source_id) == $src->id ? 'selected' : '' }}>{{ $src->name }}</option>
                                     @endforeach

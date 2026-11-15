@@ -255,7 +255,7 @@
                                 {{ Str::limit($a->title, 70) }}
                             </a>
                         </td>
-                        <td style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap">{{ $a->source->name }}</td>
+                        <td style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap">{{ $a->source_name }} · {{ $a->category_name }}</td>
                         <td style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap">{{ $a->created_at->diffForHumans() }}</td>
                         <td style="white-space:nowrap">
                             <a href="{{ route('admin.articles.edit', $a) }}"
