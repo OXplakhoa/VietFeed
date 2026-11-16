@@ -613,3 +613,127 @@ Run `vendor/bin/phpunit tests/Feature/StoryPageTest.php` for Mongo/Redis HTTP be
 (included in `composer run test`) and
 `vendor/bin/phpunit tests/Integration/StoryPageProjectionsTest.php` for tiny,
 isolated real-projection HTTP convergence, read outages and graph DLQ recovery.
+
+## Gate 8 — first-party API token state
+
+`App\ApiTokens\ApiTokenService` alone owns token keys. It uses the existing `nosql`
+connection (default NoSQL DB2; **DB15 only for tests**, protected by live getDbNum).
+The web session stays independent. Redis loss invalidates API credentials and
+requires login again; Mongo User identity is loaded on every bearer request and
+refresh. Roles/permissions are never copied into Redis. Existing SQL-backed
+sanctions and boosts are reused; migrating those models belongs to later gates.
+
+All logical keys below receive `database.redis.options.prefix` exactly once:
+
+| Key | Type/value | Physical TTL |
+|---|---|---|
+| `api-token:access:<SHA-256>` | JSON `{uid,family,expires}` | configured access seconds + 60 |
+| `api-token:refresh:<SHA-256>` | JSON `{uid,family,expires,used?}` | configured refresh seconds + 60 |
+| `api-token:family:<random-id>` | JSON `{uid,epoch}` | longest issued token's expiry + 60, extended on rotation |
+| `api-token:user:<user-id>` | sorted set: family ID, score = family physical expiry | expires at greatest score |
+
+Access/refresh values are independently random 32-byte (256-bit), unpadded
+base64url strings. SHA-256 lookup is adequate for uniformly random secrets; no
+password hash or raw token enters this keyspace. Never inspect a token by pasting
+its raw value into a command, URL or file. The family ID is independently random
+and is not itself a usable credential.
+
+`AUTH_ACCESS_TOKEN_TTL_SECONDS` defaults to 900;
+`AUTH_REFRESH_TOKEN_TTL_SECONDS` defaults to 2592000. Positive integer values in
+1..31536000 are accepted through `config/nosql.php`; invalid values fail closed
+with 500 `server_error`. Neither `.env` nor the Docker configuration was changed for this gate.
+
+Lua compares `expires` with Redis TIME in integer seconds on every lookup. The
+extra **60-second diagnostic grace** preserves the expired-vs-unknown distinction
+without extending authorization. After that horizon metadata disappears and the
+same credential returns invalid. Revoked families stop all access/refresh tokens
+immediately, regardless of TTL. Refresh expiry does not revoke valid access.
+
+Rotation is one Lua operation: check old state again, mark old refresh used with
+KEEPTTL, create replacement hashes and extend family/index TTL as needed. Older
+access tokens keep their independent lifetime. Replaying a rotated refresh during
+its original lifetime deletes family authority, invalidating every generation.
+A duplicate concurrent refresh therefore also invalidates the winner's pair:
+clients must serialize refresh and reauthenticate after ambiguous retries.
+
+Issue/rotation prune family-index members whose physical horizon has passed.
+Account revocation increments Mongo User `api_token_epoch` (missing means integer
+0). Issue stores the epoch from the same User snapshot as credential verification
+in the family. Every bearer/refresh checks that epoch against the current Mongo
+User and rejects a mismatch as `401 token_family_revoked`. Password update/reset
+uses a single Mongo write with password `$set` and epoch `$inc`, including when
+the model snapshot is stale. An active temporary/permanent ban increments the
+User epoch after the SQL sanction save succeeds. All sanction permission helpers
+query any relevant active sanction; a newer warning cannot hide an active ban.
+
+Redis cleanup is best-effort after persistence: it iterates only that user's sorted
+family index and deletes Redis families atomically, without throwing store failures
+into web password, deletion or ban actions. Deletion is authoritative through a
+missing Mongo User. Warnings contain operation and exception class only. A login
+whose old credential snapshot precedes the security write can still return a pair,
+but that pair fails on first use. An already-authorized in-flight request is not
+cancelled. SQL sanction save and Mongo epoch increment are separate writes; if the
+Mongo increment fails, the active ban still denies requests, but lifting it before
+retrying the increment could restore old families. Bulk writes bypassing model
+events must use equivalent epoch updates. No cross-store transaction is claimed.
+Request paths never use KEYS/SCAN. Logout removes
+one family/index member. Token metadata expires naturally, so revocation need not
+find every generation. All Redis operations go through RedisResult; Lua uses
+redis.call and preflights the relevant key types before state mutation. Driver
+false results and script errors become a generic 503 without driver diagnostics.
+Redis scripts do not roll back earlier writes on server faults/ACL failures; the
+local deployment is a standalone Redis with the existing ACL/configuration.
+
+Native, **read-only** inspection (interactive redis-cli; supply its password through
+an interactive secret prompt or runtime REDISCLI_AUTH, never a literal argument).
+Connect to the explicitly chosen isolated DB; do not flush a development DB:
+
+```bash
+# Host redis-cli, with REDISCLI_AUTH supplied securely in the current environment:
+redis-cli -h 127.0.0.1 -p 6379 -n 15
+```
+
+Inside redis-cli, substitute the configured physical prefix and IDs/hashes learned
+from the diagnostic scan, never raw AT/RT. SCAN is **operator inspection only**:
+
+```text
+SCAN 0 MATCH <configured-prefix>api-token:* COUNT 100
+TYPE <configured-prefix>api-token:user:<fixture-user-id>
+ZRANGE <configured-prefix>api-token:user:<fixture-user-id> 0 -1 WITHSCORES
+TTL <configured-prefix>api-token:user:<fixture-user-id>
+GET <configured-prefix>api-token:family:<family-id>
+TTL <configured-prefix>api-token:family:<family-id>
+GET <configured-prefix>api-token:access:<sha256-from-scan>
+TTL <configured-prefix>api-token:access:<sha256-from-scan>
+GET <configured-prefix>api-token:refresh:<sha256-from-scan>
+TTL <configured-prefix>api-token:refresh:<sha256-from-scan>
+```
+
+Repeat SCAN with its returned cursor until zero for a complete inspection.
+TTL -2 means metadata gone, not a reliable expired-vs-revoked diagnosis. No raw
+credentials should appear in these values. Tests scan **all DB15 keys and dumped
+values**, and capture the flow's logger output, to assert raw-token absence.
+
+See [the curl walkthrough](../demo/api-token-demo.md). Its commands were not
+executed; each HTTP step is mapped there to an automated passing test.
+
+### Gate 8 API errors and login limits (review-fix round 1)
+
+Errors remain `{ "error": { "code": "..." } }`, with no validation fields/values.
+Symfony HTTP exceptions preserve their status (401 `unauthenticated`, 403
+`forbidden`, 404 `not_found`, 405 `method_not_allowed`, 429 `rate_limited`).
+Authorization failures are 403; missing models 404; validation 422
+`validation_error`; unexpected errors/configuration failures 500 `server_error`.
+503 `service_unavailable` is reserved for token-store access failures. Unexpected
+API failures pass through Laravel's reporter using a sanitized exception message
+(class only) and empty context, removing input, headers, original exception
+messages/context and traces. Non-API rendering/reporting and console reporting
+retain the normal framework behavior.
+
+Login validates before throttling. Only rejected credential checks consume the
+shared Redis cache counters: 5/minute per email hash + IP, 30/minute per IP.
+Successful login clears the account counter and consumes neither counter.
+A noisy account leaves other accounts at the same IP usable until the IP ceiling;
+429 replies include `Retry-After`. Keys hash email/IP and never contain passwords.
+The API explicitly uses the existing Redis cache store even if the default cache
+store is process-local. Test workers pin and guard cache/nosql Redis at DB15.

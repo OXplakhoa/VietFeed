@@ -2,10 +2,78 @@
 
 namespace App\Models;
 
+use App\ApiTokens\ApiTokenService;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
+use LogicException;
+use Throwable;
 
 class Sanction extends Model
 {
+    protected int $apiTokenBanTransition = 0;
+
+    protected static function booted(): void
+    {
+        static::updating(function (Sanction $sanction) {
+            if ($sanction->isDirty('user_id')) {
+                throw new LogicException('Sanction user_id cannot be changed after creation.');
+            }
+        });
+        static::saving(function (Sanction $sanction) {
+            $effective = $sanction->isEffectiveBan($sanction->getAttributes());
+            $wasEffective = $sanction->isEffectiveBan($sanction->getRawOriginal());
+            $sanction->apiTokenBanTransition = $effective === $wasEffective ? 0 : ($effective ? 1 : -1);
+            if ($sanction->apiTokenBanTransition === 1) {
+                // Abort before SQL if Mongo cannot establish the pre-write epoch.
+                $sanction->bumpApiTokenEpoch();
+            }
+        });
+        static::saved(function (Sanction $sanction) {
+            $transition = $sanction->apiTokenBanTransition;
+            $sanction->apiTokenBanTransition = 0;
+            if ($transition === 0) {
+                return;
+            }
+            try {
+                // Fence logins that read the pre-write epoch before SQL persisted.
+                $sanction->bumpApiTokenEpoch();
+            } catch (Throwable $error) {
+                Log::warning('Sanction token epoch update failed', [
+                    'operation' => $transition === 1 ? 'ban_saved' : 'ban_lifted',
+                    'exception_type' => $error::class,
+                ]);
+            }
+            app(ApiTokenService::class)->cleanupForUser((string) $sanction->user_id);
+        });
+        static::deleted(function (Sanction $sanction) {
+            if (! $sanction->isEffectiveBan($sanction->getRawOriginal())) {
+                return;
+            }
+            try {
+                $sanction->bumpApiTokenEpoch();
+            } catch (Throwable $error) {
+                Log::warning('Sanction token epoch update failed', [
+                    'operation' => 'ban_lifted',
+                    'exception_type' => $error::class,
+                ]);
+            }
+            app(ApiTokenService::class)->cleanupForUser((string) $sanction->user_id);
+        });
+    }
+
+    private function isEffectiveBan(array $attributes): bool
+    {
+        return in_array($attributes['type'] ?? null, ['temporary_ban', 'permanent_ban'])
+            && ($attributes['is_active'] ?? false)
+            && (! isset($attributes['expires_at']) || $this->asDateTime($attributes['expires_at'])->isFuture());
+    }
+
+    private function bumpApiTokenEpoch(): void
+    {
+        User::normalizeApiTokenEpoch((string) $this->user_id);
+        User::where('_id', $this->user_id)->increment('api_token_epoch');
+    }
+
     protected $fillable = [
         'user_id',
         'admin_id',

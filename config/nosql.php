@@ -7,6 +7,11 @@
 
 return [
 
+    'api_tokens' => [
+        'access_ttl_seconds' => env('AUTH_ACCESS_TOKEN_TTL_SECONDS', 900),
+        'refresh_ttl_seconds' => env('AUTH_REFRESH_TOKEN_TTL_SECONDS', 2592000),
+    ],
+
     'mongo' => [
         'host' => env('MONGO_HOST', '127.0.0.1'),
         'port' => env('MONGO_PORT', 27017),

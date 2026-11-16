@@ -9,6 +9,7 @@ use App\Models\Sanction;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class SanctionController extends Controller
 {
@@ -67,15 +68,21 @@ class SanctionController extends Controller
             $expiresAt = now()->addDays($request->duration_days ?? 7);
         }
 
-        $sanction = Sanction::create([
-            'user_id' => $request->user_id,
-            'admin_id' => Auth::id(),
-            'report_id' => $request->report_id,
-            'type' => $request->type,
-            'reason' => $request->reason,
-            'expires_at' => $expiresAt,
-            'is_active' => true,
-        ]);
+        try {
+            $sanction = Sanction::create([
+                'user_id' => $request->user_id,
+                'admin_id' => Auth::id(),
+                'report_id' => $request->report_id,
+                'type' => $request->type,
+                'reason' => $request->reason,
+                'expires_at' => $expiresAt,
+                'is_active' => true,
+            ]);
+        } catch (\Throwable $error) {
+            Log::warning('Sanction save failed', ['exception_type' => $error::class]);
+
+            return back()->with('error', 'Không thể áp dụng biện pháp xử lý. Vui lòng thử lại.');
+        }
 
         // If a comment_id was provided, soft-hide it
         if ($request->filled('comment_id')) {
