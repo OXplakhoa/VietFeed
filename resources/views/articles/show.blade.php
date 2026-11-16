@@ -156,7 +156,8 @@
                     </div>
 
                     @auth
-                        @if(auth()->user()->canComment())
+                        @php $sanction = auth()->user()->blockingCommentSanction(); @endphp
+                        @if($sanction === null)
                         <div class="mb-4 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                             <form action="{{ route('comments.store', $article->slug) }}" method="POST">
                                 @csrf
@@ -171,7 +172,6 @@
                             </form>
                         </div>
                         @else
-                        @php $sanction = auth()->user()->activeSanction(); @endphp
                         <div class="mb-4 p-4" style="background:linear-gradient(135deg, rgba(230,57,70,.10), var(--surface));border:1px solid rgba(230,57,70,.25);border-radius:12px">
                             <div class="d-flex align-items-center gap-2 mb-2" style="color:var(--accent);font-weight:600">
                                 <i class="bi bi-mic-mute"></i>
