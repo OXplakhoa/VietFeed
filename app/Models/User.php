@@ -132,54 +132,42 @@ class User extends Authenticatable implements MustVerifyEmail
             ->first();
     }
 
+    public function blockingCommentSanction(): ?Sanction
+    {
+        return $this->sanctions()->active()
+            ->whereIn('type', ['mute', 'temporary_ban', 'permanent_ban'])
+            ->orderByDesc('created_at')
+            ->first();
+    }
+
     public function isMuted(): bool
     {
-        $sanction = $this->activeSanction();
-
-        return $sanction && in_array($sanction->type, ['mute', 'temporary_ban', 'permanent_ban']);
+        return $this->sanctions()->active()->whereIn('type', ['mute', 'temporary_ban', 'permanent_ban'])->exists();
     }
 
     public function isBanned(): bool
     {
-        $sanction = $this->activeSanction();
-
-        return $sanction && in_array($sanction->type, ['temporary_ban', 'permanent_ban']);
+        return $this->sanctions()->active()->whereIn('type', ['temporary_ban', 'permanent_ban'])->exists();
     }
 
     public function isPermanentlyBanned(): bool
     {
-        $sanction = $this->activeSanction();
-
-        return $sanction && $sanction->type === 'permanent_ban';
+        return $this->sanctions()->active()->whereIn('type', ['permanent_ban'])->exists();
     }
 
     public function isTempBanned(): bool
     {
-        $sanction = $this->activeSanction();
-
-        return $sanction && $sanction->type === 'temporary_ban';
+        return $this->sanctions()->active()->whereIn('type', ['temporary_ban'])->exists();
     }
 
     public function canComment(): bool
     {
-        $sanction = $this->activeSanction();
-
-        if (! $sanction) {
-            return true;
-        }
-
-        return $sanction->type === 'warning';
+        return ! $this->isMuted();
     }
 
     public function canBookmark(): bool
     {
-        $sanction = $this->activeSanction();
-
-        if (! $sanction) {
-            return true;
-        }
-
-        return in_array($sanction->type, ['warning', 'mute']);
+        return ! $this->isBanned();
     }
 
     public function canBoost(): bool

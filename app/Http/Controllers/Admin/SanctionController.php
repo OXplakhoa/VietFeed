@@ -52,7 +52,7 @@ class SanctionController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'user_id' => 'required|exists:users,id',
+            'user_id' => 'required|exists:mongodb.users,_id',
             'report_id' => 'nullable|exists:reports,id',
             'comment_id' => 'nullable|exists:comments,id',
             'type' => 'required|in:warning,mute,temporary_ban,permanent_ban',
