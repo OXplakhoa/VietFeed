@@ -1,5 +1,10 @@
-@props(['comment', 'article'])
+@props(['comment', 'article', 'viewerCanReport' => false])
+@php
+    $isOwn = auth()->id() === $comment->user_id;
+    $canReport = ! $isOwn && ! $comment->is_hidden && $viewerCanReport;
+@endphp
 
+@if($isOwn || $canReport)
 <div class="dropdown">
     <button class="btn btn-sm dropdown-toggle"
             type="button"
@@ -10,7 +15,7 @@
         <i class="bi bi-three-dots-vertical"></i>
     </button>
     <ul class="dropdown-menu dropdown-menu-end" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:160px">
-        @if(auth()->id() === $comment->user_id)
+        @if($isOwn)
             <li>
                 <button type="button"
                         class="dropdown-item"
@@ -28,7 +33,7 @@
                     </button>
                 </form>
             </li>
-        @elseif(!auth()->user()->isAdmin())
+        @elseif($canReport)
             <li>
                 <button type="button"
                         class="dropdown-item"
@@ -42,7 +47,10 @@
     </ul>
 </div>
 
+@endif
+
 {{-- Report Modal --}}
+@if($canReport)
 <div class="modal fade" id="report-modal-{{ $comment->id }}" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="background:var(--surface);border:1px solid var(--border);border-radius:14px">
@@ -99,3 +107,4 @@
         </div>
     </div>
 </div>
+@endif

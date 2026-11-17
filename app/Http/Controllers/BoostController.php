@@ -9,6 +9,13 @@ class BoostController extends Controller
 {
     public function toggle(Request $request)
     {
+        if (! $request->user()->canBoost()) {
+            return response()->json([
+                'error' => 'restricted',
+                'message' => 'Tài khoản đang bị hạn chế nên không thể đề xuất bài viết.',
+            ], 403);
+        }
+
         $request->validate(['article_id' => 'required|string|exists:mongodb.articles,_id']);
 
         $existing = $request->user()

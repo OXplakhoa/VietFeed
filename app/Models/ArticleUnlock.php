@@ -23,11 +23,11 @@ class ArticleUnlock extends Model
 
     public function article(): BelongsTo
     {
-        return $this->belongsTo(Article::class);
+        return $this->belongsTo(Article::class, 'article_id');
     }
 
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 }

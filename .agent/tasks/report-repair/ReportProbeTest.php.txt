@@ -1,0 +1,116 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Article;
+use App\Models\Category;
+use App\Models\Comment;
+use App\Models\Report;
+use App\Models\Sanction;
+use App\Models\Source;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class ReportProbeTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private array $log = [];
+
+    private function step(string $name, callable $fn): mixed
+    {
+        try {
+            $r = $fn();
+            $this->log[] = "OK   $name".(is_string($r) ? " -> $r" : '');
+
+            return $r;
+        } catch (\Throwable $e) {
+            $this->log[] = "FAIL $name -> ".class_basename($e).': '.mb_substr(preg_replace('/\s+/', ' ', $e->getMessage()), 0, 220);
+
+            return null;
+        }
+    }
+
+    private function resp($r): string
+    {
+        $s = $r->getStatusCode();
+        $loc = $r->headers->get('Location');
+        $flash = session('error') ?? session('success');
+        $ex = $r->exception ? ' EX='.class_basename($r->exception).': '.mb_substr($r->exception->getMessage(), 0, 200) : '';
+
+        return "$s".($loc ? " -> ".parse_url($loc, PHP_URL_PATH) : '').($flash ? " flash=[$flash]" : '').$ex;
+    }
+
+    public function test_probe(): void
+    {
+        $author = User::factory()->create(['email_verified_at' => now()]);
+        $reporter = User::factory()->create(['email_verified_at' => now()]);
+        $admin = User::factory()->create(['email_verified_at' => now(), 'role' => 'admin']);
+        $category = Category::create(['name' => 'Fixture', 'slug' => 'fixture', 'is_active' => true]);
+        $source = Source::create(['name' => 'Fixture', 'url' => 'https://example.test', 'feed_url' => 'https://example.test/rss', 'category_id' => $category->id, 'is_active' => true]);
+        $article = Article::create(['title' => 'Fixture', 'slug' => 'probe-article', 'original_url' => 'https://example.test/probe', 'category_id' => $category->id, 'source_id' => $source->id, 'published_at' => now()]);
+
+        // 1. author comments through the real route
+        $this->step('author posts comment', fn () => $this->resp($this->actingAs($author)->post(route('comments.store', $article->slug ?? $article), ['body' => 'Bình luận probe để báo cáo', 'article_id' => $article->id])));
+        $comment = Comment::latest('id')->first() ?? Comment::create(['user_id' => (string) $author->id, 'article_id' => (string) $article->id, 'body' => 'fallback probe comment']);
+        $this->log[] = 'INFO comment id='.$comment->id.' article_id='.$comment->article_id.' user_id='.$comment->user_id;
+
+        // 2. article page shows report UI to reporter
+        $this->step('article page as reporter', function () use ($article, $reporter) {
+            $r = $this->actingAs($reporter)->get('/articles/'.$article->slug);
+
+            return $this->resp($r).' has_report_form='.(str_contains($r->getContent(), '/report') ? 'yes' : 'no');
+        });
+
+        // 3. reporter submits report
+        $this->step('reporter submits report', fn () => $this->resp($this->actingAs($reporter)->from('/articles/'.$article->slug)->post(route('reports.store', $comment), ['reason' => 'spam', 'description' => 'probe'])));
+        $this->step('duplicate report', fn () => $this->resp($this->actingAs($reporter)->from('/articles/'.$article->slug)->post(route('reports.store', $comment), ['reason' => 'spam'])));
+        $this->step('author reports own comment', fn () => $this->resp($this->actingAs($author)->post(route('reports.store', $comment), ['reason' => 'spam'])));
+        $report = Report::first();
+        $this->log[] = 'INFO reports='.Report::count().' status='.($report->status ?? 'null');
+
+        // 4. admin inbox, filters, search, show
+        $this->step('admin reports index', fn () => $this->resp($this->actingAs($admin)->get(route('admin.reports.index'))));
+        $this->step('admin reports filter status', fn () => $this->resp($this->actingAs($admin)->get(route('admin.reports.index', ['status' => 'pending', 'reason' => 'spam']))));
+        $this->step('admin reports search q', fn () => $this->resp($this->actingAs($admin)->get(route('admin.reports.index', ['q' => 'probe']))));
+        $this->step('admin report show', fn () => $report ? $this->resp($this->actingAs($admin)->get(route('admin.reports.show', $report))) : 'no report');
+        $this->step('admin report update reviewed', fn () => $report ? $this->resp($this->actingAs($admin)->from('/admin/reports')->put(route('admin.reports.update', $report), ['status' => 'reviewed'])) : 'no report');
+
+        // 5. admin issues temporary ban from the report
+        $this->step('admin sanction temp_ban', fn () => $this->resp($this->actingAs($admin)->from('/admin/reports')->post(route('admin.sanctions.store'), [
+            'user_id' => (string) $author->id, 'report_id' => $report?->id, 'comment_id' => $comment->id,
+            'type' => 'temporary_ban', 'reason' => 'probe ban', 'duration_days' => 3])));
+        $sanction = Sanction::first();
+        $this->log[] = 'INFO sanctions='.Sanction::count().' report_status='.($report?->fresh()->status ?? 'null').' comment_hidden='.var_export($comment->fresh()->is_hidden ?? null, true);
+
+        // 6. banned user experience
+        $this->step('temp-banned user home', fn () => $this->resp($this->actingAs($author->fresh())->get('/')));
+        $this->step('temp-banned user posts comment', fn () => $this->resp($this->actingAs($author->fresh())->from('/articles/'.$article->slug)->post(route('comments.store', $article->slug ?? $article), ['body' => 'still talking', 'article_id' => $article->id])));
+        $this->step('temp-banned user bookmark/profile', fn () => $this->resp($this->actingAs($author->fresh())->get(route('profile.edit'))));
+        $this->step('hidden comment visible on article?', function () use ($article, $reporter) {
+            $r = $this->actingAs($reporter)->get('/articles/'.$article->slug);
+
+            return $this->resp($r).' contains_body='.(str_contains($r->getContent(), 'Bình luận probe') ? 'yes' : 'no');
+        });
+
+        // 7. appeal
+        $this->step('author appeals', fn () => $sanction ? $this->resp($this->actingAs($author->fresh())->from('/profile')->post(route('sanctions.appeal', $sanction), ['appeal_message' => 'Tôi không đồng ý với quyết định này'])) : 'no sanction');
+        $this->step('admin sanctions index pending_appeal', fn () => $this->resp($this->actingAs($admin)->get(route('admin.sanctions.index', ['status' => 'pending_appeal']))));
+        $this->step('admin sanctions search q', fn () => $this->resp($this->actingAs($admin)->get(route('admin.sanctions.index', ['q' => 'probe']))));
+        $this->step('admin sanction show', fn () => $sanction ? $this->resp($this->actingAs($admin)->get(route('admin.sanctions.show', $sanction))) : 'no sanction');
+        $this->step('admin approves appeal', fn () => $sanction ? $this->resp($this->actingAs($admin)->from('/admin/sanctions')->put(route('admin.sanctions.update', $sanction), ['appeal_status' => 'approved'])) : 'no sanction');
+        $this->log[] = 'INFO after appeal: sanction active='.var_export($sanction?->fresh()->is_active, true).' comment_hidden='.var_export($comment->fresh()->is_hidden ?? null, true).' report_status='.($report?->fresh()->status ?? 'null').' author_banned='.var_export($author->fresh()->isBanned(), true);
+
+        // 8. permanent ban path + admin dashboards
+        $this->step('admin sanction permanent_ban (no report)', fn () => $this->resp($this->actingAs($admin)->from('/admin/sanctions')->post(route('admin.sanctions.store'), ['user_id' => (string) $reporter->id, 'type' => 'permanent_ban', 'reason' => 'probe perm'])));
+        $this->step('perm-banned user home', fn () => $this->resp($this->actingAs($reporter->fresh())->get('/')));
+        $this->step('admin dashboard', fn () => $this->resp($this->actingAs($admin)->get(route('admin.dashboard'))));
+        $this->step('admin users edit (author)', fn () => $this->resp($this->actingAs($admin)->get(route('admin.users.edit', $author))));
+        $this->step('admin delete comment -> reports', fn () => $this->resp($this->actingAs($admin)->delete(route('comments.destroy', $comment))));
+        $this->log[] = 'INFO reports after comment delete='.Report::count();
+
+        fwrite(STDERR, "\n=== REPORT PROBE ===\n".implode("\n", $this->log)."\n");
+        $this->assertTrue(true);
+    }
+}

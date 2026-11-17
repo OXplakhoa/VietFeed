@@ -45,7 +45,7 @@
                     @if($sanction->isCurrentlyActive())
                         <span class="badge rounded-pill" style="background:rgba(34,197,94,.12);color:#22c55e;font-size:.75rem;border:1px solid rgba(34,197,94,.3)">Đang hiệu lực</span>
                     @else
-                        <span class="badge rounded-pill" style="background:rgba(107,114,128,.12);color:var(--text-muted);font-size:.75rem;border:1px solid rgba(107,114,128,.3)">Hết hiệu lực</span>
+                        <span class="badge rounded-pill" style="background:rgba(107,114,128,.12);color:var(--text-muted);font-size:.75rem;border:1px solid rgba(107,114,128,.3)">{{ $sanction->statusLabel() }}</span>
                     @endif
                 </div>
                 <span style="font-size:.75rem;color:var(--text-muted)">{{ $sanction->created_at->format('d/m/Y') }}</span>
@@ -58,7 +58,13 @@
             @endif
 
             {{-- Appeal section --}}
-            @if($sanction->type !== 'warning' && $sanction->type !== 'permanent_ban' && $sanction->isCurrentlyActive())
+            @if($sanction->revoked_at)
+                <div class="mt-2" style="font-size:.78rem;color:var(--text-muted)">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Đã thu hồi {{ $sanction->revoked_at->format('d/m/Y H:i') }}
+                </div>
+            @endif
+
+            @if($sanction->isCurrentlyActive() || $sanction->appeal_status !== 'none')
                 @if($sanction->appeal_status === 'none')
                     <div class="mt-3 pt-3" style="border-top:1px solid var(--border)">
                         <button type="button" class="btn btn-sm"
@@ -69,7 +75,7 @@
                         <div id="appeal-form-{{ $sanction->id }}" class="d-none mt-2">
                             <form action="{{ route('sanctions.appeal', $sanction) }}" method="POST">
                                 @csrf
-                                <textarea name="appeal_message" class="vf-textarea mb-2" rows="3" required
+                                <textarea name="appeal_message" class="vf-textarea mb-2" rows="3" required minlength="10" maxlength="2000"
                                           placeholder="Giải thích lý do bạn cho rằng biện pháp xử lý này không công bằng..."></textarea>
                                 <div class="d-flex gap-2">
                                     <button type="submit" class="btn-accent" style="font-size:.8rem;padding:.35rem .9rem">

@@ -3,36 +3,27 @@
 namespace App\Http\Controllers;
 
 use App\Models\Comment;
-use App\Models\Report;
+use App\Moderation\ModerationException;
+use App\Moderation\ModerationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class ReportController extends Controller
 {
-    public function store(Request $request, Comment $comment)
+    public function store(Request $request, ModerationService $moderation, string $comment)
     {
-        abort_if($comment->user_id === Auth::id(), 403, 'Bạn không thể báo cáo bình luận của chính mình.');
-        abort_if(Auth::user()->isAdmin(), 403, 'Quản trị viên không cần báo cáo.');
-
-        $request->validate([
+        $data = $request->validate([
             'reason' => 'required|in:hate_speech,harassment,spam,misinformation,sexual_content,other',
             'description' => 'nullable|string|max:2000',
         ]);
 
-        $existing = Report::where('reporter_id', Auth::id())
-            ->where('comment_id', $comment->id)
-            ->first();
+        // Resolved by hand so a deleted comment gets a message instead of a 404.
+        $target = ctype_digit($comment) ? Comment::find((int) $comment) : null;
 
-        if ($existing) {
-            return back()->with('error', 'Bạn đã báo cáo bình luận này rồi.');
+        try {
+            $moderation->reportComment($request->user(), $target, $data['reason'], $data['description'] ?? null);
+        } catch (ModerationException $e) {
+            return back()->with('error', $e->getMessage());
         }
-
-        Report::create([
-            'reporter_id' => Auth::id(),
-            'comment_id' => $comment->id,
-            'reason' => $request->reason,
-            'description' => $request->description,
-        ]);
 
         return back()->with('success', 'Cảm ơn bạn đã báo cáo. Đội ngũ của chúng tôi sẽ xem xét trong thời gian sớm nhất.');
     }

@@ -23,7 +23,7 @@
                             @if($sanction->isCurrentlyActive())
                                 <span class="badge rounded-pill" style="background:rgba(34,197,94,.12);color:#22c55e;font-size:.8rem;border:1px solid rgba(34,197,94,.3)">Hiệu lực</span>
                             @else
-                                <span class="badge rounded-pill" style="background:rgba(107,114,128,.12);color:var(--text-muted);font-size:.8rem;border:1px solid rgba(107,114,128,.3)">Hết hiệu lực</span>
+                                <span class="badge rounded-pill" style="background:rgba(107,114,128,.12);color:var(--text-muted);font-size:.8rem;border:1px solid rgba(107,114,128,.3)">{{ $sanction->statusLabel() }}</span>
                             @endif
                         </div>
                     </div>
@@ -65,6 +65,27 @@
                         </div>
                     </div>
 
+                    @if($sanction->revoked_at)
+                    <div class="mb-3">
+                        <div style="font-size:.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem">Thu hồi</div>
+                        <div class="p-3" style="background:var(--surface-alt);border-radius:8px;font-size:.85rem;color:var(--text);line-height:1.6">
+                            {{ $sanction->revoked_via === 'appeal' ? 'Do kháng cáo được chấp nhận' : 'Bởi quản trị viên' }}
+                            — {{ $sanction->revoker?->name ?? '—' }}, {{ $sanction->revoked_at->format('d/m/Y H:i') }}
+                            @if($sanction->revoke_note)<br>Ghi chú: {{ $sanction->revoke_note }}@endif
+                        </div>
+                    </div>
+                    @elseif($sanction->is_active)
+                    <form action="{{ route('admin.sanctions.revoke', $sanction) }}" method="POST" class="mb-3 d-flex gap-2 align-items-start"
+                          onsubmit="return confirm('Thu hồi biện pháp xử lý này? Bản ghi vẫn được lưu trong lịch sử.')">
+                        @csrf
+                        <input type="text" name="note" maxlength="2000" class="form-control form-control-sm" placeholder="Ghi chú thu hồi (không bắt buộc)"
+                               style="background:var(--surface-alt);border-color:var(--border);color:var(--text)">
+                        <button type="submit" class="btn btn-sm" style="background:#ef4444;color:#fff;border:none;border-radius:6px;white-space:nowrap">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>Thu hồi
+                        </button>
+                    </form>
+                    @endif
+
                     @if($sanction->report)
                     <div class="mb-3">
                         <div style="font-size:.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem">Báo cáo liên quan</div>
@@ -75,27 +96,28 @@
                     @endif
                 </div>
 
-                @if($sanction->report && $sanction->report->comment)
+                @if($report)
                 <div class="p-4" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <h5 class="serif mb-3" style="color:var(--text)">Bình luận vi phạm</h5>
                     <div class="d-flex gap-2 align-items-start">
-                        <div class="comment-avatar">
-                            <i class="bi bi-person"></i>
-                        </div>
+                        <div class="comment-avatar"><i class="bi bi-person"></i></div>
                         <div class="flex-fill">
                             <div class="d-flex align-items-center gap-2 mb-1">
-                                <strong style="font-size:.875rem;color:var(--text)">{{ $sanction->report->comment->user?->name ?? '—' }}</strong>
-                                <span style="font-size:.75rem;color:var(--text-muted)">{{ $sanction->report->comment->created_at?->diffForHumans() ?? '' }}</span>
+                                <strong style="font-size:.875rem;color:var(--text)">{{ $author?->name ?? 'Người dùng đã xóa' }}</strong>
+                                <span class="badge rounded-pill" style="background:var(--surface-alt);color:var(--text);border:1px solid var(--border)">
+                                    {{ ['visible' => 'Đang hiển thị', 'hidden' => 'Đang bị ẩn', 'deleted' => 'Bình luận đã bị xóa'][$commentState] }}
+                                </span>
                             </div>
-                            <div style="font-size:.9rem;color:var(--text);line-height:1.6">
-                                {{ $sanction->report->comment->body }}
-                            </div>
+                            <div style="font-size:.9rem;color:var(--text);line-height:1.6">{{ $report->comment_body }}</div>
                         </div>
                     </div>
-                    <a href="{{ route('articles.show', $sanction->report->comment->article?->slug ?? '') }}"
-                       target="_blank" class="d-block mt-3" style="font-size:.85rem;color:var(--accent);text-decoration:none">
+                    @if($article)
+                    <a href="{{ route('articles.show', $article->slug) }}" target="_blank" class="d-block mt-3" style="font-size:.85rem;color:var(--accent);text-decoration:none">
                         <i class="bi bi-box-arrow-up-right me-1"></i>Xem bài viết
                     </a>
+                    @else
+                    <div class="mt-3" style="font-size:.82rem;color:var(--text-muted)">Bài viết không còn tồn tại</div>
+                    @endif
                 </div>
                 @endif
             </div>
@@ -118,29 +140,24 @@
                                 {{ $sanction->appeal_message }}
                             </div>
                             @endif
-                            <div class="d-flex gap-2">
-                                <form action="{{ route('admin.sanctions.update', $sanction) }}" method="POST" class="m-0">
-                                    @csrf @method('PUT')
-                                    <input type="hidden" name="appeal_status" value="approved">
-                                    <button type="submit" class="btn btn-sm"
-                                            style="background:#22c55e;color:#fff;border:none;border-radius:6px">
+                            <form action="{{ route('admin.sanctions.update', $sanction) }}" method="POST" class="m-0 mb-2" id="appeal-decision">
+                                @csrf @method('PUT')
+                                <input type="text" name="note" maxlength="2000" class="form-control form-control-sm mb-2" placeholder="Ghi chú quyết định (không bắt buộc)"
+                                       style="background:var(--surface-alt);border-color:var(--border);color:var(--text)">
+                                <div class="d-flex gap-2">
+                                    <button type="submit" name="appeal_status" value="approved" class="btn btn-sm" style="background:#22c55e;color:#fff;border:none;border-radius:6px">
                                         <i class="bi bi-check me-1"></i>Chấp nhận
                                     </button>
-                                </form>
-                                <form action="{{ route('admin.sanctions.update', $sanction) }}" method="POST" class="m-0">
-                                    @csrf @method('PUT')
-                                    <input type="hidden" name="appeal_status" value="denied">
-                                    <button type="submit" class="btn btn-sm"
-                                            style="background:#ef4444;color:#fff;border:none;border-radius:6px">
+                                    <button type="submit" name="appeal_status" value="denied" class="btn btn-sm" style="background:#ef4444;color:#fff;border:none;border-radius:6px">
                                         <i class="bi bi-x me-1"></i>Từ chối
                                     </button>
-                                </form>
-                            </div>
+                                </div>
+                            </form>
                         @elseif($sanction->appeal_status === 'approved')
                             <div class="mb-3">
                                 <span class="badge rounded-pill" style="background:rgba(34,197,94,.12);color:#22c55e;font-size:.8rem;border:1px solid rgba(34,197,94,.3)">Đã chấp nhận</span>
                             </div>
-                            <p style="font-size:.85rem;color:var(--text-muted)">Biện pháp xử lý đã bị hủy bỏ.</p>
+                            <p style="font-size:.85rem;color:var(--text-muted)">Biện pháp xử lý đã bị thu hồi.</p>
                             @if($sanction->appeal_message)
                             <div class="p-3" style="background:var(--surface-alt);border-radius:8px;font-size:.85rem;color:var(--text);line-height:1.6">
                                 <strong style="font-size:.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Nội dung kháng cáo</strong><br>
