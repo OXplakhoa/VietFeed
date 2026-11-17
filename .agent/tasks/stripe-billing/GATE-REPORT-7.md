@@ -462,7 +462,24 @@ this PC's `stripe listen`).
 Doc fix from this run: Stripe CLI 1.55 requires `--events`/`--all-snapshot` for `stripe listen` and `--confirm` for
 `subscriptions cancel`; billing-demo.md updated.
 
-### Not yet verified
+### Browser acceptance (headless Chromium via Playwright, Claude Sonnet worker, 2026-11-17)
 
-- Hosted Checkout UI in a browser (card 4242 entry, redirect to `/billing/success`, Pro badge in the UI) and the Billing Portal
-  cancel button. Pending owner's choice of runner (Claude Playwright agent or GPT 6.1 Terra after quota reset).
+Same isolation (Mongo `vietfeed_test`, Redis DB15, throwaway SQLite, `SESSION_DRIVER=file`), app on port 8077,
+`stripe listen --events checkout.session.completed,customer.subscription.{created,updated,deleted}`. Screenshots reviewed by control.
+
+| Step | Result |
+|---|---|
+| a. Login as verified test user | PASS |
+| b. Pro button → POST `/billing/checkout` → `checkout.stripe.com` (VietFeed Pro Monthly, ₫49,000/month, email prefilled) | PASS |
+| c. Card 4242, 12/34, CVC 123, Subscribe (no 3DS) | PASS |
+| d. Redirect to `/profile/reading-pass`: "Không giới hạn lượt mở bài", PRO badge, "Quản lý thanh toán"; Mongo status `active`, `isPro()` true, no unprocessed receipt | PASS |
+| e. Navbar → `/billing/portal` → `billing.stripe.com`; "Cancel plan" confirmed → Stripe: canceled at period end (access until 2026-12-17) | PASS |
+| f. After Portal cancel: still Pro, `cancel_at_period_end` true; after `stripe subscriptions cancel --confirm`: `canceled`, `isPro()` false, page shows "Còn 15 lượt" + "Nâng cấp Pro" | PASS |
+| g. Webhook deliveries: 4 (`customer.subscription.created`, `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`), 4 × 200 | PASS |
+
+Cleanup: test customer deleted in Stripe, only the started PIDs killed, throwaway SQLite deleted, config cache absent, git
+status only owner WIP, 0 secret patterns in `storage/logs/laravel.log`. Environment note: the distro needed
+`libnss3 libnspr4 libasound2t64` for Chromium (installed by the owner as root). The "Quản lý thanh toán" dropdown link stays
+after cancellation because the Stripe customer remains (same as before Gate 7: it keys on the customer, not on Pro).
+
+All Gate 7 acceptance items are now verified; nothing outstanding.

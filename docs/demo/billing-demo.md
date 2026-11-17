@@ -53,6 +53,8 @@ For a remote endpoint, subscribe to `checkout.session.completed` and
    metadata contains `user_id` and `type=pro`.
 2. Pay using Test Mode card `4242 4242 4242 4242`, any future expiry, any three-digit
    CVC and the test form's requested billing details. Do not enter real card data.
+   (Automation note: Checkout's card fields are iframes without stable `#cardNumber`
+   ids; Playwright fills them by placeholder across frames.)
 3. Return to `/billing/success`, then `/profile/reading-pass`. The success URL only
    displays a pending webhook message; query parameters never activate Pro.
    After the signed webhook succeeds, refresh: Pro shows unlimited Reading Pass,
