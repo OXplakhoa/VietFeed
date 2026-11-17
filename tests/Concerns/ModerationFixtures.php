@@ -9,13 +9,24 @@ use App\Models\Report;
 use App\Models\Sanction;
 use App\Models\Source;
 use App\Models\User;
+use Illuminate\Support\Facades\Redis;
 
 /**
  * Shared fixtures for the Moderation*Test acceptance suites (Gate 9a).
- * Users/articles live on the isolated Mongo test database, the rest on SQLite :memory:.
+ * Users/articles/reports/sanctions live on the isolated Mongo test database (Gate 9b), comments on
+ * SQLite :memory:, the moderation queue and audit stream on Redis DB15.
  */
 trait ModerationFixtures
 {
+    use GuardsRedisTestDatabase;
+
+    /** Gate 9b: the review queue/stream live on Redis; start every moderation test from an empty DB15. */
+    protected function setUpModerationFixtures(): void
+    {
+        $this->isolateRedis(['nosql']);
+        $this->flushTestDatabase(Redis::connection('nosql'));
+    }
+
     protected function user(array $attributes = []): User
     {
         return User::factory()->create(array_merge(['email_verified_at' => now()], $attributes));

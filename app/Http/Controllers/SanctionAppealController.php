@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Sanction;
 use App\Moderation\ModerationException;
+use App\Moderation\ModerationQueries;
 use App\Moderation\ModerationService;
 use Illuminate\Http\Request;
 
 class SanctionAppealController extends Controller
 {
-    public function store(Request $request, ModerationService $moderation, Sanction $sanction)
+    public function store(Request $request, ModerationService $moderation, ModerationQueries $queries, string $sanction)
     {
+        $sanction = $queries->findSanction($sanction);
+        abort_if($sanction === null, 404);
+
         $data = $request->validate([
             'appeal_message' => 'required|string|min:10|max:2000',
         ]);

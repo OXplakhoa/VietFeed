@@ -1,4 +1,4 @@
-# Hướng dẫn demo kiểm duyệt bình luận (Gate 9a)
+# Hướng dẫn demo kiểm duyệt bình luận (Gate 9a + 9b)
 
 Luồng: người dùng báo cáo bình luận, quản trị viên xem hộp thư báo cáo, xử lý (cảnh cáo / cấm, có thể ẩn bình luận) hoặc bác bỏ,
 người bị xử lý kháng cáo, quản trị viên duyệt kháng cáo. Không có bản ghi kiểm duyệt nào bị xóa cứng.
@@ -9,8 +9,19 @@ Chỉ chạy trên môi trường dev bạn sẵn sàng thêm dữ liệu mẫu 
 
 ```bash
 php artisan migrate
+php artisan moderation:audit schema          # Gate 9b: bảng Cassandra moderation_events_by_case
 php artisan db:seed --class=ModerationDemoSeeder
 ```
+
+Gate 9b: báo cáo, biện pháp xử lý và vụ việc (mỗi bình luận một vụ) nằm trên MongoDB; hàng đợi duyệt ưu tiên trên Redis;
+lịch sử quyết định trên Cassandra (ghi bất đồng bộ qua Redis Stream). Để lịch sử hiện lên, chạy bộ xử lý trong một terminal:
+`php artisan moderation:audit consume --limit=100` (chạy lại sau mỗi bước, hoặc lặp bằng `watch`). Dữ liệu SQL cũ (nếu có)
+chuyển sang MongoDB bằng `php artisan moderation:import-sql` (chạy lại an toàn).
+
+**Thứ tự chuyển đổi (cutover), chạy liền nhau:** `php artisan down` → `php artisan migrate --force` →
+`php artisan moderation:import-sql` → `php artisan moderation:rebuild-queue` → `php artisan up`. Trước khi import, các biện pháp
+xử lý cũ trong SQL **chưa có hiệu lực**; trang `/admin/processing` cảnh báo khi còn bản ghi SQL chưa được chuyển.
+Bộ xử lý lịch sử (`moderation:audit consume`) và `moderation:repair` hiện chạy thủ công (Gate 10 sẽ tự động hóa).
 
 Tất cả tài khoản dùng mật khẩu `password`:
 
@@ -50,7 +61,23 @@ cho các bước còn lại.
    Chấp nhận: biện pháp bị thu hồi, bình luận do biện pháp đó ẩn được hiện lại, báo cáo vẫn là *Đã xử lý*. Từ chối: không đổi gì.
 9. **Thu hồi / xử lý không qua báo cáo.** Trang chi tiết biện pháp có nút **Thu hồi** (bản ghi vẫn nằm trong lịch sử,
    kèm ai/khi nào/ghi chú). Thu hồi cũng hiện lại các bình luận do biện pháp đó ẩn. Trang **Sửa người dùng** có form áp dụng biện pháp không cần báo cáo.
-10. **Xóa bình luận.** Xóa bình luận (tác giả hoặc admin) không làm mất báo cáo; trang chi tiết hiện "Bình luận đã bị xóa"
+10. **Hàng đợi ưu tiên (9b).** Trên `/admin/reports` chọn **Hàng đợi ưu tiên**: các vụ đang chờ xếp theo số người báo cáo,
+    mức độ nghiêm trọng (thù địch / quấy rối / tình dục > thông tin sai > spam / khác), rồi cũ nhất trước. Huy hiệu
+    "N vụ chờ duyệt" và "N kháng cáo" đọc bộ đếm Redis. Xóa khóa Redis (chỉ trên DB thử nghiệm) hoặc Redis ngừng hoạt động:
+    trang vẫn đúng thứ tự (đọc trực tiếp MongoDB, có ghi chú) và hàng đợi tự dựng lại; dựng lại thủ công:
+    `php artisan moderation:rebuild-queue`.
+11. **Lịch sử quyết định (9b).** Trang chi tiết báo cáo (và trang biện pháp xử lý) có khối **Lịch sử quyết định** đọc từ Cassandra:
+    Báo cáo mới → Áp dụng biện pháp xử lý → Ẩn bình luận → Gửi kháng cáo → Chấp nhận kháng cáo → Thu hồi → Hiện lại bình luận,
+    kèm người thực hiện, thời gian, phiên bản. Khi Cassandra chưa ghi xong hoặc đang ngừng: "đang chờ đồng bộ (audit pending)";
+    mọi thao tác kiểm duyệt vẫn thành công. Sau khi Cassandra hoạt động lại: **Xử lý Story** (`/admin/processing`) → mục
+    *Kiểm duyệt · lịch sử quyết định* → **Thử lại** các mục DLQ, rồi chạy consume.
+12. **Kiểm tra trực tiếp trên từng CSDL.**
+    - `mongosh`: `db.getSiblingDB('vietfeed').moderation_cases.findOne({comment_id: <id>})` (trạng thái, `version`, `decisions`, `events`).
+    - `redis-cli` (DB NoSQL đã cấu hình): `ZREVRANGE <prefix>moderation:queue:v1 0 -1 WITHSCORES`.
+    - `cqlsh`: `SELECT occurred_at, type, actor_id, case_version, note FROM vietfeed.moderation_events_by_case WHERE case_id = <case-uuid>;`
+      (`case_id` lấy từ `moderation_cases._id`; biện pháp không qua báo cáo dùng chính id của biện pháp).
+13. **Xóa bình luận.** Xóa bình luận (tác giả hoặc admin) không làm mất báo cáo; trang chi tiết hiện "Bình luận đã bị xóa"
     cùng nội dung đã lưu.
 
-Chạy bộ kiểm thử tương ứng: `vendor/bin/phpunit --filter Moderation`.
+Chạy bộ kiểm thử tương ứng: `vendor/bin/phpunit --filter Moderation` (gồm `ModerationNosqlTest` của Gate 9b; chỉ dùng Mongo
+`vietfeed_test`, Redis DB15, Cassandra `vietfeed_test`).

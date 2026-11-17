@@ -183,7 +183,8 @@ class CatalogArticlePagesTest extends TestCase
         }
         foreach (['published_at', 'boosts', 'bookmarks'] as $sort) {
             $this->assertSame($measurements[5][$sort], $measurements[25][$sort], $sort);
-            $this->assertSame([7 + ($sort === 'published_at' ? 0 : 1), 2], $measurements[25][$sort], $sort);
+            // Gate 9b: the per-request sanction check moved from SQL to MongoDB (same total, one read).
+            $this->assertSame([6 + ($sort === 'published_at' ? 0 : 1), 3], $measurements[25][$sort], $sort);
         }
     }
 

@@ -31,7 +31,7 @@ class SanctionController extends Controller
     {
         $data = $request->validate([
             'user_id' => 'required|exists:mongodb.users,_id',
-            'report_id' => 'nullable|exists:reports,id',
+            'report_id' => 'nullable|string|exists:mongodb.reports,_id',
             'type' => 'required|in:warning,mute,temporary_ban,permanent_ban',
             'reason' => 'required|string|max:2000',
             'duration_days' => 'nullable|integer|min:1|max:365',
@@ -46,7 +46,7 @@ class SanctionController extends Controller
                 $data['type'],
                 $data['reason'],
                 isset($data['duration_days']) ? (int) $data['duration_days'] : null,
-                isset($data['report_id']) ? (int) $data['report_id'] : null,
+                isset($data['report_id']) ? (string) $data['report_id'] : null,
                 (bool) ($data['hide_comment'] ?? false),
                 $data['note'] ?? null,
             );
@@ -61,14 +61,15 @@ class SanctionController extends Controller
         return redirect()->route('admin.sanctions.index')->with('success', 'Biện pháp xử lý đã được áp dụng.');
     }
 
-    public function show(Sanction $sanction, ModerationQueries $queries)
+    public function show(string $sanction, ModerationQueries $queries)
     {
-        return view('admin.sanctions.show', $queries->sanctionDetail($sanction));
+        return view('admin.sanctions.show', $queries->sanctionDetail($this->find($queries, $sanction)));
     }
 
     /** Decide a pending appeal. */
-    public function update(Request $request, Sanction $sanction, ModerationService $moderation)
+    public function update(Request $request, string $sanction, ModerationService $moderation, ModerationQueries $queries)
     {
+        $sanction = $this->find($queries, $sanction);
         $data = $request->validate([
             'appeal_status' => 'required|in:approved,denied',
             'note' => 'nullable|string|max:2000',
@@ -83,8 +84,9 @@ class SanctionController extends Controller
         return back()->with('success', 'Kháng cáo đã được '.($data['appeal_status'] === 'approved' ? 'chấp nhận' : 'từ chối').'.');
     }
 
-    public function revoke(Request $request, Sanction $sanction, ModerationService $moderation)
+    public function revoke(Request $request, string $sanction, ModerationService $moderation, ModerationQueries $queries)
     {
+        $sanction = $this->find($queries, $sanction);
         $data = $request->validate(['note' => 'nullable|string|max:2000']);
 
         try {
@@ -94,5 +96,13 @@ class SanctionController extends Controller
         }
 
         return redirect()->route('admin.sanctions.index')->with('success', 'Biện pháp xử lý đã được thu hồi.');
+    }
+
+    private function find(ModerationQueries $queries, string $id): Sanction
+    {
+        $sanction = $queries->findSanction($id);
+        abort_if($sanction === null, 404);
+
+        return $sanction;
     }
 }

@@ -120,6 +120,12 @@
                     @endif
                 </div>
                 @endif
+                @if($sanction->orphaned_from_case)
+                <div class="p-3 mt-4" role="alert" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:12px;font-size:.85rem;color:#ef4444">
+                    Biện pháp này không gắn với quyết định của vụ việc (yêu cầu bị chậm quá thời hạn khóa). Hãy xem xét và thu hồi nếu cần.
+                </div>
+                @endif
+                @include('admin.partials.moderation-timeline', ['timeline' => $timeline])
             </div>
 
             {{-- Sidebar: Appeal Management --}}

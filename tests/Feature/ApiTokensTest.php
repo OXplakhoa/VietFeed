@@ -880,7 +880,7 @@ class ApiTokensTest extends TestCase
         } catch (\LogicException $error) {
             $this->assertSame('Sanction user_id cannot be changed after creation.', $error->getMessage());
         }
-        $this->assertSame($original, $sanction->fresh()->getRawOriginal());
+        $this->assertEquals($original, $sanction->fresh()->getRawOriginal()); // Gate 9b: Mongo dates hydrate as new Carbon instances
         $this->assertSame(0, $user->fresh()->api_token_epoch);
         $this->assertSame(0, $other->fresh()->api_token_epoch);
     }
@@ -1096,7 +1096,7 @@ class ApiTokensTest extends TestCase
         ])->assertRedirect('/admin/sanctions')->assertSessionHas('error', 'Không thể áp dụng biện pháp xử lý. Vui lòng thử lại.')->assertSessionMissing('success');
         $this->assertSame(0, Sanction::count());
         $this->assertSame($beforeComment, $comment->fresh()->getAttributes());
-        $this->assertSame($beforeReport, $report->fresh()->getAttributes());
+        $this->assertEquals($beforeReport, $report->fresh()->getAttributes()); // Gate 9b: Mongo dates hydrate as new Carbon instances
         $this->assertSame(count($beforeTokens), count($redis->keys('*')));
         foreach ($beforeTokens as $key => $value) {
             $this->assertSame($value, $redis->dump($key));
@@ -1114,13 +1114,18 @@ class ApiTokensTest extends TestCase
         $first = $this->login($user);
         $next = $this->refreshToken($first['refresh_token'])->assertOk()->json();
         $other = $this->login($user);
-        DB::unprepared("CREATE TRIGGER fail_sanction_insert BEFORE INSERT ON sanctions BEGIN SELECT RAISE(FAIL, 'private-sql-diagnostic'); END");
+        // Gate 9b: sanctions live on MongoDB; a collection validator rejects the insert (was an SQL trigger).
+        $mongo = DB::connection('mongodb')->getMongoDB();
+        if (iterator_count($mongo->listCollections(['filter' => ['name' => 'sanctions']])) === 0) {
+            $mongo->createCollection('sanctions');
+        }
+        $mongo->command(['collMod' => 'sanctions', 'validator' => ['$expr' => false], 'validationAction' => 'error']);
         try {
             $this->actingAs($admin)->from('/admin/sanctions')->post('/admin/sanctions', [
                 'user_id' => $user->id, 'type' => 'temporary_ban', 'reason' => 'Fixture',
             ])->assertRedirect('/admin/sanctions')->assertSessionHas('error', 'Không thể áp dụng biện pháp xử lý. Vui lòng thử lại.')->assertSessionMissing('success');
         } finally {
-            DB::unprepared('DROP TRIGGER fail_sanction_insert');
+            $mongo->command(['collMod' => 'sanctions', 'validator' => (object) []]);
         }
         $this->assertSame(0, Sanction::count());
         $this->assertSame(1, $user->fresh()->api_token_epoch);
@@ -1184,15 +1189,17 @@ class ApiTokensTest extends TestCase
         $source = Source::create(['name' => 'Fixture', 'url' => 'https://example.test', 'feed_url' => 'https://example.test/rss', 'category_id' => $category->id, 'is_active' => true]);
         $article = Article::create(['title' => 'Fixture', 'slug' => 'comment-snapshot', 'original_url' => 'https://example.test/snapshot',
             'category_id' => $category->id, 'source_id' => $source->id, 'published_at' => now()]);
-        $connection = DB::connection();
+        // Gate 9b: sanctions live on MongoDB; observe `find` commands on that collection for this user.
+        $connection = DB::connection('mongodb');
         $dispatcher = $connection->getEventDispatcher();
         $connection->setEventDispatcher(clone $dispatcher);
+        $connection->enableQueryLog();
         $reads = 0;
-        $connection->listen(function ($query) use (&$reads, $mute) {
-            if (str_starts_with($query->sql, 'select') && str_contains($query->sql, '"sanctions"') && in_array('mute', $query->bindings, true)) {
+        $connection->listen(function ($query) use (&$reads, $mute, $user) {
+            if (preg_match('/^\{\s*"find"\s*:\s*"sanctions"/', $query->sql) && str_contains($query->sql, (string) $user->id)) {
                 $reads++;
-                // Lift immediately after the SELECT executes, before Blade uses its result.
-                DB::table('sanctions')->where('id', $mute->id)->update(['is_active' => false]);
+                // Lift immediately after the find executes, before Blade uses its result.
+                DB::connection('mongodb')->table('sanctions')->where('_id', $mute->id)->update(['is_active' => false]);
             }
         });
         try {
@@ -1203,6 +1210,7 @@ class ApiTokensTest extends TestCase
             $this->get('/articles/'.$article->slug)->assertOk()->assertSee('Đăng bình luận')->assertDontSee('Snapshot mute reason');
             $this->assertSame(1, $reads);
         } finally {
+            $connection->disableQueryLog();
             $connection->setEventDispatcher($dispatcher);
         }
     }
