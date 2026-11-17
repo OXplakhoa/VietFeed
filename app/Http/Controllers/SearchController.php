@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Content\ArticleCounts;
 use App\Models\Article;
+use App\Models\Category;
+use App\Models\Source;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,9 +19,8 @@ class SearchController extends Controller
 
         if (strlen($q) >= 2) {
             $articles = Article::with(['source', 'category'])
-                ->whereHas('category', fn ($qb) => $qb->active())
-                ->whereHas('source', fn ($qb) => $qb->active())
-                ->withCount(['bookmarks', 'boosts'])
+                ->whereIn('category_id', Category::active()->pluck('id'))
+                ->whereIn('source_id', Source::active()->pluck('id'))
                 ->where(fn ($qb) => $qb
                     ->where('title', 'LIKE', "%{$q}%")
                     ->orWhere('description', 'LIKE', "%{$q}%")
@@ -26,6 +28,7 @@ class SearchController extends Controller
                 ->latest('published_at')
                 ->paginate(12)
                 ->withQueryString();
+            ArticleCounts::attach($articles->getCollection());
         }
 
         /** @var User|null $user */
@@ -50,8 +53,8 @@ class SearchController extends Controller
             return response()->json([]);
         }
 
-        $results = Article::whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active())
+        $results = Article::whereIn('category_id', Category::active()->pluck('id'))
+            ->whereIn('source_id', Source::active()->pluck('id'))
             ->where('title', 'LIKE', "%{$q}%")
             ->with('category')
             ->latest('published_at')

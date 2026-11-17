@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Billing\StripeClient;
 use App\Billing\StripeSdkClient;
+use App\Content\CategoryList;
 use App\Interaction\InteractionReplaySource;
 use App\Interaction\SyntheticInteractionReplaySource;
 use App\Moderation\SanctionSnapshot;
@@ -42,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
                 $ticker = ['usd' => null, 'sjc' => null];
             }
             $view->with('ticker', $ticker);
+            $view->with('navigationCategories', app(CategoryList::class)->active());
         });
     }
 }

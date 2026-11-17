@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Billing\BillingGateway;
+use App\Content\CategoryList;
 use App\Content\ContentCatalog;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Models\Article;
@@ -66,7 +67,7 @@ class CatalogArticlePagesTest extends TestCase
         $this->get('/articles/edited-catalog-headline')->assertNotFound();
     }
 
-    public function test_catalog_edit_form_assigns_integer_relations_and_becomes_publicly_eligible(): void
+    public function test_catalog_edit_form_assigns_uuid_relations_and_becomes_publicly_eligible(): void
     {
         $article = Article::firstOrFail();
         $category = Category::create(['name' => 'Assigned topic', 'slug' => 'assigned', 'is_active' => true]);
@@ -130,7 +131,7 @@ class CatalogArticlePagesTest extends TestCase
 
     public function test_admin_filters_and_count_sorting_work_with_catalog_articles(): void
     {
-        foreach (['q=bay', 'category=the-gioi', 'source=1', 'date_from=2026-11-01&date_to=2026-11-30', 'sort=boosts', 'sort=bookmarks'] as $query) {
+        foreach (['q=bay', 'category=the-gioi', 'source=00000000-0000-7000-8000-000000000001', 'date_from=2026-11-01&date_to=2026-11-30', 'sort=boosts', 'sort=bookmarks'] as $query) {
             $this->get('/admin/articles?'.$query)->assertOk();
         }
         $article = Article::firstOrFail();
@@ -147,6 +148,7 @@ class CatalogArticlePagesTest extends TestCase
         $source = Source::create(['name' => 'Counts', 'url' => 'https://counts.test', 'feed_url' => 'https://counts.test/rss', 'category_id' => $category->id]);
         // Keep the authenticated user's entitlement snapshot equally warm.
         app(BillingGateway::class)->primeEntitlements([auth()->user()]);
+        app(CategoryList::class)->active();
         $measurements = [];
         $hydrated = 0;
         Article::retrieved(function () use (&$hydrated) {
@@ -183,8 +185,8 @@ class CatalogArticlePagesTest extends TestCase
         }
         foreach (['published_at', 'boosts', 'bookmarks'] as $sort) {
             $this->assertSame($measurements[5][$sort], $measurements[25][$sort], $sort);
-            // Gate 9b: the per-request sanction check moved from SQL to MongoDB (same total, one read).
-            $this->assertSame([6 + ($sort === 'published_at' ? 0 : 1), 3], $measurements[25][$sort], $sort);
+            // Gate 9.5: Category/Source eager reads and configuration lists now use MongoDB.
+            $this->assertSame([2 + ($sort === 'published_at' ? 0 : 1), 7], $measurements[25][$sort], $sort);
         }
     }
 

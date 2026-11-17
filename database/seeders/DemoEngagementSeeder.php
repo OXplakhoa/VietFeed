@@ -36,7 +36,7 @@ class DemoEngagementSeeder extends Seeder
                 ->values()
                 ->all();
 
-            $user->favoriteCategories()->syncWithoutDetaching($categoryIds);
+            $user->update(['favorite_category_ids' => array_values(array_unique(array_merge($user->favorite_category_ids ?? [], $categoryIds)))]);
         }
 
         $articles = Article::latest('published_at')->take(40)->get();

@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Content\ArticleCounts;
 use App\Models\Article;
 use App\Models\Category;
+use App\Models\Source;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 
@@ -14,11 +16,11 @@ class CategoryController extends Controller
         $category = Category::active()->where('slug', $slug)->firstOrFail();
 
         $articles = Article::where('category_id', $category->id)
-            ->whereHas('source', fn ($qb) => $qb->active())
+            ->whereIn('source_id', Source::active()->pluck('id'))
             ->with(['source', 'category'])
-            ->withCount(['bookmarks', 'boosts'])
             ->latest('published_at')
             ->paginate(12);
+        ArticleCounts::attach($articles->getCollection());
 
         /** @var User|null $user */
         $user = Auth::user();

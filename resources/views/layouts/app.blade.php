@@ -194,7 +194,7 @@
         <nav class="nav flex-nowrap">
             <a href="{{ route('home') }}"
                class="nav-link {{ request()->routeIs('home') ? 'active' : '' }}">Tất cả</a>
-            @foreach(\App\Models\Category::active()->get() as $cat)
+            @foreach($navigationCategories as $cat)
             <a href="{{ route('categories.show', $cat->slug) }}"
                class="nav-link {{ request()->is('categories/'.$cat->slug) ? 'active' : '' }}">
                 {{ $cat->name }}

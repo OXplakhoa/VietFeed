@@ -6,13 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreCategoryRequest;
 use App\Http\Requests\Admin\UpdateCategoryRequest;
 use App\Models\Category;
+use App\Models\Source;
+use App\Support\MongoCounts;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class CategoryController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Category::withCount(['articles', 'sources']);
+        $query = Category::query();
 
         if ($request->filled('q')) {
             $query->where('name', 'LIKE', "%{$request->q}%");
@@ -22,14 +25,19 @@ class CategoryController extends Controller
             $query->where('is_active', $request->status === 'active');
         }
 
-        $sort         = $request->input('sort', 'name');
-        $dir          = $request->input('dir', 'asc') === 'desc' ? 'desc' : 'asc';
-        $allowedSorts = ['name', 'articles_count'];
-        if (in_array($sort, $allowedSorts, true)) {
-            $query->orderBy($sort, $dir);
-        }
-
-        $categories = $query->paginate(20)->withQueryString();
+        $sort = $request->input('sort', 'name');
+        $descending = $request->input('dir', 'asc') === 'desc';
+        $articles = MongoCounts::byField('category_id');
+        $sources = Source::pluck('category_id')->countBy();
+        $items = $query->get()->each(function ($category) use ($articles, $sources) {
+            $category->articles_count = (int) ($articles[$category->id] ?? 0);
+            $category->sources_count = (int) ($sources[$category->id] ?? 0);
+        })->sortBy($sort === 'articles_count' ? 'articles_count' : 'name', SORT_REGULAR, $descending)->values();
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $categories = new LengthAwarePaginator(
+            $items->forPage($page, 20), $items->count(), 20, $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
 
         return view('admin.categories.index', compact('categories'));
     }
@@ -49,7 +57,8 @@ class CategoryController extends Controller
 
     public function edit(Category $category)
     {
-        $category->loadCount(['articles', 'sources']);
+        $category->articles_count = $category->articles()->count();
+        $category->sources_count = $category->sources()->count();
 
         return view('admin.categories.edit', compact('category'));
     }

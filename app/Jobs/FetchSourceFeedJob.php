@@ -19,7 +19,7 @@ class FetchSourceFeedJob implements ShouldQueue
     public int $tries = 5;
 
     public function __construct(
-        public int $sourceId,
+        public string $sourceId,
         public int $logId,
     ) {}
 

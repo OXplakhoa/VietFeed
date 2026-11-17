@@ -26,7 +26,7 @@ class ArticleController extends Controller
         $validator = Validator::make($request->all(), [
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date',
-            'source' => 'nullable|integer',
+            'source' => 'nullable|uuid',
         ]);
 
         if ($validator->fails()) {
@@ -44,11 +44,11 @@ class ArticleController extends Controller
         }
 
         if ($request->filled('category')) {
-            $query->whereHas('category', fn ($qb) => $qb->where('slug', $request->category));
+            $query->whereIn('category_id', Category::where('slug', $request->category)->pluck('id'));
         }
 
         if ($request->filled('source')) {
-            $query->where('source_id', $request->integer('source'));
+            $query->where('source_id', $request->string('source')->toString());
         }
 
         if ($request->filled('date_from')) {
@@ -136,17 +136,10 @@ class ArticleController extends Controller
             'title' => 'required|string|max:500',
             'description' => 'nullable|string',
             'image_url' => 'nullable|url|max:1000',
-            'category_id' => [! $article->category_id && $article->category_snapshot ? 'nullable' : 'required', 'exists:categories,id'],
-            'source_id' => [! $article->source_id && $article->source_snapshot ? 'nullable' : 'required', 'exists:sources,id'],
+            'category_id' => [! $article->category_id && $article->category_snapshot ? 'nullable' : 'required', 'exists:mongodb.categories,_id'],
+            'source_id' => [! $article->source_id && $article->source_snapshot ? 'nullable' : 'required', 'exists:mongodb.sources,_id'],
             'published_at' => 'nullable|date',
         ]);
-
-        // Match RSS ingestion's SQL integer identities; snapshots retain null ids.
-        foreach (['source_id', 'category_id'] as $key) {
-            if (isset($data[$key])) {
-                $data[$key] = (int) $data[$key];
-            }
-        }
 
         if ($request->title !== $article->title) {
             $slug = Str::slug($request->title);

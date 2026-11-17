@@ -45,12 +45,12 @@ class Article extends Model
 
     public function source()
     {
-        return $this->belongsTo(Source::class);
+        return $this->belongsTo(Source::class, 'source_id', '_id');
     }
 
     public function category()
     {
-        return $this->belongsTo(Category::class);
+        return $this->belongsTo(Category::class, 'category_id', '_id');
     }
 
     public function comments()
@@ -85,7 +85,7 @@ class Article extends Model
 
     protected function categoryUrl(): Attribute
     {
-        // A snapshot slug alone does not establish a public SQL category route.
+        // A snapshot slug alone does not establish a public category route.
         return Attribute::make(get: fn () => $this->category?->is_active && $this->category->slug
             ? route('categories.show', $this->category->slug) : null);
     }

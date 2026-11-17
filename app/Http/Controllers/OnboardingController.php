@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class OnboardingController extends Controller
 {
@@ -24,7 +25,7 @@ class OnboardingController extends Controller
     {
         $request->validate([
             'categories' => 'array',
-            'categories.*' => 'exists:categories,id,is_active,1',
+            'categories.*' => Rule::exists('mongodb.categories', '_id')->where(fn ($query) => $query->where('is_active', true)),
         ]);
 
         /** @var User $user */

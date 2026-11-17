@@ -32,7 +32,7 @@ abstract class TestCase extends BaseTestCase
     {
         $this->assertSame('vietfeed_test', DB::connection('mongodb')->getDatabaseName());
         // Gate 9b: moderation documents (reports, sanctions, cases) also live on Mongo.
-        foreach (['users', 'articles', 'stories', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases'] as $collection) {
+        foreach (['categories', 'sources', 'users', 'articles', 'stories', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases'] as $collection) {
             DB::connection('mongodb')->table($collection)->delete();
         }
 
