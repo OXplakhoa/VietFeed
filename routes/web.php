@@ -26,6 +26,10 @@ use App\Http\Controllers\TickerController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
+// Signed Stripe delivery has no session/auth/SQL/Redis middleware.
+Route::post('/stripe/webhook', [BillingController::class, 'webhook'])
+    ->withoutMiddleware('web')->name('stripe.webhook');
+
 // ── Public routes ──────────────────────────────────────────────
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/articles', [ArticleController::class, 'index'])->name('articles.index');

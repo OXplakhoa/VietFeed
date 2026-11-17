@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Billing\BillingGateway;
 use App\Http\Controllers\Controller;
+use App\Models\ArticleUnlock;
+use App\Models\Bookmark;
+use App\Models\Comment;
 use App\Models\User;
 use App\Services\ReadingPassService;
 use Illuminate\Http\Request;
@@ -10,9 +14,9 @@ use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
-    public function index(Request $request, ReadingPassService $readingPass)
+    public function index(Request $request, ReadingPassService $readingPass, BillingGateway $billing)
     {
-        $query = User::withCount(['comments', 'bookmarks', 'articleUnlocks'])->latest();
+        $query = User::query()->latest();
 
         if ($request->filled('q')) {
             $q = $request->q;
@@ -23,13 +27,19 @@ class UserController extends Controller
         }
 
         if ($request->string('plan')->toString() === 'pro') {
-            $query->whereHas('subscriptions', fn ($qb) => $qb
-                ->where('type', 'pro')
-                ->whereIn('stripe_status', ['active', 'trialing'])
-            );
+            $query->whereIn('_id', $billing->proUserIds());
         }
 
         $users = $query->paginate(20)->withQueryString();
+        $billing->primeEntitlements($users->getCollection());
+        // User lives on Mongo; these legacy counters still belong to SQL.
+        $pageIds = $users->getCollection()->modelKeys();
+        foreach (['comments' => Comment::class, 'bookmarks' => Bookmark::class, 'article_unlocks' => ArticleUnlock::class] as $name => $model) {
+            $counts = $model::whereIn('user_id', $pageIds)->select('user_id')->selectRaw('COUNT(*) as n')->groupBy('user_id')->pluck('n', 'user_id');
+            foreach ($users as $user) {
+                $user->{$name.'_count'} = (int) ($counts[$user->id] ?? 0);
+            }
+        }
         $users->getCollection()->each(function (User $user) use ($readingPass) {
             $user->reading_pass_allowance = $readingPass->allowance($user);
         });

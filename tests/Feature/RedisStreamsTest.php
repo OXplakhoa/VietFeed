@@ -131,8 +131,8 @@ class RedisStreamsTest extends TestCase
         $article = Article::create(['title' => 'Synthetic flush fixture', 'slug' => 'flush-fixture', 'original_url' => 'https://example.test/flush']);
         Story::create(['title' => 'Synthetic story', 'status' => 'pending']);
         Bookmark::create(['user_id' => $user->id, 'article_id' => $article->id]);
-        DB::table('subscriptions')->insert(['user_id' => $user->id, 'type' => 'default', 'stripe_id' => 'synthetic-sub-15', 'stripe_status' => 'active']);
-        $counts = fn () => [User::count(), Article::count(), Story::count(), Bookmark::count(), DB::table('subscriptions')->count()];
+        DB::connection('mongodb')->table('subscriptions')->insert(['user_id' => (string) $user->id, 'type' => 'pro', 'stripe_subscription_id' => 'synthetic-sub-15', 'status' => 'active']);
+        $counts = fn () => [User::count(), Article::count(), Story::count(), Bookmark::count(), DB::connection('mongodb')->table('subscriptions')->count()];
         $before = $counts();
         $this->assertSame([1, 1, 1, 1, 1], $before);
         $sync = function ($response) {

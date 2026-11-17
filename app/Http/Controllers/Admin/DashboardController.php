@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Billing\BillingGateway;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\ArticleUnlock;
@@ -30,10 +31,7 @@ class DashboardController extends Controller
             'boosts' => Boost::count(),
             'unlocks_today' => ArticleUnlock::where('unlocked_at', '>=', now('Asia/Ho_Chi_Minh')->startOfDay())->count(),
             'unlocks_5h' => ArticleUnlock::where('unlocked_at', '>=', now()->subHours(5))->count(),
-            'pro_users' => User::whereHas('subscriptions', fn ($query) => $query
-                ->where('type', 'pro')
-                ->whereIn('stripe_status', ['active', 'trialing'])
-            )->count(),
+            'pro_users' => User::whereIn('_id', app(BillingGateway::class)->proUserIds())->count(),
         ];
 
         // Articles per day — last 30 days (Gate 3 spillover: DATE() is SQL-only;

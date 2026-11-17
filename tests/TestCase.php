@@ -31,7 +31,7 @@ abstract class TestCase extends BaseTestCase
     protected function tearDown(): void
     {
         $this->assertSame('vietfeed_test', DB::connection('mongodb')->getDatabaseName());
-        foreach (['users', 'articles', 'stories'] as $collection) {
+        foreach (['users', 'articles', 'stories', 'subscriptions', 'processed_stripe_events'] as $collection) {
             DB::connection('mongodb')->table($collection)->delete();
         }
 

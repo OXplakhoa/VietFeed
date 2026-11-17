@@ -2,9 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Billing\BillingGateway;
+use App\Billing\BillingUnavailable;
+use App\Billing\InvalidWebhook;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
 
 class BillingController extends Controller
 {
@@ -30,26 +35,40 @@ class BillingController extends Controller
                 ->with('success', 'Tài khoản của bạn đang dùng VietFeed Pro.');
         }
 
-        return $request->user()
-            ->newSubscription('pro', $priceId)
-            ->checkout([
-                'success_url' => route('billing.success').'?session_id={CHECKOUT_SESSION_ID}',
-                'cancel_url' => route('pricing'),
-                'metadata' => [
-                    'product' => 'vietfeed_pro',
-                    'user_id' => (string) $request->user()->id,
-                ],
-            ]);
+        try {
+            return redirect()->away(app(BillingGateway::class)->checkout($request->user()), 303);
+        } catch (BillingUnavailable) {
+            return redirect()->route('pricing')->with('error', 'Stripe hiện không khả dụng. Vui lòng thử lại sau.');
+        }
     }
 
     public function portal(Request $request)
     {
-        if (! $request->user()->stripe_id) {
+        if (! $request->user()->stripe_customer_id) {
             return redirect()->route('pricing')
                 ->with('error', 'Bạn chưa có hồ sơ thanh toán Stripe.');
         }
 
-        return $request->user()->redirectToBillingPortal(route('profile.reading-pass'));
+        try {
+            return redirect()->away(app(BillingGateway::class)->portal($request->user()), 303);
+        } catch (BillingUnavailable) {
+            return redirect()->route('pricing')->with('error', 'Stripe hiện không khả dụng. Vui lòng thử lại sau.');
+        }
+    }
+
+    public function webhook(Request $request)
+    {
+        try {
+            app(BillingGateway::class)->receive($request->getContent(), $request->header('Stripe-Signature'));
+
+            return new Response('OK', 200);
+        } catch (InvalidWebhook) {
+            return new Response('Invalid webhook', 400);
+        } catch (\Throwable $e) {
+            Log::warning('Billing webhook unavailable', ['exception' => $e::class]);
+
+            return new Response('Webhook temporarily unavailable', 503);
+        }
     }
 
     public function success(): RedirectResponse
