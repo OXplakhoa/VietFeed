@@ -784,3 +784,103 @@ Tests run only on `vietfeed_test`, SQLite `:memory:` and guarded Redis DB15.
 races and a fake Stripe interface; it never calls Stripe. `ProSubscriptionTest`
 checks Checkout metadata/reuse, Portal/errors, Reading Pass and admin behavior.
 The real Test Mode walkthrough is deliberately reserved for control/reviewer.
+
+## Gate 9b — moderation on MongoDB, Redis review queue, Cassandra audit
+
+Reports, sanctions and per-comment case documents are canonical on MongoDB; the SQL
+`reports`/`sanctions` tables stay in place but unused (dropped in Gate 9.5) and are
+read only by `php artisan moderation:import-sql`. Comments stay on SQL until 9.5
+(`comments.hidden_by_sanction_id` is now a string holding the sanction UUID).
+
+| Store | Name | Role |
+|---|---|---|
+| Mongo | `reports` | one per reporter+comment (unique `reporter_id,comment_id`), UUIDv7 `_id`, comment snapshot, decision, `case_id` |
+| Mongo | `sanctions` | UUIDv7 `_id`, 9a fields + `version`, `events[]` (audit outbox), `audit_case_id`, `unhide_pending` |
+| Mongo | `moderation_cases` | one per comment (unique `comment_id`): `status`, `round`, `version`, `pending_count`, `severity`, `round_started_at`, `decisions[]`, `events[]` |
+| Redis | `moderation:queue:v1` (ZSET) + `:meta` (HASH `count`,`built_at`) | priority queue of pending cases (projection) |
+| Redis | `moderation:counters:v1` (HASH, TTL 300 s) | `pending_appeals`, recomputed from Mongo |
+| Redis | `moderation:events:v1`, group `moderation-audit-v1`, `moderation:dead:audit:v1`, `moderation:errors:audit:v1` | audit stream / DLQ (shared `StreamConsumer`) |
+| Cassandra | `moderation_events_by_case` | `PRIMARY KEY ((case_id), occurred_at, event_id)`, `CLUSTERING ORDER BY (occurred_at ASC, event_id ASC)` |
+
+**Atomicity without transactions.** Mongo is standalone, so each moderation rule is a
+single conditional document update: deciding a case requires `status = pending`, the
+read `version` and no in-flight claim; a sanction from a case first *claims* the case,
+inserts the sanction, then *confirms* (or *releases* on insert failure). Report
+documents, comment hide/unhide, audit publish and queue sync are idempotent follow-ups
+re-derived from the case/sanction document. `php artisan moderation:repair` finishes
+anything a crash interrupted (stale claims after a 10-minute lease are confirmed if
+the sanction exists, released otherwise). Details and the crash table:
+`.agent/tasks/moderation-nosql/GATE-REPORT-9b.md`.
+
+**Queue.** Score = `(pending reporters·4 + severity)·2^32 + (2^32−1 − round start
+seconds)`, read with `ZREVRANGE`: more distinct reporters first, then severity
+(hate_speech/harassment/sexual_content > misinformation > spam/other), then oldest.
+Under `allkeys-lru` either key may vanish; reads trust Redis only when `meta.count ==
+ZCARD`, otherwise they answer from MongoDB (same order, index
+`status,pending_count,severity,round_started_at`) and rebuild lazily. Explicit rebuild:
+`php artisan moderation:rebuild-queue`. Admin UI: `/admin/reports?view=queue`.
+
+**Audit.** Each state change appends its event(s) to the Mongo document in the same
+update, then publishes to the stream (best effort). Projection checks the event against
+the canonical Mongo copy and `INSERT`s by primary key, so duplicates/replays are
+harmless. Cassandra down never blocks an action: deliveries retry, land in the DLQ
+after 5 attempts, and are replayed from `/admin/processing` (section *Kiểm duyệt*) or
+`moderation:audit replay --id=`. Full rebuild: `moderation:audit reemit [--case=]`.
+A sanction issued without a case uses its own id as `case_id` (audit partition).
+
+```bash
+php artisan moderation:audit schema            # create the Cassandra table (explicit, like storylens schema)
+php artisan moderation:audit consume --consumer=local --limit=100
+php artisan moderation:audit inspect           # stream/pending/DLQ
+php artisan moderation:audit timeline --case=<case-uuid>
+php artisan moderation:import-sql              # one-time data move; safe to rerun, prints counts
+```
+
+**Cutover order (one deploy, back to back).** Until `moderation:import-sql` has run,
+legacy SQL sanctions are *not enforced* (helpers read MongoDB only), so:
+
+```bash
+php artisan down                       # maintenance mode
+php artisan migrate --force            # Mongo indexes + comments.hidden_by_sanction_id varchar(36)
+php artisan moderation:import-sql      # copy reports/sanctions, build cases, relink comments, rebuild queue
+php artisan moderation:rebuild-queue   # explicit rebuild/counters check (import already rebuilds)
+php artisan moderation:audit schema && php artisan moderation:audit consume --limit=100
+php artisan up
+```
+
+`/admin/processing` (section *Kiểm duyệt*) shows a warning while SQL reports/sanctions
+exist without a `legacy_sql_id` copy in MongoDB (the only runtime read of those SQL
+tables, inside `SqlImport::unimported()`).
+
+**Consumer and repair are manual for now** (control decision): run
+`php artisan moderation:audit consume` and `php artisan moderation:repair` (lease ≥ 60 s,
+default 600 s) by hand; the Gate 10 runbook wires them into the process supervisor /
+scheduler. `moderation:repair` also unhides comments left hidden by a revoked/inactive
+sanction and reports `orphaned_new` / `orphaned_total` sanctions (issued for a case whose
+claim was lost; shown on the case page).
+
+Native inspection of one case (replace ids; dev uses `vietfeed`, tests `vietfeed_test`/DB15):
+
+```javascript
+// mongosh: current state + outbox of one case and its sanctions
+db.getSiblingDB('vietfeed').moderation_cases.findOne({comment_id: <comment-id>},
+  {status: 1, round: 1, version: 1, pending_count: 1, severity: 1, decisions: 1, events: 1})
+db.getSiblingDB('vietfeed').sanctions.find({audit_case_id: '<case-uuid>'}, {type: 1, is_active: 1, appeal_status: 1, events: 1})
+```
+
+```text
+# redis-cli (configured NoSQL DB, physical prefix from config): queue in priority order
+ZREVRANGE <configured-prefix>moderation:queue:v1 0 -1 WITHSCORES
+HGETALL <configured-prefix>moderation:queue:v1:meta
+XRANGE <configured-prefix>moderation:dead:audit:v1 - + COUNT 10
+```
+
+```sql
+-- cqlsh: the decision chain of one report/sanction case
+SELECT occurred_at, type, actor_id, case_version, note
+FROM vietfeed.moderation_events_by_case WHERE case_id = <case-uuid>;
+```
+
+Tests (`ModerationNosqlTest` and the 9a `Moderation*Test` suites) run only on Mongo
+`vietfeed_test`, Redis DB15 (fixture flushes it with the live `getDbNum()` guard),
+Cassandra keyspace `vietfeed_test` (the test deletes its partitions) and SQLite `:memory:`.
