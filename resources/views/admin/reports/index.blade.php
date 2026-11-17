@@ -8,12 +8,25 @@
             <h3 class="mb-0" style="font-family:'Playfair Display',serif">
                 <i class="bi bi-flag me-2" style="color:var(--accent)"></i>Hộp thư báo cáo
                 @if($pendingCount > 0)
-                <span class="badge rounded-pill ms-2" style="background:var(--accent);color:#fff;font-size:.7rem">{{ $pendingCount }} chờ duyệt</span>
+                <span class="badge rounded-pill ms-2" style="background:var(--accent);color:#fff;font-size:.7rem">{{ $pendingCount }} vụ chờ duyệt</span>
                 @endif
             </h3>
         </div>
 
+        {{-- Gate 9b: newest-first inbox (9a) or the Redis priority queue of pending cases --}}
+        <div class="d-flex gap-2 mb-3" style="font-size:.85rem">
+            @php $onQueue = request('view') === 'queue'; @endphp
+            <a href="{{ route('admin.reports.index') }}" class="btn btn-sm" style="{{ $onQueue ? 'background:var(--surface-alt);color:var(--text-muted)' : 'background:var(--accent);color:#fff' }};border:1px solid var(--border);border-radius:6px">Mới nhất</a>
+            <a href="{{ route('admin.reports.index', ['view' => 'queue']) }}" class="btn btn-sm" style="{{ $onQueue ? 'background:var(--accent);color:#fff' : 'background:var(--surface-alt);color:var(--text-muted)' }};border:1px solid var(--border);border-radius:6px">Hàng đợi ưu tiên</a>
+            @if($onQueue)
+            <span class="align-self-center" style="color:var(--text-muted)" data-queue-source="{{ $queueSource }}">
+                Ưu tiên: số người báo cáo, mức độ nghiêm trọng, cũ nhất trước{{ $queueSource === 'mongodb' ? ' · đang đọc trực tiếp từ MongoDB, hàng đợi Redis đang được dựng lại' : '' }}
+            </span>
+            @endif
+        </div>
+
         {{-- Filters --}}
+        @unless($onQueue)
         <form method="GET" action="{{ route('admin.reports.index') }}" class="mb-4">
             <div class="d-flex flex-wrap gap-2">
                 <select name="status" class="form-select form-select-sm" style="background:var(--surface);border-color:var(--border);color:var(--text);max-width:160px">
@@ -48,6 +61,7 @@
                 @endif
             </div>
         </form>
+        @endunless
 
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
             <div class="table-responsive">

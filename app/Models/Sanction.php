@@ -3,13 +3,25 @@
 namespace App\Models;
 
 use App\ApiTokens\ApiTokenService;
-use Illuminate\Database\Eloquent\Model;
+use App\Moderation\SanctionSnapshot;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Support\Facades\Log;
 use LogicException;
+use MongoDB\Laravel\Eloquent\Model;
 use Throwable;
 
+/**
+ * Gate 9b: sanctions live on MongoDB (UUIDv7 `_id`). The document also carries its own audit
+ * outbox (`events`) and a monotonically increasing `version`.
+ */
 class Sanction extends Model
 {
+    use HasUuids;
+
+    protected $connection = 'mongodb';
+
+    protected $primaryKey = '_id';
+
     protected int $apiTokenBanTransition = 0;
 
     protected static function booted(): void
@@ -31,37 +43,40 @@ class Sanction extends Model
         static::saved(function (Sanction $sanction) {
             $transition = $sanction->apiTokenBanTransition;
             $sanction->apiTokenBanTransition = 0;
-            if ($transition === 0) {
-                return;
-            }
-            try {
-                // Fence logins that read the pre-write epoch before SQL persisted.
-                $sanction->bumpApiTokenEpoch();
-            } catch (Throwable $error) {
-                Log::warning('Sanction token epoch update failed', [
-                    'operation' => $transition === 1 ? 'ban_saved' : 'ban_lifted',
-                    'exception_type' => $error::class,
-                ]);
-            }
-            app(ApiTokenService::class)->cleanupForUser((string) $sanction->user_id);
+            app(SanctionSnapshot::class)->forget((string) $sanction->user_id);
+            $sanction->afterBanTransition($transition);
         });
         static::deleted(function (Sanction $sanction) {
-            if (! $sanction->isEffectiveBan($sanction->getRawOriginal())) {
-                return;
+            app(SanctionSnapshot::class)->forget((string) $sanction->user_id);
+            if ($sanction->isEffectiveBan($sanction->getRawOriginal())) {
+                $sanction->afterBanTransition(-1);
             }
-            try {
-                $sanction->bumpApiTokenEpoch();
-            } catch (Throwable $error) {
-                Log::warning('Sanction token epoch update failed', [
-                    'operation' => 'ban_lifted',
-                    'exception_type' => $error::class,
-                ]);
-            }
-            app(ApiTokenService::class)->cleanupForUser((string) $sanction->user_id);
         });
     }
 
-    private function isEffectiveBan(array $attributes): bool
+    /**
+     * Post-write half of the API-token hook: fence logins that read the pre-write epoch, then drop
+     * Redis token families. Failures are logged, never thrown (the store write already happened).
+     * Conditional Mongo updates that lift a ban (revoke, approved appeal) call this after the write.
+     */
+    public function afterBanTransition(int $transition): void
+    {
+        if ($transition === 0) {
+            return;
+        }
+        try {
+            $this->bumpApiTokenEpoch();
+        } catch (Throwable $error) {
+            Log::warning('Sanction token epoch update failed', [
+                'operation' => $transition === 1 ? 'ban_saved' : 'ban_lifted',
+                'exception_type' => $error::class,
+            ]);
+        }
+        app(ApiTokenService::class)->cleanupForUser((string) $this->user_id);
+    }
+
+    /** Whether these stored attributes describe a ban that currently blocks the account. */
+    public function isEffectiveBan(array $attributes): bool
     {
         return in_array($attributes['type'] ?? null, ['temporary_ban', 'permanent_ban'])
             && ($attributes['is_active'] ?? false)
@@ -92,7 +107,13 @@ class Sanction extends Model
         'appeal_decided_at',
         'appeal_decided_by',
         'appeal_decision_note',
+        'case_id',
+        'audit_case_id',
+        'events',
+        'version',
     ];
+
+    protected $attributes = ['appeal_status' => 'none', 'is_active' => true, 'version' => 1];
 
     protected function casts(): array
     {
@@ -117,7 +138,13 @@ class Sanction extends Model
 
     public function report()
     {
-        return $this->belongsTo(Report::class);
+        return $this->belongsTo(Report::class, 'report_id');
+    }
+
+    // Related models keep their own connection.
+    protected function newRelatedInstance($class)
+    {
+        return new $class;
     }
 
     public function revoker()

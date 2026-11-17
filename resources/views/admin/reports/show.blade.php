@@ -103,6 +103,18 @@
                         <p class="mb-0" style="font-size:.85rem;color:var(--text-muted)">Chưa có biện pháp xử lý nào.</p>
                     @endforelse
                 </div>
+
+                @include('admin.partials.moderation-timeline', ['timeline' => $timeline])
+
+                @if($orphaned->isNotEmpty())
+                <div class="p-4 mt-4" id="orphaned-sanctions" role="alert" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:12px">
+                    <h5 class="serif mb-2" style="color:#ef4444">Biện pháp xử lý không gắn với quyết định của vụ việc</h5>
+                    <p style="font-size:.82rem;color:var(--text-muted)">Yêu cầu áp dụng bị chậm quá thời hạn khóa nên vụ việc đã được quyết định theo cách khác. Hãy xem xét và thu hồi nếu cần.</p>
+                    @foreach($orphaned as $o)
+                        <a href="{{ route('admin.sanctions.show', $o) }}" class="d-block" style="font-size:.85rem;color:var(--accent);text-decoration:none">{{ $o->typeLabel() }} — {{ $o->reason }} ({{ $o->statusLabel() }})</a>
+                    @endforeach
+                </div>
+                @endif
             </div>
 
             {{-- Sidebar: decide --}}

@@ -39,6 +39,9 @@ return [
     // Backoff base; production default 1s, exponential to 16s, at most five attempts.
     'story_retry_ms' => env('STORY_RETRY_MS', 1000),
 
+    // Gate 9b: moderation audit stream consumer backoff base (same policy as Story).
+    'moderation_retry_ms' => env('MODERATION_RETRY_MS', 1000),
+
     'redis_nosql' => [
         // Ephemeral interaction processing, separate from sessions DB0 and cache DB1.
         'host' => env('REDIS_HOST', '127.0.0.1'),

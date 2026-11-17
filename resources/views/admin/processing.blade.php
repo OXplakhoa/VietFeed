@@ -31,6 +31,30 @@
                 </table></div>
             </section>
         @endforeach
+        {{-- Gate 9b: moderation audit (Mongo outbox -> Redis Stream -> Cassandra moderation_events_by_case) --}}
+        <section class="p-3 mb-4 rounded" id="moderation-audit" style="background:var(--surface);border:1px solid var(--border)">
+            <h2 class="h4">Kiểm duyệt · lịch sử quyết định</h2>
+            @if($legacyUnimported && ($legacyUnimported['reports'] > 0 || $legacyUnimported['sanctions'] > 0))
+                <p role="alert" id="moderation-legacy-warning" style="color:#ef4444">Còn {{ $legacyUnimported['reports'] }} báo cáo và {{ $legacyUnimported['sanctions'] }} biện pháp xử lý trong SQL chưa được chuyển sang MongoDB — các biện pháp này chưa có hiệu lực. Chạy <code>php artisan moderation:import-sql</code> (trong chế độ bảo trì).</p>
+            @endif
+            @if($moderation === null)
+                <p role="alert">Tạm thời không thể tải tình trạng luồng kiểm duyệt.</p>
+            @else
+                <p>Stream: {{ $moderation['lengths']['stream'] }} · Pending: {{ $moderation['lengths']['pending'] }} · DLQ: {{ $moderation['lengths']['dead_letters'] }}</p>
+                <p style="color:var(--text-muted)">Sự kiện gốc nằm trong MongoDB; nếu Cassandra ngừng hoạt động, sự kiện chuyển vào DLQ sau 5 lần thử và có thể đưa lại vào hàng đợi tại đây.</p>
+                <div class="table-responsive"><table class="table" style="color:var(--text)">
+                    <thead><tr><th>Mã</th><th>Vụ việc</th><th>Sự kiện</th><th>Phiên bản</th><th>Số lần thử</th><th>Lỗi cuối</th><th>Thao tác</th></tr></thead>
+                    <tbody>@forelse($moderation['dead'] as $entry)
+                        <tr><td>{{ $entry['id'] }}</td><td>{{ $entry['case'] ?? 'Không xác định' }}</td><td>{{ $entry['type'] }}</td><td>{{ $entry['version'] }}</td>
+                        <td>{{ $entry['attempts'] ?? 'Không ghi nhận' }}</td><td>{{ $entry['has_error'] ? 'Lỗi xử lý đã được ghi nhận.' : 'Không ghi nhận' }}</td>
+                        <td><form method="POST" action="{{ route('admin.processing.retry') }}">@csrf
+                            <input type="hidden" name="section" value="moderation"><input type="hidden" name="id" value="{{ $entry['id'] }}">
+                            <button class="btn btn-sm btn-outline-secondary" type="submit">Thử lại</button>
+                        </form></td></tr>
+                    @empty<tr><td colspan="7">Không có dead letter.</td></tr>@endforelse</tbody>
+                </table></div>
+            @endif
+        </section>
         <h2 class="h4">Trạng thái Story</h2>
         <p>Hiển thị tối đa {{ $overview['story_limit'] ?? 50 }} Story mới nhất.</p>
         <div class="table-responsive"><table class="table" style="color:var(--text)">

@@ -202,27 +202,27 @@ class ModerationEnforcementTest extends TestCase
             $this->assertStringContainsString('Refusing to roll back', $e->getMessage());
         }
         $this->assertTrue($schema::hasColumn('reports', 'comment_body'));
-        $this->assertSame(3, Report::count());
+        $this->assertSame(3, DB::table('reports')->count()); // Gate 9b: legacy SQL table (Report is on MongoDB)
 
-        $reviewed = Report::where('reporter_id', 'r1')->sole();
+        $reviewed = DB::table('reports')->where('reporter_id', 'r1')->sole();
         $this->assertSame('pending', $reviewed->status);
         $this->assertNull($reviewed->decided_at);
         $this->assertNull($reviewed->admin_id);
         $this->assertSame('Nội dung cũ trước khi có ảnh chụp', $reviewed->comment_body);
-        $actioned = Report::where('reporter_id', 'r2')->sole();
+        $actioned = DB::table('reports')->where('reporter_id', 'r2')->sole();
         $this->assertSame('actioned', $actioned->status);
         $this->assertNotNull($actioned->decided_at);
-        $this->assertNull(Report::where('reporter_id', 'r3')->sole()->comment_body);
+        $this->assertNull(DB::table('reports')->where('reporter_id', 'r3')->sole()->comment_body);
 
         // With the evidence cleared the full cycle works again.
         DB::table('reports')->update(['comment_body' => null, 'comment_user_id' => null, 'comment_article_id' => null]);
         $migration->down();
         $migration->up();
         $migration->up();
-        $this->assertSame('Nội dung cũ trước khi có ảnh chụp', Report::where('reporter_id', 'r1')->sole()->comment_body);
+        $this->assertSame('Nội dung cũ trước khi có ảnh chụp', DB::table('reports')->where('reporter_id', 'r1')->sole()->comment_body);
 
         $comment->delete();
-        $this->assertSame(3, Report::count());
+        $this->assertSame(3, DB::table('reports')->count()); // Gate 9b: legacy SQL table (Report is on MongoDB)
     }
 
     // R1: per-viewer sanction checks are computed once per request
@@ -232,6 +232,8 @@ class ModerationEnforcementTest extends TestCase
         $viewer = $this->user();
         $count = function () use ($viewer, $article) {
             $n = 0;
+            // Gate 9b: sanctions live on MongoDB; its command subscriber feeds the same QueryExecuted listener.
+            DB::connection('mongodb')->enableQueryLog();
             \DB::listen(function ($q) use (&$n) {
                 if (str_contains($q->sql, 'sanctions')) {
                     $n++;
@@ -245,6 +247,7 @@ class ModerationEnforcementTest extends TestCase
         $parent = $this->comment($author, $article, 'Gốc 0');
         $this->comment($author, $article, 'Trả lời 0', $parent->id);
         $few = $count();
+        $this->assertSame(1, $few, 'one sanctions read per request (Gate 9b: proves the Mongo counter is live)');
         for ($i = 1; $i < 6; $i++) {
             $p = $this->comment($author, $article, "Gốc $i");
             $this->comment($author, $article, "Trả lời $i", $p->id);

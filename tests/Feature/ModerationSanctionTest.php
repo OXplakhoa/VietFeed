@@ -241,7 +241,7 @@ class ModerationSanctionTest extends TestCase
             'user_id' => (string) $author->id, 'report_id' => $report->id, 'type' => 'warning', 'reason' => 'Lần hai', 'hide_comment' => 1,
         ])->assertSessionHas('success');
 
-        $this->assertSame($first->id, (int) $comment->fresh()->hidden_by_sanction_id);
+        $this->assertSame($first->id, (string) $comment->fresh()->hidden_by_sanction_id); // Gate 9b: UUIDv7 sanction ids
         $this->assertTrue($comment->fresh()->is_hidden);
     }
 

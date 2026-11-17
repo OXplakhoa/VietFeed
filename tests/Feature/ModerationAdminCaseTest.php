@@ -110,6 +110,8 @@ class ModerationAdminCaseTest extends TestCase
 
         $count = function () use ($adminUser) {
             $n = 0;
+            // Gate 9b: reports live on MongoDB; its command subscriber feeds the same QueryExecuted listener.
+            \DB::connection('mongodb')->enableQueryLog();
             \DB::listen(function () use (&$n) {
                 $n++;
             });
@@ -262,13 +264,13 @@ class ModerationAdminCaseTest extends TestCase
         foreach ([$r1, $r2] as $r) {
             $r = $r->fresh();
             $this->assertSame('actioned', $r->status);
-            $this->assertSame($sanction->id, (int) $r->sanction_id);
+            $this->assertSame($sanction->id, (string) $r->sanction_id); // Gate 9b: UUIDv7 sanction ids
             $this->assertSame((string) $adminUser->id, $r->admin_id);
             $this->assertNotNull($r->decided_at);
         }
         $this->assertSame('pending', $dismissedEarlier->fresh()->status);
         $this->assertTrue((bool) $comment->fresh()->is_hidden);
-        $this->assertSame($sanction->id, (int) $comment->fresh()->hidden_by_sanction_id);
+        $this->assertSame($sanction->id, (string) $comment->fresh()->hidden_by_sanction_id); // Gate 9b: UUIDv7 sanction ids
     }
 
     public function test_sanction_from_case_does_not_hide_unless_chosen(): void

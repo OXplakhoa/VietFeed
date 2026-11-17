@@ -4,10 +4,12 @@ namespace App\Models;
 
 use App\ApiTokens\ApiTokenService;
 use App\Billing\BillingGateway;
+use App\Moderation\ModerationQueries;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 use MongoDB\Laravel\Auth\User as Authenticatable;
 
 class User extends Authenticatable implements MustVerifyEmail
@@ -151,40 +153,50 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Sanction::class, 'user_id');
     }
 
+    /**
+     * Gate 9b: every sanction helper reads one module query (MongoDB), memoised per HTTP request,
+     * so middleware, controller and views see the same snapshot.
+     *
+     * @return Collection<int, Sanction>
+     */
+    private function activeSanctions(): Collection
+    {
+        return app(ModerationQueries::class)->activeSanctionsFor((string) $this->id);
+    }
+
+    private function hasActiveSanction(array $types): bool
+    {
+        return $this->activeSanctions()->contains(fn (Sanction $s) => in_array($s->type, $types, true));
+    }
+
     public function activeSanction(): ?Sanction
     {
-        return $this->sanctions()
-            ->active()
-            ->orderByDesc('created_at')
-            ->first();
+        return $this->activeSanctions()->first();
     }
 
     public function blockingCommentSanction(): ?Sanction
     {
-        return $this->sanctions()->active()
-            ->whereIn('type', ['mute', 'temporary_ban', 'permanent_ban'])
-            ->orderByDesc('created_at')
-            ->first();
+        return $this->activeSanctions()->first(fn (Sanction $s) => in_array($s->type, ['mute', 'temporary_ban', 'permanent_ban'], true));
     }
 
     public function isMuted(): bool
     {
-        return $this->sanctions()->active()->whereIn('type', ['mute', 'temporary_ban', 'permanent_ban'])->exists();
+        return $this->hasActiveSanction(['mute', 'temporary_ban', 'permanent_ban']);
     }
 
     public function isBanned(): bool
     {
-        return $this->sanctions()->active()->whereIn('type', ['temporary_ban', 'permanent_ban'])->exists();
+        return $this->hasActiveSanction(['temporary_ban', 'permanent_ban']);
     }
 
     public function isPermanentlyBanned(): bool
     {
-        return $this->sanctions()->active()->whereIn('type', ['permanent_ban'])->exists();
+        return $this->hasActiveSanction(['permanent_ban']);
     }
 
     public function isTempBanned(): bool
     {
-        return $this->sanctions()->active()->whereIn('type', ['temporary_ban'])->exists();
+        return $this->hasActiveSanction(['temporary_ban']);
     }
 
     public function canComment(): bool

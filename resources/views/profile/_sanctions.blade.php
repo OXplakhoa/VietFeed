@@ -1,5 +1,6 @@
+@inject('moderationQueries', 'App\Moderation\ModerationQueries')
 @php
-    $sanctions = $user->sanctions()->latest()->get();
+    $sanctions = $moderationQueries->sanctionHistoryFor((string) $user->id);
     $activeSanction = $user->activeSanction();
 @endphp
 

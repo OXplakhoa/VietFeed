@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Moderation\ModerationAudit;
+use App\Moderation\SqlImport;
 use App\StoryProcessing\StoryPipeline;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,29 +15,53 @@ use MongoDB\Driver\Exception\ConnectionException;
 
 class ProcessingController extends Controller
 {
-    public function index(StoryPipeline $pipeline): View
+    public function index(StoryPipeline $pipeline, ModerationAudit $audit, SqlImport $import): View
     {
+        // Gate 9b: the moderation section is independent of the Story overview (REVIEW-1 NIT-5).
+        $moderation = $this->moderationPart(fn () => $audit->overview(), 'overview');
+        $legacy = $this->moderationPart(fn () => $import->unimported(), 'legacy check');
+        $data = ['moderation' => $moderation, 'legacyUnimported' => $legacy];
         try {
-            return view('admin.processing', ['overview' => $pipeline->overview(), 'unavailable' => false]);
+            return view('admin.processing', ['overview' => $pipeline->overview(), 'unavailable' => false] + $data);
         } catch (\Throwable $error) {
             $this->reportUnexpected($error, 'overview');
 
-            return view('admin.processing', ['overview' => ['sections' => [], 'stories' => []], 'unavailable' => true]);
+            return view('admin.processing', ['overview' => ['sections' => [], 'stories' => []], 'unavailable' => true] + $data);
         }
     }
 
-    public function retry(Request $request, StoryPipeline $pipeline): RedirectResponse
+    private function moderationPart(callable $read, string $operation): ?array
+    {
+        try {
+            return $read();
+        } catch (\Throwable $error) {
+            for ($cause = $error; $cause !== null; $cause = $cause->getPrevious()) {
+                if ($cause instanceof \RedisException || $cause instanceof ConnectionException) {
+                    // Notice level: the Story section already reports store outages as warnings.
+                    Log::notice('Moderation processing '.$operation.' unavailable.', ['exception' => $cause::class]);
+
+                    return null;
+                }
+            }
+            report($error);
+
+            return null;
+        }
+    }
+
+    public function retry(Request $request, StoryPipeline $pipeline, ModerationAudit $audit): RedirectResponse
     {
         $input = $request->only('section', 'id');
         $validator = Validator::make($input, [
-            'section' => 'required|string|in:timeline,graph',
+            'section' => 'required|string|in:timeline,graph,moderation',
             'id' => ['required', 'string', 'max:50', 'regex:/^\d+-\d+$/D'],
         ]);
         if ($validator->fails()) {
             return redirect()->route('admin.processing.index')->with('error', 'Mục hoặc mã yêu cầu không hợp lệ.');
         }
         try {
-            $pipeline->stream($input['section'])->replay($input['id']);
+            $stream = $input['section'] === 'moderation' ? $audit->stream() : $pipeline->stream($input['section']);
+            $stream->replay($input['id']);
         } catch (\InvalidArgumentException) {
             // replay() uses this for missing entries, including an already replayed ID.
             return redirect()->route('admin.processing.index')->with('error', 'Yêu cầu không còn trong danh sách.');
