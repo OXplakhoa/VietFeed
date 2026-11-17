@@ -13,13 +13,22 @@ class Report extends Model
         'reason',
         'description',
         'status',
-        'reviewed_at',
+        'comment_body',
+        'comment_user_id',
+        'comment_article_id',
+        'decided_at',
+        'decision_note',
+        'sanction_id',
     ];
+
+    public const STATUSES = ['pending', 'actioned', 'dismissed', 'false_report'];
+
+    public const REASONS = ['hate_speech', 'harassment', 'spam', 'misinformation', 'sexual_content', 'other'];
 
     protected function casts(): array
     {
         return [
-            'reviewed_at' => 'datetime',
+            'decided_at' => 'datetime',
         ];
     }
 
@@ -30,7 +39,7 @@ class Report extends Model
 
     public function comment()
     {
-        return $this->belongsTo(Comment::class);
+        return $this->belongsTo(Comment::class, 'comment_id');
     }
 
     public function admin()
@@ -40,17 +49,12 @@ class Report extends Model
 
     public function sanction()
     {
-        return $this->hasOne(Sanction::class);
+        return $this->belongsTo(Sanction::class, 'sanction_id');
     }
 
     public function scopePending($query)
     {
         return $query->where('status', 'pending');
-    }
-
-    public function scopeReviewed($query)
-    {
-        return $query->where('status', 'reviewed');
     }
 
     public function scopeActioned($query)
@@ -85,7 +89,6 @@ class Report extends Model
     {
         return match ($this->status) {
             'pending' => 'Chờ duyệt',
-            'reviewed' => 'Đã xem xét',
             'actioned' => 'Đã xử lý',
             'dismissed' => 'Bác bỏ',
             'false_report' => 'Báo cáo sai',
@@ -97,7 +100,6 @@ class Report extends Model
     {
         return match ($this->status) {
             'pending' => '#f59e0b',
-            'reviewed' => '#3b82f6',
             'actioned' => '#22c55e',
             'dismissed' => '#6b7280',
             'false_report' => '#ef4444',

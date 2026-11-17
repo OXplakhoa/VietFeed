@@ -56,6 +56,12 @@ Route::get('/api/ticker', [TickerController::class, 'index'])->name('api.ticker'
 Route::middleware('auth')->group(function () {
     Route::post('/bookmarks/toggle', [BookmarkController::class, 'toggle'])->name('bookmarks.toggle');
     Route::post('/boosts/toggle', [BoostController::class, 'toggle'])->name('boosts.toggle');
+    // Reports: auth only, so unverified users get an explanatory message instead of a redirect.
+    Route::post('/comments/{comment}/report', [ReportController::class, 'store'])->name('reports.store');
+
+    // Sanction appeals stay reachable for banned users (a verified-only group would block them).
+    Route::post('/sanctions/{sanction}/appeal', [SanctionAppealController::class, 'store'])->name('sanctions.appeal');
+
     Route::get('/profile/reading-pass', [ProfileController::class, 'readingPass'])->name('profile.reading-pass');
 
     // Profile must stay available to unverified users so they can resend verification.
@@ -95,12 +101,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Profile preferences require verified email because they shape the personalised feed.
     Route::put('/profile/preferences', [ProfileController::class, 'updatePreferences'])->name('profile.preferences');
-
-    // Reports
-    Route::post('/comments/{comment}/report', [ReportController::class, 'store'])->name('reports.store');
-
-    // Sanction appeals
-    Route::post('/sanctions/{sanction}/appeal', [SanctionAppealController::class, 'store'])->name('sanctions.appeal');
 });
 
 // ── Admin routes ───────────────────────────────────────────────
@@ -125,8 +125,10 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::resource('users', AdminUser::class)->only(['index', 'edit', 'update', 'destroy']);
 
     // Moderation
-    Route::resource('reports', AdminReport::class)->only(['index', 'show', 'update', 'destroy']);
-    Route::resource('sanctions', AdminSanction::class)->only(['index', 'store', 'show', 'update', 'destroy']);
+    // No hard deletes: cases are dismissed, sanctions are revoked (Gate 9a).
+    Route::resource('reports', AdminReport::class)->only(['index', 'show', 'update']);
+    Route::post('sanctions/{sanction}/revoke', [AdminSanction::class, 'revoke'])->name('sanctions.revoke');
+    Route::resource('sanctions', AdminSanction::class)->only(['index', 'store', 'show', 'update']);
 });
 
 require __DIR__.'/auth.php';

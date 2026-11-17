@@ -84,6 +84,14 @@ class Sanction extends Model
         'is_active',
         'appeal_message',
         'appeal_status',
+        'revoked_at',
+        'revoked_by',
+        'revoke_note',
+        'revoked_via',
+        'appealed_at',
+        'appeal_decided_at',
+        'appeal_decided_by',
+        'appeal_decision_note',
     ];
 
     protected function casts(): array
@@ -91,6 +99,9 @@ class Sanction extends Model
         return [
             'expires_at' => 'datetime',
             'is_active' => 'boolean',
+            'revoked_at' => 'datetime',
+            'appealed_at' => 'datetime',
+            'appeal_decided_at' => 'datetime',
         ];
     }
 
@@ -109,6 +120,11 @@ class Sanction extends Model
         return $this->belongsTo(Report::class);
     }
 
+    public function revoker()
+    {
+        return $this->belongsTo(User::class, 'revoked_by');
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true)
@@ -116,6 +132,18 @@ class Sanction extends Model
                 $q->whereNull('expires_at')
                     ->orWhere('expires_at', '>', now());
             });
+    }
+
+    /** Lapsed on its own: still flagged active, never revoked, past its expiry. */
+    public function scopeExpired($query)
+    {
+        return $query->where('is_active', true)->whereNull('revoked_at')
+            ->whereNotNull('expires_at')->where('expires_at', '<=', now());
+    }
+
+    public function scopeRevoked($query)
+    {
+        return $query->whereNotNull('revoked_at');
     }
 
     public function scopeWarnings($query)
@@ -183,7 +211,7 @@ class Sanction extends Model
 
     public function isCurrentlyActive(): bool
     {
-        if (! $this->is_active) {
+        if (! $this->is_active || $this->revoked_at !== null) {
             return false;
         }
 
@@ -196,6 +224,16 @@ class Sanction extends Model
         }
 
         return $this->expires_at === null || $this->expires_at->isFuture();
+    }
+
+    public function statusLabel(): string
+    {
+        return match (true) {
+            $this->revoked_at !== null => 'Đã thu hồi',
+            ! $this->is_active => 'Hết hiệu lực',
+            $this->isExpired() => 'Hết hạn',
+            default => 'Đang hiệu lực',
+        };
     }
 
     public function durationLabel(): string

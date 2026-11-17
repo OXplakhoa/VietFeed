@@ -37,6 +37,13 @@ class BookmarkController extends Controller
             ], 403);
         }
 
+        if (! $user->canBookmark()) {
+            return response()->json([
+                'error' => 'restricted',
+                'message' => 'Tài khoản đang bị hạn chế nên không thể lưu bài viết.',
+            ], 403);
+        }
+
         $request->validate(['article_id' => 'required|string|exists:mongodb.articles,_id']);
 
         $existing = $user

@@ -156,7 +156,7 @@
                     </div>
 
                     @auth
-                        @php $sanction = auth()->user()->blockingCommentSanction(); @endphp
+                        @php $sanction = $blockingSanction; @endphp
                         @if($sanction === null)
                         <div class="mb-4 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                             <form action="{{ route('comments.store', $article->slug) }}" method="POST">
@@ -193,7 +193,7 @@
                     @endauth
 
                     @forelse($article->comments as $comment)
-                        <x-comment :comment="$comment" :article="$article" />
+                        <x-comment :comment="$comment" :article="$article" :viewer-can-comment="$viewerCanComment" :viewer-can-report="$viewerCanReport" />
                     @empty
                     <div class="text-center py-4" style="color:var(--text-muted);font-size:.9rem">
                         Chưa có bình luận nào. Hãy là người đầu tiên!

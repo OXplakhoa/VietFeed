@@ -192,6 +192,12 @@ class User extends Authenticatable implements MustVerifyEmail
         return ! $this->isMuted();
     }
 
+    /** Reporting is for verified, non-admin, non-banned users (mute-only users may report). */
+    public function canReport(): bool
+    {
+        return ! $this->isAdmin() && $this->hasVerifiedEmail() && ! $this->isBanned();
+    }
+
     public function canBookmark(): bool
     {
         return ! $this->isBanned();

@@ -26,7 +26,8 @@
                 <select name="status" class="form-select form-select-sm" style="background:var(--surface);border-color:var(--border);color:var(--text);max-width:160px">
                     <option value="">Tất cả trạng thái</option>
                     <option value="active" {{ request('status') === 'active' ? 'selected' : '' }}>Đang hiệu lực</option>
-                    <option value="expired" {{ request('status') === 'expired' ? 'selected' : '' }}>Hết hiệu lực</option>
+                    <option value="expired" {{ request('status') === 'expired' ? 'selected' : '' }}>Hết hạn</option>
+                    <option value="revoked" {{ request('status') === 'revoked' ? 'selected' : '' }}>Đã thu hồi</option>
                     <option value="pending_appeal" {{ request('status') === 'pending_appeal' ? 'selected' : '' }}>Chờ kháng cáo</option>
                 </select>
                 <input type="text" name="q" value="{{ request('q') }}"
@@ -89,7 +90,7 @@
                             @if($sanction->isCurrentlyActive())
                                 <span class="badge rounded-pill" style="background:rgba(34,197,94,.12);color:#22c55e;font-size:.75rem;border:1px solid rgba(34,197,94,.3)">Hiệu lực</span>
                             @else
-                                <span class="badge rounded-pill" style="background:rgba(107,114,128,.12);color:var(--text-muted);font-size:.75rem;border:1px solid rgba(107,114,128,.3)">Hết hiệu lực</span>
+                                <span class="badge rounded-pill" style="background:rgba(107,114,128,.12);color:var(--text-muted);font-size:.75rem;border:1px solid rgba(107,114,128,.3)">{{ $sanction->statusLabel() }}</span>
                             @endif
                         </td>
                         <td style="vertical-align:middle">
@@ -109,13 +110,6 @@
                                    style="font-size:.8rem;color:var(--accent);text-decoration:none">
                                     <i class="bi bi-eye me-1"></i>Chi tiết
                                 </a>
-                                <form action="{{ route('admin.sanctions.destroy', $sanction) }}" method="POST"
-                                      onsubmit="vfConfirmForm(event, this, 'Biện pháp xử lý này sẽ bị xóa vĩnh viễn.')">
-                                    @csrf @method('DELETE')
-                                    <button type="submit" style="font-size:.8rem;color:#ef4444;background:none;border:none;padding:0;cursor:pointer">
-                                        <i class="bi bi-trash me-1"></i>Xóa
-                                    </button>
-                                </form>
                             </div>
                         </td>
                     </tr>

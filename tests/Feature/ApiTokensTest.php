@@ -709,6 +709,7 @@ class ApiTokensTest extends TestCase
             $this->me($pair['access_token'])->assertUnauthorized()->assertJsonPath('error.code', 'token_family_revoked');
             $this->refreshToken($pair['refresh_token'])->assertUnauthorized()->assertJsonPath('error.code', 'token_family_revoked');
             $sanction = $user->sanctions()->sole();
+            Sanction::where('id', $sanction->id)->update(['appeal_status' => 'pending', 'appeal_message' => 'Fixture appeal']); // Gate 9a: only pending appeals can be decided
             $this->actingAs($admin)->patch('/admin/sanctions/'.$sanction->id, ['appeal_status' => 'approved'])
                 ->assertRedirect()->assertSessionHas('success');
             $this->me($pair['access_token'])->assertUnauthorized()->assertJsonPath('error.code', 'token_family_revoked');
@@ -731,6 +732,7 @@ class ApiTokensTest extends TestCase
         $logs = new TestHandler;
         Log::getLogger()->pushHandler($logs);
         try {
+            Sanction::where('id', $ban->id)->update(['appeal_status' => 'pending', 'appeal_message' => 'Fixture appeal']); // Gate 9a: only pending appeals can be decided
             $this->actingAs($admin)->patch('/admin/sanctions/'.$ban->id, ['appeal_status' => 'denied'])
                 ->assertRedirect()->assertSessionHas('success')->assertSessionMissing('error');
             $this->assertSame('denied', $ban->fresh()->appeal_status);
@@ -788,6 +790,7 @@ class ApiTokensTest extends TestCase
         $pair = $login->getReturn()->assertOk()->json();
         $this->me($pair['access_token'])->assertUnauthorized()->assertJsonPath('error.code', 'account_unavailable');
         $this->refreshToken($pair['refresh_token'])->assertUnauthorized()->assertJsonPath('error.code', 'account_unavailable');
+        Sanction::where('id', $ban->id)->update(['appeal_status' => 'pending', 'appeal_message' => 'Fixture appeal']); // Gate 9a: only pending appeals can be decided
         $this->actingAs($admin)->patch('/admin/sanctions/'.$ban->id, ['appeal_status' => 'approved'])
             ->assertRedirect()->assertSessionHas('success');
         $this->assertSame(2, $user->fresh()->api_token_epoch);
@@ -805,6 +808,7 @@ class ApiTokensTest extends TestCase
         $logs = new TestHandler;
         Log::getLogger()->pushHandler($logs);
         try {
+            Sanction::where('id', $ban->id)->update(['appeal_status' => 'pending', 'appeal_message' => 'Fixture appeal']); // Gate 9a: only pending appeals can be decided
             $this->actingAs($admin)->patch('/admin/sanctions/'.$ban->id, ['appeal_status' => 'approved'])
                 ->assertRedirect()->assertSessionHas('success')->assertSessionMissing('error');
         } finally {
@@ -826,9 +830,9 @@ class ApiTokensTest extends TestCase
                 'reason' => 'Fixture', 'is_active' => true, 'expires_at' => now()->addDay()]);
             $pair = app(ApiTokenService::class)->issue($user->fresh());
             $this->me($pair['access_token'])->assertUnauthorized()->assertJsonPath('error.code', 'account_unavailable');
-            $this->actingAs($admin)->delete('/admin/sanctions/'.$ban->id)
+            $this->actingAs($admin)->post('/admin/sanctions/'.$ban->id.'/revoke') // Gate 9a: revoke replaces delete
                 ->assertRedirect(route('admin.sanctions.index'))->assertSessionHas('success')->assertSessionMissing('error');
-            $this->assertNull($ban->fresh());
+            $this->assertNotNull($ban->fresh()->revoked_at);
             $this->assertSame(3, $user->fresh()->api_token_epoch);
             $this->assertSame([], Redis::connection('nosql')->zrange('api-token:user:'.$user->id, 0, -1));
             $this->me($pair['access_token'])->assertUnauthorized()->assertJsonPath('error.code', 'token_family_revoked');
@@ -848,12 +852,12 @@ class ApiTokensTest extends TestCase
         $logs = new TestHandler;
         Log::getLogger()->pushHandler($logs);
         try {
-            $this->actingAs($admin)->delete('/admin/sanctions/'.$ban->id)
+            $this->actingAs($admin)->post('/admin/sanctions/'.$ban->id.'/revoke') // Gate 9a: revoke replaces delete
                 ->assertRedirect(route('admin.sanctions.index'))->assertSessionHas('success')->assertSessionMissing('error');
         } finally {
             Log::getLogger()->popHandler();
         }
-        $this->assertNull($ban->fresh());
+        $this->assertNotNull($ban->fresh()->revoked_at);
         $warning = $logs->getRecords()[0];
         $this->assertSame('Sanction token epoch update failed', $warning->message);
         $this->assertSame(['operation' => 'ban_lifted', 'exception_type' => BulkWriteException::class], $warning->context);

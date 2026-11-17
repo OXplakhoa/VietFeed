@@ -64,6 +64,31 @@
                     </form>
                 </div>
 
+                {{-- Sanction without a case --}}
+                <div class="mt-3 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
+                    <div class="sidebar-title mb-2">Áp dụng biện pháp xử lý</div>
+                    <form action="{{ route('admin.sanctions.store') }}" method="POST">
+                        @csrf
+                        <input type="hidden" name="user_id" value="{{ $user->id }}">
+                        <select name="type" class="form-select form-select-sm mb-2" required style="background:var(--surface-alt);border-color:var(--border);color:var(--text)">
+                            <option value="warning">Cảnh cáo</option>
+                            <option value="mute">Cấm bình luận</option>
+                            <option value="temporary_ban">Cấm tạm thời</option>
+                            <option value="permanent_ban">Cấm vĩnh viễn</option>
+                        </select>
+                        <select name="duration_days" class="form-select form-select-sm mb-2" style="background:var(--surface-alt);border-color:var(--border);color:var(--text)">
+                            <option value="3">3 ngày</option>
+                            <option value="7" selected>7 ngày</option>
+                            <option value="14">14 ngày</option>
+                            <option value="30">30 ngày</option>
+                        </select>
+                        <textarea name="reason" class="vf-textarea mb-2" rows="2" required maxlength="2000" placeholder="Lý do xử lý..."></textarea>
+                        <button type="submit" class="btn btn-sm" style="background:var(--accent);color:#fff;border:none;border-radius:6px">
+                            <i class="bi bi-hammer me-1"></i>Áp dụng
+                        </button>
+                    </form>
+                </div>
+
                 {{-- Billing observation --}}
                 <div class="mt-3 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="sidebar-title mb-2">VietFeed Pro</div>

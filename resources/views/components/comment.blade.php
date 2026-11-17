@@ -1,4 +1,4 @@
-@props(['comment', 'article', 'depth' => 0])
+@props(['comment', 'article', 'depth' => 0, 'viewerCanComment' => false, 'viewerCanReport' => false])
 
 <div class="comment-block {{ $depth > 0 ? 'mt-2' : 'mb-3' }}">
     <div class="d-flex gap-2 align-items-start">
@@ -7,33 +7,40 @@
         </div>
         <div class="flex-fill">
             <div class="comment-meta d-flex align-items-center gap-2 mb-1">
-                <strong style="font-size:.875rem;color:var(--text)">{{ $comment->user->name }}</strong>
-                @if($comment->user->isPro())
+                <strong style="font-size:.875rem;color:var(--text)">{{ $comment->user?->name ?? 'Người dùng đã xóa' }}</strong>
+                @if($comment->user?->isPro())
                 <span class="vf-pro-badge"><i class="bi bi-gem"></i> PRO</span>
                 @endif
                 <span>{{ $comment->created_at->diffForHumans() }}</span>
                 @if(auth()->id() === $comment->user_id)
                     <span class="badge rounded-pill" style="background:rgba(230,57,70,.15);color:var(--accent);font-size:.7rem">Của bạn</span>
                 @endif
+                @if($comment->is_hidden)
+                    <span class="badge rounded-pill" style="background:rgba(245,158,11,.15);color:#f59e0b;font-size:.7rem"><i class="bi bi-eye-slash me-1"></i>Bình luận đang bị ẩn</span>
+                @endif
                 @auth
                 <div class="ms-auto">
-                    <x-comment-kebab :comment="$comment" :article="$article" />
+                    <x-comment-kebab :comment="$comment" :article="$article" :viewer-can-report="$viewerCanReport" />
                 </div>
                 @endauth
             </div>
 
-            @if($comment->is_hidden && !auth()->user()?->isAdmin())
-                <div class="comment-body" style="color:var(--text-muted);font-style:italic;font-size:.85rem">
-                    <i class="bi bi-eye-slash me-1"></i>Bình luận này đã bị ẩn do vi phạm quy định cộng đồng.
-                </div>
-            @else
-                <div class="comment-body">{{ $comment->body }}</div>
+            {{-- Hidden comments are only ever rendered for their author and admins (filtered in ArticleController). --}}
+            <div class="comment-body" @if($comment->is_hidden) style="opacity:.7" @endif>{{ $comment->body }}</div>
+            @if($comment->is_hidden)
+            <div style="color:var(--text-muted);font-style:italic;font-size:.8rem;margin-top:.25rem">
+                @if(auth()->user()?->isAdmin())
+                    Bình luận này đang bị ẩn khỏi người dùng khác (chỉ tác giả và quản trị viên nhìn thấy).
+                @else
+                    Bình luận của bạn đã bị ẩn do vi phạm quy định cộng đồng. Chỉ bạn và quản trị viên nhìn thấy.
+                @endif
+            </div>
             @endif
 
-            @if(!($comment->is_hidden && !auth()->user()?->isAdmin()))
+            @if(!$comment->is_hidden)
             <div class="d-flex align-items-center gap-2 mt-2">
                 @auth
-                    @if($depth === 0 && auth()->user()->canComment())
+                    @if($depth === 0 && $viewerCanComment)
                     <button class="reply-toggle-btn btn btn-sm"
                             data-target="reply-form-{{ $comment->id }}"
                             style="background:none;border:none;color:var(--text-muted);font-size:.8rem;padding:0">
@@ -57,7 +64,7 @@
             @endif
 
             @auth
-            @if($depth === 0 && auth()->user()->canComment())
+            @if($depth === 0 && $viewerCanComment)
             <div id="reply-form-{{ $comment->id }}" class="reply-form-wrap d-none">
                 <form action="{{ route('comments.store', $article->slug) }}" method="POST">
                     @csrf
@@ -105,7 +112,7 @@
     @if($comment->replies && $comment->replies->count() > 0)
     <div class="comment-replies">
         @foreach($comment->replies as $reply)
-            <x-comment :comment="$reply" :article="$article" :depth="1" />
+            <x-comment :comment="$reply" :article="$article" :depth="1" :viewer-can-comment="$viewerCanComment" :viewer-can-report="$viewerCanReport" />
         @endforeach
     </div>
     @endif

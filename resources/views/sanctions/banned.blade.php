@@ -40,6 +40,22 @@
             <div style="font-size:.9rem;color:var(--text)">{{ $sanction->reason }}</div>
         </div>
         @endif
+        @if(($sanction ?? null) && $sanction->appeal_status === 'none')
+        <form action="{{ route('sanctions.appeal', $sanction) }}" method="POST" class="mb-4 text-start">
+            @csrf
+            <label class="vf-label" for="appeal_message">Kháng cáo</label>
+            <textarea id="appeal_message" name="appeal_message" class="vf-textarea mb-2" rows="3" required minlength="10" maxlength="2000"
+                      placeholder="Giải thích lý do bạn cho rằng biện pháp xử lý này không công bằng..."></textarea>
+            @error('appeal_message') <div style="color:#ef4444;font-size:.8rem" class="mb-2">{{ $message }}</div> @enderror
+            <button type="submit" class="btn-accent" style="font-size:.85rem">Gửi kháng cáo</button>
+        </form>
+        @elseif($sanction ?? null)
+        <div class="p-3 mb-4 text-start" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:.85rem;color:var(--text)">
+            Trạng thái kháng cáo: <strong>{{ $sanction->appealStatusLabel() }}</strong>
+        </div>
+        @endif
+        @if(session('success'))<div class="mb-3" style="color:#22c55e;font-size:.85rem">{{ session('success') }}</div>@endif
+        @if(session('error'))<div class="mb-3" style="color:#ef4444;font-size:.85rem">{{ session('error') }}</div>@endif
         <form action="{{ route('logout') }}" method="POST">
             @csrf
             <button type="submit" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:.6rem 1.4rem;font-size:.875rem;cursor:pointer">

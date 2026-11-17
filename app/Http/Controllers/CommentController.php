@@ -48,6 +48,13 @@ class CommentController extends Controller
     {
         abort_if($comment->user_id !== Auth::id(), 403);
 
+        if (! Auth::user()->canComment()) {
+            return back()->with('error', 'Tài khoản đang bị hạn chế nên bạn không thể chỉnh sửa bình luận.');
+        }
+        if ($comment->is_hidden) {
+            return back()->with('error', 'Bình luận đã bị ẩn nên không thể chỉnh sửa.');
+        }
+
         $request->validate(['body' => 'required|string|max:2000']);
 
         $comment->update(['body' => $request->body]);

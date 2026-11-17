@@ -78,7 +78,8 @@ class ArticleController extends Controller
         if ($canAccessArticle) {
             $article->load([
                 'comments' => fn ($q) => $q->whereNull('parent_id')
-                    ->with(['user', 'replies.user'])
+                    ->visibleTo($user)
+                    ->with(['user', 'replies' => fn ($r) => $r->visibleTo($user)->with('user')])
                     ->latest(),
             ]);
         } else {
@@ -115,6 +116,11 @@ class ArticleController extends Controller
             );
         }
 
-        return view('articles.show', compact('article', 'isBookmarked', 'isBoosted', 'related', 'canAccessArticle', 'readingPassAllowance'));
+        // Per-viewer sanction checks run once per request, never per rendered comment.
+        $blockingSanction = $user?->blockingCommentSanction();
+        $viewerCanComment = $user !== null && $blockingSanction === null;
+        $viewerCanReport = $user?->canReport() ?? false;
+
+        return view('articles.show', compact('article', 'isBookmarked', 'isBoosted', 'related', 'canAccessArticle', 'readingPassAllowance', 'viewerCanComment', 'viewerCanReport', 'blockingSanction'));
     }
 }

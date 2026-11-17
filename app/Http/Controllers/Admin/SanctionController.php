@@ -3,140 +3,96 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Comment;
-use App\Models\Report;
 use App\Models\Sanction;
 use App\Models\User;
+use App\Moderation\ModerationException;
+use App\Moderation\ModerationQueries;
+use App\Moderation\ModerationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class SanctionController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, ModerationQueries $queries)
     {
-        $query = Sanction::with(['user', 'admin', 'report'])
-            ->latest();
+        $request->validate([
+            'type' => 'nullable|in:warning,mute,temporary_ban,permanent_ban',
+            'status' => 'nullable|in:active,expired,revoked,pending_appeal',
+            'q' => 'nullable|string|max:200',
+        ]);
 
-        if ($request->filled('type')) {
-            $query->where('type', $request->type);
-        }
-
-        if ($request->filled('status')) {
-            if ($request->status === 'active') {
-                $query->active();
-            } elseif ($request->status === 'expired') {
-                $query->where(function ($q) {
-                    $q->where('is_active', false)
-                        ->orWhere(function ($sub) {
-                            $sub->whereNotNull('expires_at')
-                                ->where('expires_at', '<=', now());
-                        });
-                });
-            } elseif ($request->status === 'pending_appeal') {
-                $query->pendingAppeals();
-            }
-        }
-
-        if ($request->filled('q')) {
-            $q = $request->q;
-            $query->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$q}%"))
-                ->orWhere('reason', 'like', "%{$q}%");
-        }
-
-        $sanctions = $query->paginate(20)->withQueryString();
-        $pendingAppealsCount = Sanction::pendingAppeals()->count();
+        $sanctions = $queries->sanctions($request->input('type'), $request->input('status'), $request->input('q'))->withQueryString();
+        $pendingAppealsCount = $queries->pendingAppealsCount();
 
         return view('admin.sanctions.index', compact('sanctions', 'pendingAppealsCount'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ModerationService $moderation)
     {
-        $request->validate([
+        $data = $request->validate([
             'user_id' => 'required|exists:mongodb.users,_id',
             'report_id' => 'nullable|exists:reports,id',
-            'comment_id' => 'nullable|exists:comments,id',
             'type' => 'required|in:warning,mute,temporary_ban,permanent_ban',
             'reason' => 'required|string|max:2000',
             'duration_days' => 'nullable|integer|min:1|max:365',
+            'hide_comment' => 'nullable|boolean',
+            'note' => 'nullable|string|max:2000',
         ]);
 
-        $user = User::findOrFail($request->user_id);
-
-        $expiresAt = null;
-        if (in_array($request->type, ['mute', 'temporary_ban'])) {
-            $expiresAt = now()->addDays($request->duration_days ?? 7);
-        }
-
         try {
-            $sanction = Sanction::create([
-                'user_id' => $request->user_id,
-                'admin_id' => Auth::id(),
-                'report_id' => $request->report_id,
-                'type' => $request->type,
-                'reason' => $request->reason,
-                'expires_at' => $expiresAt,
-                'is_active' => true,
-            ]);
+            $moderation->issueSanction(
+                $request->user(),
+                User::findOrFail($data['user_id']),
+                $data['type'],
+                $data['reason'],
+                isset($data['duration_days']) ? (int) $data['duration_days'] : null,
+                isset($data['report_id']) ? (int) $data['report_id'] : null,
+                (bool) ($data['hide_comment'] ?? false),
+                $data['note'] ?? null,
+            );
+        } catch (ModerationException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
         } catch (\Throwable $error) {
             Log::warning('Sanction save failed', ['exception_type' => $error::class]);
 
             return back()->with('error', 'Không thể áp dụng biện pháp xử lý. Vui lòng thử lại.');
         }
 
-        // If a comment_id was provided, soft-hide it
-        if ($request->filled('comment_id')) {
-            $comment = Comment::find($request->comment_id);
-            if ($comment) {
-                $comment->update(['is_hidden' => true]);
-            }
-        }
-
-        // If a report_id was provided, update its status
-        if ($request->filled('report_id')) {
-            $report = Report::find($request->report_id);
-            if ($report) {
-                $report->update([
-                    'status' => 'actioned',
-                    'admin_id' => Auth::id(),
-                    'reviewed_at' => now(),
-                ]);
-            }
-        }
-
         return redirect()->route('admin.sanctions.index')->with('success', 'Biện pháp xử lý đã được áp dụng.');
     }
 
-    public function show(Sanction $sanction)
+    public function show(Sanction $sanction, ModerationQueries $queries)
     {
-        $sanction->load(['user', 'admin', 'report.comment', 'report.reporter']);
-
-        return view('admin.sanctions.show', compact('sanction'));
+        return view('admin.sanctions.show', $queries->sanctionDetail($sanction));
     }
 
-    public function update(Request $request, Sanction $sanction)
+    /** Decide a pending appeal. */
+    public function update(Request $request, Sanction $sanction, ModerationService $moderation)
     {
-        $request->validate([
+        $data = $request->validate([
             'appeal_status' => 'required|in:approved,denied',
+            'note' => 'nullable|string|max:2000',
         ]);
 
-        $appealStatus = $request->appeal_status;
-
-        $update = ['appeal_status' => $appealStatus];
-
-        if ($appealStatus === 'approved') {
-            $update['is_active'] = false;
+        try {
+            $moderation->decideAppeal($request->user(), $sanction, $data['appeal_status'], $data['note'] ?? null);
+        } catch (ModerationException $e) {
+            return back()->with('error', $e->getMessage());
         }
 
-        $sanction->update($update);
-
-        return back()->with('success', 'Kháng cáo đã được '.($appealStatus === 'approved' ? 'chấp nhận' : 'từ chối').'.');
+        return back()->with('success', 'Kháng cáo đã được '.($data['appeal_status'] === 'approved' ? 'chấp nhận' : 'từ chối').'.');
     }
 
-    public function destroy(Sanction $sanction)
+    public function revoke(Request $request, Sanction $sanction, ModerationService $moderation)
     {
-        $sanction->delete();
+        $data = $request->validate(['note' => 'nullable|string|max:2000']);
 
-        return redirect()->route('admin.sanctions.index')->with('success', 'Biện pháp xử lý đã được xóa.');
+        try {
+            $moderation->revokeSanction($request->user(), $sanction, $data['note'] ?? null);
+        } catch (ModerationException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return redirect()->route('admin.sanctions.index')->with('success', 'Biện pháp xử lý đã được thu hồi.');
     }
 }
