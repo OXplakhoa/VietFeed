@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateSourceRequest extends FormRequest
 {
@@ -16,9 +17,9 @@ class UpdateSourceRequest extends FormRequest
         return [
             'name' => 'required|string|max:255',
             'url' => 'required|url|max:500',
-            'feed_url' => 'required|url|max:500',
+            'feed_url' => ['required', 'url', 'max:500', Rule::unique('mongodb.sources', 'feed_url')->ignore($this->route('source')?->id, '_id')],
             'logo_url' => 'nullable|url|max:500',
-            'category_id' => 'required|exists:categories,id',
+            'category_id' => 'required|exists:mongodb.categories,_id',
             'is_active' => 'boolean',
             'prestige' => 'nullable|integer|min:1|max:5',
         ];

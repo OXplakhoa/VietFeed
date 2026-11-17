@@ -2,11 +2,32 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesConfigTypes;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+use MongoDB\Laravel\Eloquent\Model;
 
 class Source extends Model
 {
+    use NormalizesConfigTypes;
+
+    protected $connection = 'mongodb';
+
+    protected $primaryKey = '_id';
+
+    protected static function booted(): void
+    {
+        static::creating(fn (self $model) => $model->_id ??= (string) Str::uuid7());
+        static::deleting(fn (self $source) => $source->fetchLogs()->delete());
+    }
+
+    protected function newRelatedInstance($class)
+    {
+        return new $class;
+    }
+
+    protected $attributes = ['is_active' => true, 'prestige' => 3, 'consecutive_failures' => 0];
+
     protected $fillable = [
         'name',
         'url',
@@ -30,6 +51,11 @@ class Source extends Model
 
     protected $appends = ['health_status'];
 
+    protected function integerWriteAttributes(): array
+    {
+        return ['prestige', 'consecutive_failures', 'last_items_found', 'last_valid_items', 'last_duplicate_count', 'last_duration_ms'];
+    }
+
     protected function casts(): array
     {
         return [
@@ -47,17 +73,17 @@ class Source extends Model
 
     public function category()
     {
-        return $this->belongsTo(Category::class);
+        return $this->belongsTo(Category::class, 'category_id', '_id');
     }
 
     public function articles()
     {
-        return $this->hasMany(Article::class);
+        return $this->hasMany(Article::class, 'source_id', '_id');
     }
 
     public function fetchLogs()
     {
-        return $this->hasMany(SourceFetchLog::class)->latest();
+        return $this->hasMany(SourceFetchLog::class, 'source_id', '_id')->latest();
     }
 
     public function getHealthStatusAttribute(): string

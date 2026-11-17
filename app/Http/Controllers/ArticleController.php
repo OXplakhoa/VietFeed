@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Content\ArticleCounts;
 use App\Models\Article;
 use App\Models\Bookmark;
 use App\Models\Boost;
@@ -17,9 +18,8 @@ class ArticleController extends Controller
     public function index(Request $request)
     {
         $query = Article::with(['source', 'category'])
-            ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active())
-            ->withCount(['bookmarks', 'boosts']);
+            ->whereIn('category_id', Category::active()->pluck('id'))
+            ->whereIn('source_id', Source::active()->pluck('id'));
 
         if ($request->filled('q')) {
             $q = $request->q;
@@ -30,7 +30,7 @@ class ArticleController extends Controller
         }
 
         if ($request->filled('category')) {
-            $query->whereHas('category', fn ($qb) => $qb->active()->where('slug', $request->category));
+            $query->whereIn('category_id', Category::active()->where('slug', $request->category)->pluck('id'));
         }
 
         if ($request->filled('source')) {
@@ -38,6 +38,7 @@ class ArticleController extends Controller
         }
 
         $articles = $query->latest('published_at')->paginate(12)->withQueryString();
+        ArticleCounts::attach($articles->getCollection());
 
         /** @var User|null $user */
         $user = Auth::user();
@@ -62,8 +63,8 @@ class ArticleController extends Controller
         // attach the same counts with native per-store queries.
         $article = Article::where('slug', $slug)
             ->with(['source', 'category'])
-            ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active())
+            ->whereIn('category_id', Category::active()->pluck('id'))
+            ->whereIn('source_id', Source::active()->pluck('id'))
             ->firstOrFail();
         $article->bookmarks_count = Bookmark::where('article_id', $article->getKey())->count();
         $article->boosts_count = Boost::where('article_id', $article->getKey())->count();
@@ -95,8 +96,8 @@ class ArticleController extends Controller
             : false;
 
         $related = Article::with(['source', 'category'])
-            ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active())
+            ->whereIn('category_id', Category::active()->pluck('id'))
+            ->whereIn('source_id', Source::active()->pluck('id'))
             ->where('category_id', $article->category_id)
             ->where('id', '!=', $article->id)
             ->latest('published_at')
@@ -106,8 +107,8 @@ class ArticleController extends Controller
         if ($related->count() < 10) {
             $related = $related->concat(
                 Article::with(['source', 'category'])
-                    ->whereHas('category', fn ($qb) => $qb->active())
-                    ->whereHas('source', fn ($qb) => $qb->active())
+                    ->whereIn('category_id', Category::active()->pluck('id'))
+                    ->whereIn('source_id', Source::active()->pluck('id'))
                     ->where('id', '!=', $article->id)
                     ->whereNotIn('id', $related->pluck('id'))
                     ->latest('published_at')
@@ -115,6 +116,8 @@ class ArticleController extends Controller
                     ->get()
             );
         }
+
+        ArticleCounts::attach($related);
 
         // Per-viewer sanction checks run once per request, never per rendered comment.
         $blockingSanction = $user?->blockingCommentSanction();

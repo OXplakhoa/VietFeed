@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class ProfileController extends Controller
@@ -50,7 +51,7 @@ class ProfileController extends Controller
     {
         $request->validate([
             'categories' => 'array',
-            'categories.*' => 'exists:categories,id,is_active,1',
+            'categories.*' => Rule::exists('mongodb.categories', '_id')->where(fn ($query) => $query->where('is_active', true)),
         ]);
 
         $request->user()->update(['favorite_category_ids' => array_values($request->categories ?? [])]);

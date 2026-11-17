@@ -16,9 +16,9 @@ class StoreSourceRequest extends FormRequest
         return [
             'name' => 'required|string|max:255',
             'url' => 'required|url|max:500',
-            'feed_url' => 'required|url|max:500',
+            'feed_url' => 'required|url|max:500|unique:mongodb.sources,feed_url',
             'logo_url' => 'nullable|url|max:500',
-            'category_id' => 'required|exists:categories,id',
+            'category_id' => 'required|exists:mongodb.categories,_id',
             'is_active' => 'boolean',
             'prestige' => 'nullable|integer|min:1|max:5',
         ];

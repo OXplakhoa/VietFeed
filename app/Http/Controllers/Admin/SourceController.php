@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Content\ArticleCounts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreSourceRequest;
 use App\Http\Requests\Admin\UpdateSourceRequest;
@@ -59,19 +60,24 @@ class SourceController extends Controller
 
         $query = Source::with('category');
 
-        if ($hasFetchLogsTable) {
-            $query->with(['fetchLogs' => fn ($q) => $q->limit(5)]);
-        }
-
         if ($request->filled('q')) {
             $query->where('name', 'LIKE', "%{$request->q}%");
         }
 
         if ($request->filled('category')) {
-            $query->where('category_id', $request->integer('category'));
+            $query->where('category_id', $request->string('category')->toString());
         }
 
         $sources = $query->get();
+
+        if ($hasFetchLogsTable) {
+            $ranked = SourceFetchLog::select('source_fetch_logs.*')
+                ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source_id ORDER BY created_at DESC, id DESC) AS recent_rank')
+                ->whereIn('source_id', $sources->modelKeys());
+            $logs = SourceFetchLog::query()->fromSub($ranked, 'recent_logs')
+                ->where('recent_rank', '<=', 5)->get()->groupBy('source_id');
+            $sources->each(fn ($source) => $source->setRelation('fetchLogs', ($logs[$source->id] ?? collect())));
+        }
 
         $articlesBySource = MongoCounts::byField('source_id');
         $sources->each(fn ($source) => $source->articles_count = (int) ($articlesBySource[$source->id] ?? 0));
@@ -190,9 +196,9 @@ class SourceController extends Controller
     {
         $source->load('category');
         $articles = $source->articles()
-            ->withCount('bookmarks')
             ->latest('published_at')
             ->paginate(15);
+        ArticleCounts::attach($articles->getCollection());
 
         $hasFetchLogsTable = Schema::hasTable('source_fetch_logs');
         $recentLogs = $hasFetchLogsTable

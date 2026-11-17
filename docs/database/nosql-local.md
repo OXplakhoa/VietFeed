@@ -326,14 +326,12 @@ The ingest boundary ensures unique `articles.original_url` and a unique partial
 `stories.story_key` index. A repeated ingest emits no new events and creates no
 new documents. An existing RSS Article can be attached without changing its ID.
 
-Source/Category remain SQL models. Their **interim** graph keys are deterministic
-UUIDv5 values in the URL namespace over `vietfeed:source:<exact feed_url>` and
-`vietfeed:category:<slug>`, embedded in the snapshots as `uuid`. This follows the
-existing Source identity (one row per feed, including category-specific feeds),
-avoids installation-specific SQL integers, and is independent of display names.
-When Source/Category migrate, assign canonical UUIDv7, retain an old-key → new-ID
-mapping, update snapshots and rebuild the graph. These interim keys are not a
-claim that Source/Category have already migrated.
+Source/Category now have canonical Mongo UUIDv7 `_id` values (Gate 9.5).
+Their **content identities for the graph** remain deterministic UUIDv5 values in
+the URL namespace over `vietfeed:source:<exact feed_url>` and
+`vietfeed:category:<slug>`, embedded in snapshots as `uuid`. These identities are
+independent of canonical Mongo IDs and display names. Configuration import never
+rewrites snapshots or graph identities (binding REVIEW-1 control decision).
 
 ### Events, groups and state
 
@@ -884,3 +882,59 @@ FROM vietfeed.moderation_events_by_case WHERE case_id = <case-uuid>;
 Tests (`ModerationNosqlTest` and the 9a `Moderation*Test` suites) run only on Mongo
 `vietfeed_test`, Redis DB15 (fixture flushes it with the live `getDbNum()` guard),
 Cassandra keyspace `vietfeed_test` (the test deletes its partitions) and SQLite `:memory:`.
+
+## Gate 9.5 slice 1 — MongoDB configuration
+
+`Category` and `Source` use the `mongodb` connection and Laravel-generated UUIDv7
+string `_id` values. The SQL `categories` and `sources` tables remain for offline
+import only; public/admin pages, validation, interests, seeders and RSS workers
+read/write MongoDB. Fresh setups use `CategorySeeder` then `SourceSeeder`.
+
+| Collection | Durable indexes / references |
+|---|---|
+| `categories` | unique `slug`; `name`, boolean `is_active` (default true) |
+| `sources` | unique `feed_url`, indexed `category_id` UUID; `url` is deliberately nonunique (several feeds per publisher); prestige, active flag and existing health fields |
+| `articles` | `category_id` / `source_id` UUID strings for assigned RSS articles; source/category snapshot UUIDv5s are stable content identities independent of canonical IDs |
+| `users` | `favorite_category_ids` embeds category UUID strings; retired SQL interest pivot is unused |
+
+Migrations: `2026_11_18_100001_create_mongodb_config_indexes.php` (idempotent indexes)
+and `2026_11_18_100002_widen_source_fetch_logs_source_id.php` (remove SQL FK, widen
+to varchar(36), forward-only). `source_fetch_logs` remains SQL in this slice and
+resolves Mongo Sources by explicit string key. Source deletion still deletes its
+SQL fetch logs. Article/Source/Category lists batch reads/counts within each store.
+
+The layout composer obtains active navigation categories through `CategoryList`.
+The existing default cache store (Redis in the local runtime) holds plain arrays,
+not serialized PHP models, under `catalog:categories:active:v1` for 300 seconds.
+Category model saves/deletes invalidate it; empty or evicted cache entries rebuild
+from MongoDB. Cache failures fall back to a direct Mongo query, including during
+layout rendering; failed invalidation does not fail a canonical write. This follows Laravel's disabled PHP-class cache deserialization.
+Bulk updates bypassing model events must explicitly call `CategoryList::forget()`.
+
+Optional legacy-data cutover, in maintenance mode with writers/queue workers
+quiesced: back up SQL, apply both migrations, run `php artisan config:import-sql`,
+verify its counts, then resume workers and HTTP. The command matches slug/feed_url,
+inserts UUIDv7 documents once, preserves existing Mongo configuration on rerun,
+remaps both numeric/string legacy article references, embedded favorites, SQL
+fetch-log references; snapshots keep their deterministic UUIDv5s. It leaves SQL rows intact.
+Snapshot-only Story replay articles retain their existing public eligibility;
+replay does not create configuration or automatically publish them.
+
+Choose **ONE** setup path: fresh configuration (seed CategorySeeder, then
+SourceSeeder), **OR** import legacy SQL after migrations. **Never seed then import**:
+the owner seed changed two Tuổi Trẻ feed URLs, so mixing the paths can create two
+sources for the old/new natural keys. Import preflights duplicate SQL category slugs
+and source feed URLs before any write, aborting with duplicate IDs only. Resolve
+those SQL duplicates before retrying. The seeder remains unchanged.
+
+Model assignment normalizes Category/Source active flags to BSON booleans and
+Source prestige/failure/metric fields to integers or null, including SQL-import
+values. Source Health computes its five recent logs per source in SQL using
+ROW_NUMBER, before hydrating them; it does not load complete source histories.
+
+This is an offline, rerunnable workflow, not a distributed transaction. Keep
+natural keys fixed until import completes and drain legacy integer-ID RSS jobs
+before cutover. Cache fill races may be stale for up to 300 seconds; bulk writes
+must explicitly invalidate. Repeated active-ID plucks remain a bounded optimization
+opportunity. See `.agent/tasks/sql-cutover-config/GATE-REPORT-9.5-1.md` for command
+order and evidence. UUIDv5 preservation needs no graph identity remap/rebuild.

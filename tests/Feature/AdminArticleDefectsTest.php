@@ -11,6 +11,7 @@ use App\Services\Rss\FeedIngestionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -23,7 +24,7 @@ class AdminArticleDefectsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Ordinary RSS-style Article with real SQL relations; no catalog ingest.
+        // Ordinary RSS-style Article with real MongoDB relations; no catalog ingest.
         $category = Category::create(['name' => 'Ordinary topic', 'slug' => 'ordinary', 'is_active' => true]);
         $source = Source::create(['name' => 'Ordinary source', 'url' => 'https://ordinary.test', 'feed_url' => 'https://ordinary.test/rss', 'category_id' => $category->id, 'is_active' => true]);
         $this->article = Article::create([
@@ -38,7 +39,7 @@ class AdminArticleDefectsTest extends TestCase
         $this->get('/admin/articles')->assertOk()->assertSee($this->article->title);
     }
 
-    public function test_rss_ingestion_stores_integer_sql_relation_ids(): void
+    public function test_rss_ingestion_stores_uuid_relation_ids(): void
     {
         $source = $this->article->source;
         Http::preventStrayRequests();
@@ -49,11 +50,11 @@ class AdminArticleDefectsTest extends TestCase
         $stored = DB::connection('mongodb')->getCollection('articles')->findOne(['original_url' => 'https://ordinary.test/type-probe']);
         $this->assertSame($source->id, $stored['source_id']);
         $this->assertSame($source->category_id, $stored['category_id']);
-        $this->assertIsInt($stored['source_id']);
-        $this->assertIsInt($stored['category_id']);
+        $this->assertTrue(Str::isUuid($stored['source_id'], 7));
+        $this->assertTrue(Str::isUuid($stored['category_id'], 7));
     }
 
-    public function test_edit_form_persists_integer_relation_ids_and_preserves_listing_eligibility(): void
+    public function test_edit_form_persists_uuid_relation_ids_and_preserves_listing_eligibility(): void
     {
         $article = $this->article;
         $category = Category::create(['name' => 'Reassigned topic', 'slug' => 'reassigned', 'is_active' => true]);

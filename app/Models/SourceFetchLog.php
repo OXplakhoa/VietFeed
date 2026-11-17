@@ -36,6 +36,6 @@ class SourceFetchLog extends Model
 
     public function source()
     {
-        return $this->belongsTo(Source::class);
+        return $this->belongsTo(Source::class, 'source_id', '_id');
     }
 }

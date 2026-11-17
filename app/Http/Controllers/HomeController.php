@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Content\ArticleCounts;
 use App\Models\Article;
 use App\Models\Bookmark;
 use App\Models\Boost;
@@ -128,7 +129,7 @@ class HomeController extends Controller
             $breakingArticles = $breakingArticles->merge($fillers);
         }
 
-        // Main feed (article-card falls back to live counts when unset).
+        // Main feed; counts for all cards are attached below.
         $query = Article::with(['source', 'category'])
             ->whereIn('source_id', $activeSourceIds)
             ->whereIn('category_id', $activeCategoryIds);
@@ -167,6 +168,12 @@ class HomeController extends Controller
             ? $user->boosts()->pluck('article_id')->toArray()
             : [];
 
+        // Reuse the per-store counts for every card, including hero and breaking fillers.
+        foreach (collect([$featured])->filter()->concat($heroArticles)->concat($breakingArticles)
+            ->concat($communityBoosted)->concat($articles->getCollection())->concat($trending) as $article) {
+            $article->boosts_count = (int) ($boostCounts[$article->getKey()] ?? 0);
+            $article->bookmarks_count = (int) ($bmCounts[$article->getKey()] ?? 0);
+        }
         $categories = Category::active()->get();
 
         return view('home.index', compact(
@@ -178,22 +185,22 @@ class HomeController extends Controller
     {
         $page = max(1, (int) $request->get('page', 2));
 
-        // Gate 3: withCount SQL subqueries can't join to Mongo; article-card falls
-        // back to live counts when unset.
+        // Resolve Mongo configuration and attach SQL interaction counts per page.
         $query = Article::with(['source', 'category'])
-            ->whereHas('category', fn ($qb) => $qb->active())
-            ->whereHas('source', fn ($qb) => $qb->active());
+            ->whereIn('category_id', Category::active()->pluck('id'))
+            ->whereIn('source_id', Source::active()->pluck('id'));
 
         /** @var User|null $user */
         $user = Auth::user();
 
-        // Gate 3: favorites are embedded ids (pivot retired); active-only filter stays SQL.
+        // Favorites are embedded UUIDs; configuration is queried on MongoDB.
         if ($user && ! empty($user->favorite_category_ids)) {
             $catIds = Category::where('is_active', true)->whereIn('id', $user->favorite_category_ids)->pluck('id');
             $query->whereIn('category_id', $catIds);
         }
 
         $articles = $query->latest('published_at')->paginate(12, ['*'], 'page', $page);
+        ArticleCounts::attach($articles->getCollection());
 
         $html = '';
         foreach ($articles->items() as $article) {

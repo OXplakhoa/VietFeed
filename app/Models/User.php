@@ -133,11 +133,6 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Comment::class);
     }
 
-    public function favoriteCategories()
-    {
-        return $this->belongsToMany(Category::class, 'category_user');
-    }
-
     public function articleUnlocks()
     {
         return $this->hasMany(ArticleUnlock::class);
