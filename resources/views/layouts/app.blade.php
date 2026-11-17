@@ -142,7 +142,7 @@
                                 <i class="bi bi-ticket-perforated me-2"></i>Gói đọc</a></li>
                             <li><a class="dropdown-item" href="{{ route('pricing') }}">
                                 <i class="bi bi-stars me-2"></i>VietFeed Pro</a></li>
-                            @if(auth()->user()->stripe_id)
+                            @if(auth()->user()->stripe_customer_id)
                             <li><a class="dropdown-item" href="{{ route('billing.portal') }}">
                                 <i class="bi bi-credit-card me-2"></i>Thanh toán</a></li>
                             @endif

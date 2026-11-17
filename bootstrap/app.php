@@ -32,6 +32,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'sanction' => CheckUserSanction::class,
         ]);
 
+        $middleware->validateCsrfTokens(except: ['stripe/webhook']);
+
         $middleware->appendToGroup('web', CheckUserSanction::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

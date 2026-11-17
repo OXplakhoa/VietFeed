@@ -3,17 +3,17 @@
 namespace App\Models;
 
 use App\ApiTokens\ApiTokenService;
+use App\Billing\BillingGateway;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Cashier\Billable;
 use MongoDB\Laravel\Auth\User as Authenticatable;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
-    use Billable, HasFactory, Notifiable;
+    use HasFactory, Notifiable;
 
     protected static function booted(): void
     {
@@ -69,10 +69,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'google_id',
         'email_verified_at',
         'favorite_category_ids',
-        'stripe_id',
-        'pm_type',
-        'pm_last_four',
-        'trial_ends_at',
+        'stripe_customer_id',
     ];
 
     protected $hidden = [
@@ -87,7 +84,6 @@ class User extends Authenticatable implements MustVerifyEmail
             'favorite_category_ids' => 'array',
             'password' => 'hashed',
             'api_token_epoch' => 'integer',
-            'trial_ends_at' => 'datetime',
         ];
     }
 
@@ -103,20 +99,12 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isPro(): bool
     {
-        return $this->subscribed('pro');
+        return app(BillingGateway::class)->isPro($this);
     }
 
     public function stripeCustomerUrl(): ?string
     {
-        if (! $this->stripe_id) {
-            return null;
-        }
-
-        $prefix = str_starts_with((string) config('cashier.secret'), 'sk_test_')
-            ? 'https://dashboard.stripe.com/test/customers/'
-            : 'https://dashboard.stripe.com/customers/';
-
-        return $prefix.$this->stripe_id;
+        return app(BillingGateway::class)->customerUrl($this);
     }
 
     // Gate 3: related SQL models must stay on the default SQL connection.

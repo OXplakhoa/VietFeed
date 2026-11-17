@@ -737,3 +737,50 @@ A noisy account leaves other accounts at the same IP usable until the IP ceiling
 429 replies include `Retry-After`. Keys hash email/IP and never contain passwords.
 The API explicitly uses the existing Redis cache store even if the default cache
 store is process-local. Test workers pin and guard cache/nosql Redis at DB15.
+
+## Gate 7 — Mongo billing
+
+Billing now uses `App\Billing\BillingGateway` and the directly required
+`stripe/stripe-php` v17.6.0. Cashier, its configuration, five SQL billing migrations
+and unused Money/ICU polyfill dependencies are removed. The historical Gate 3 list
+above described the earlier state: subscriptions are now Mongo documents, not SQL.
+Remaining non-billing SQL stores and Redis web sessions are unchanged.
+
+| Collection | Fields and durable indexes |
+|---|---|
+| `users` | `stripe_customer_id`, partial unique index (`$type: string`; null/empty values are unset first); legacy `stripe_id` retained by idempotent backfill |
+| `subscriptions` | `_id` = Stripe subscription ID; unique `stripe_subscription_id`; indexed `user_id` UUID; type, customer ID, status, price, period end, cancel/ended fields, `projection_version`, `applied_event_ids` (last 50), transient `lock_token`/`lock_until` |
+| `processed_stripe_events` | `_id` = unique Stripe event ID; type index; received/processed BSON UTC timestamps; `result` (`projected`, `ignored`, `unknown_user`); transient `claim` token and `lease_until` while unfinished |
+
+Migration: `2026_11_17_000001_create_mongodb_billing_indexes.php`. It is safe to
+rerun; it never replaces an existing new customer ID or deletes the legacy ID.
+Mongo's unique index rejects conflicting customer/subscription/event identities.
+Apply just this migration using the Mongo connection before real acceptance;
+see [the billing walkthrough](../demo/billing-demo.md) for the exact command and
+read-only native queries. No dev migration was executed by the worker.
+
+`User::isPro()` delegates to the gateway: true iff any Mongo subscription is
+`type=pro`, status `active` or `trialing` and `price_id` equal to `STRIPE_PRO_PRICE_ID` (when that is empty, type and status only). Period-end cancellation keeps Pro while
+status is active. Admin page users receive one batched entitlement read; no per-row
+billing queries. Stripe outages do not change the stored entitlement.
+
+The signed webhook is stateless and CSRF exempt, with no web session, sanction or
+SQL middleware. Stripe's SDK verifies the raw body/signature with its default
+300-second tolerance. Only verified events enter Mongo. Receipt claims use a
+60-second lease; a busy duplicate returns retryable 503, a processed duplicate 200.
+The payload is only a trigger: every handled event retrieves the current subscription
+from Stripe under a fenced per-subscription lock (`lock_token`/`lock_until` on the
+subscription document, expiry capped at the receipt lease) and writes that state, so
+no ordering is derived from events. A contended lock is polled for 5 seconds, then
+503. The write is skipped if the event ID is already in `applied_event_ids` (last 50),
+which prevents reapplication when a worker crashes after projection but before
+receipt acknowledgement. Failed events stay unfinished: live endpoints are retried
+by Stripe; under `stripe listen` re-send with `stripe events resend <evt_id>`. No
+replica-set transaction or Redis lock is required. Events carry no payloads or
+signatures; unknown-user and irrelevant events are acknowledged and recorded.
+
+Tests run only on `vietfeed_test`, SQLite `:memory:` and guarded Redis DB15.
+`StripeBillingTest` uses signed fixtures, two independent HTTP workers for duplicate
+races and a fake Stripe interface; it never calls Stripe. `ProSubscriptionTest`
+checks Checkout metadata/reuse, Portal/errors, Reading Pass and admin behavior.
+The real Test Mode walkthrough is deliberately reserved for control/reviewer.

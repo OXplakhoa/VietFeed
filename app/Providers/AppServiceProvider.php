@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Billing\StripeClient;
+use App\Billing\StripeSdkClient;
 use App\Interaction\InteractionReplaySource;
 use App\Interaction\SyntheticInteractionReplaySource;
 use App\Services\TickerService;
@@ -13,6 +15,7 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(StripeClient::class, StripeSdkClient::class);
         $this->app->bind(InteractionReplaySource::class, SyntheticInteractionReplaySource::class);
     }
 

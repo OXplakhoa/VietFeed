@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Billing\BillingGateway;
 use App\Content\ContentCatalog;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Models\Article;
@@ -144,8 +145,8 @@ class CatalogArticlePagesTest extends TestCase
         Article::query()->delete();
         $category = Category::create(['name' => 'Counts', 'slug' => 'counts']);
         $source = Source::create(['name' => 'Counts', 'url' => 'https://counts.test', 'feed_url' => 'https://counts.test/rss', 'category_id' => $category->id]);
-        // Keep the authenticated user's subscription relation equally warm.
-        auth()->user()->load('subscriptions');
+        // Keep the authenticated user's entitlement snapshot equally warm.
+        app(BillingGateway::class)->primeEntitlements([auth()->user()]);
         $measurements = [];
         $hydrated = 0;
         Article::retrieved(function () use (&$hydrated) {
