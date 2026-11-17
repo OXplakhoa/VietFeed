@@ -61,6 +61,24 @@ These gates require executable evidence, not another product decision. Stop a sp
 - Reproduce and diagnose the broken baseline Report flow before claiming feature parity.
 - Define expected user report, admin review, sanction and appeal behaviour with acceptance tests.
 - Then migrate current case state to MongoDB, review queue to Redis and audit history to Cassandra.
+- Delivered in two parts (owner decision 2026-11-17): **9a** repairs the flow and pins the behaviour with acceptance tests on
+  the existing storage; **9b** performs the storage migration with 9a's tests as the regression net.
+
+## Gate 9.5 — Final SQL cutover (before Gate 10)
+
+Spec §13 items 6–8: the final cutover succeeds only when the application boots, tests and demos without a SQLite/MySQL runtime.
+Added by owner decision 2026-11-17, because no earlier gate moves the remaining SQL models.
+
+- Move the remaining SQL-backed state to its planned store (`docs/architecture/database-feature-map.md`): `Category` and
+  `Source` → MongoDB; `Comment` (with moderation hide/snapshot fields) → MongoDB; `Bookmark`, `Boost` → MongoDB current state with
+  Cassandra activity events; `ArticleUnlock` → Redis counters with Cassandra unlock history; `SourceFetchLog` → Cassandra.
+- Replace the remaining SQL joins, `withCount`, pivots, foreign keys and transactions with Mongo documents, indexes, counters or
+  application workflows; no cross-store `whereHas`/`withCount`.
+- Remove SQL migrations, the SQL default connection and SQLite from the test runtime; `composer run test` and the demo run with
+  only MongoDB, Cassandra, Neo4j and Redis.
+- Delivered as small slices (one PR each, e.g. configuration, comments, interactions, source history, SQL removal); each slice
+  keeps the full suite green and is reviewed independently.
+- Seed configuration, Sources and Categories into MongoDB; stale local SQL records are not migrated (spec §13 item 2).
 
 ## Gate 10 — Evaluation and final demo readiness
 
