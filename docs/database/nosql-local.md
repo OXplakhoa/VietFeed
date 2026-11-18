@@ -787,8 +787,8 @@ The real Test Mode walkthrough is deliberately reserved for control/reviewer.
 
 Reports, sanctions and per-comment case documents are canonical on MongoDB; the SQL
 `reports`/`sanctions` tables stay in place but unused (dropped in Gate 9.5) and are
-read only by `php artisan moderation:import-sql`. Comments stay on SQL until 9.5
-(`comments.hidden_by_sanction_id` is now a string holding the sanction UUID).
+read only by `php artisan moderation:import-sql`. Comments moved to MongoDB in Gate 9.5
+slice 2 (see below); `comment_id` references are now the comment's string id.
 
 | Store | Name | Role |
 |---|---|---|
@@ -861,7 +861,7 @@ Native inspection of one case (replace ids; dev uses `vietfeed`, tests `vietfeed
 
 ```javascript
 // mongosh: current state + outbox of one case and its sanctions
-db.getSiblingDB('vietfeed').moderation_cases.findOne({comment_id: <comment-id>},
+db.getSiblingDB('vietfeed').moderation_cases.findOne({comment_id: '<comment-uuid>'},
   {status: 1, round: 1, version: 1, pending_count: 1, severity: 1, decisions: 1, events: 1})
 db.getSiblingDB('vietfeed').sanctions.find({audit_case_id: '<case-uuid>'}, {type: 1, is_active: 1, appeal_status: 1, events: 1})
 ```
@@ -938,3 +938,77 @@ before cutover. Cache fill races may be stale for up to 300 seconds; bulk writes
 must explicitly invalidate. Repeated active-ID plucks remain a bounded optimization
 opportunity. See `.agent/tasks/sql-cutover-config/GATE-REPORT-9.5-1.md` for command
 order and evidence. UUIDv5 preservation needs no graph identity remap/rebuild.
+
+## Gate 9.5 slice 2 — comments on MongoDB
+
+`Comment` (roots, replies and the moderation hide fields) uses the `mongodb` connection
+with a UUIDv7 string `_id`. The SQL `comments` table stays in place, unused, until the
+final slice; only the two import classes (`App\Content\CommentSqlImport`,
+`App\Moderation\SqlImport`) read it.
+
+| Collection | Shape | Indexes (`2026_11_18_200001_create_mongodb_comment_indexes.php`, idempotent) |
+|---|---|---|
+| `comments` | `user_id`, `article_id`, `parent_id` (string or null), `body`, `is_hidden` (bool, default false), `hidden_by_sanction_id` (sanction UUID or null), timestamps, `legacy_sql_id` (imported rows only) | `{article_id, created_at:-1}`, `{parent_id}`, `{user_id}`, partial `{hidden_by_sanction_id}` (filter `$gt: ""`: real sanction ids only, used by `{hidden_by_sanction_id: S}`), `{created_at:-1}`, unique partial `{legacy_sql_id}` |
+
+- `is_hidden` / `hidden_by_sanction_id` are not fillable. The moderation module hides with
+  `updateOne({_id, is_hidden ≠ true}, {$set: {is_hidden: true, hidden_by_sanction_id: S}})`
+  (no takeover of a hide owned by another sanction) and unhides with
+  `updateOne({_id, hidden_by_sanction_id: S}, …)`; the 9b protocol is otherwise unchanged.
+- Deleting a comment deletes its replies at any depth (replaces the SQL FK cascade; replies
+  first, so an interrupted delete never orphans a reply). Reports and snapshots are kept.
+- Moderation references are the comment's string id: `reports.comment_id`,
+  `moderation_cases.comment_id` (still unique: the per-comment atomicity point), and
+  `events[].comment_id` in cases and sanctions. Events recorded before the cutover keep the
+  old SQL integer as `legacy_comment_id`. `moderation:import-sql` (9b) still writes legacy
+  integer ids; `comments:import-sql` is the single place that converts integer (or numeric
+  string) refs. If an int-keyed and a numeric-string-keyed case exist for one comment (faulty
+  earlier run), it merges them into one case (events re-keyed, decisions kept as history,
+  pending reports joined) and moves a duplicate report of the same reporter to
+  `reports_duplicates` (evidence is never hard-deleted).
+- **Cassandra:** `moderation_events_by_case.comment_id bigint` cannot change type and stays
+  for history. `moderation:audit schema` adds `comment_ref text` (idempotent
+  `ALTER TABLE … ADD`, which tolerates only "column already exists" and rethrows any other
+  error); new events write `comment_ref`, legacy integer references (and
+  `legacy_comment_id`) write the old `comment_id` value, so a re-emit only adds
+  `comment_ref` to an existing row and never changes history. The timeline shows either.
+- Counts (home ranking, admin dashboard, admin user list) are one Mongo `$group` per page
+  (`App\Support\MongoCounts::group`).
+
+**Cutover order** (maintenance window; legacy data path):
+
+```bash
+php artisan down
+php artisan moderation:audit consume --limit=100   # repeat until 0: drain events that carry legacy integer ids
+php artisan migrate --force                        # comment indexes
+php artisan moderation:import-sql                  # only if 9b's import has not run yet (it must run before the comment import)
+php artisan moderation:repair                      # finish/release any interrupted case claims before remapping (a claimed case is skipped by the merge)
+php artisan comments:import-sql                    # parents first, legacy_sql_id, remap reports/cases/events; prints counts; rerunnable
+php artisan moderation:audit schema                # adds comment_ref
+php artisan moderation:audit reemit                # republish remapped canonical events (idempotent projection)
+php artisan moderation:rebuild-queue
+php artisan up
+```
+
+`comments:import-sql` prints `hidden_unlinked`: comments still hidden by a legacy sanction id
+with no MongoDB copy (also shown as a warning on `/admin/processing`). Rerun
+`comments:import-sql` after any later `moderation:import-sql` (it only rewrites legacy
+references, so a completed run changes nothing). A legacy reference to a comment that was
+already deleted in SQL stays as its numeric id (`refs_unmapped`); the case page shows the
+comment as deleted, as before.
+
+**Dev choice:** fresh — re-seed `DemoEngagementSeeder` (and `ModerationDemoSeeder` for the
+moderation walkthrough) instead of importing; do not mix both paths.
+
+Native inspection:
+
+```javascript
+db.getSiblingDB('vietfeed').comments.find({article_id: '<article-uuid>', parent_id: null}).sort({created_at: -1})
+db.getSiblingDB('vietfeed').comments.find({hidden_by_sanction_id: '<sanction-uuid>'}, {is_hidden: 1})
+```
+
+```sql
+SELECT occurred_at, type, comment_id, comment_ref FROM vietfeed.moderation_events_by_case WHERE case_id = <case-uuid>;
+```
+
+Tests: `CommentsMongoTest` (Mongo `vietfeed_test`, Redis DB15 guard, Cassandra keyspace
+`vietfeed_test`, SQLite `:memory:` for legacy rows only).
