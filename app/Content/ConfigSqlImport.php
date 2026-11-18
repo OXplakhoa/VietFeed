@@ -7,7 +7,6 @@ use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use LogicException;
 
 /** Offline cutover only. Natural keys make interrupted copies/remaps safe to repeat. */
@@ -17,9 +16,6 @@ class ConfigSqlImport
     {
         if (DB::connection()->getDriverName() === 'mongodb') {
             throw new LogicException('The default connection must point to the legacy SQL database.');
-        }
-        if (Schema::getForeignKeys('source_fetch_logs')) {
-            throw new LogicException('Run the source_fetch_logs widening migration before importing.');
         }
         // Validate the entire SQL input before any Mongo/cache/reference mutation.
         $sqlCategories = DB::table('categories')->orderBy('id')->get();
@@ -36,7 +32,7 @@ class ConfigSqlImport
             throw new LogicException(implode('; ', $duplicates));
         }
         $counts = array_fill_keys(['categories_copied', 'categories_matched', 'sources_copied', 'sources_matched',
-            'article_references', 'users_remapped', 'fetch_logs_remapped'], 0);
+            'article_references', 'users_remapped'], 0);
         $categories = [];
         foreach ($sqlCategories as $row) {
             $category = $this->copy(Category::class, ['slug' => $row->slug], (array) $row);
@@ -54,9 +50,6 @@ class ConfigSqlImport
             $source = $this->copy(Source::class, ['feed_url' => $row->feed_url], $data);
             $counts[$source->wasRecentlyCreated ? 'sources_copied' : 'sources_matched']++;
             $counts['article_references'] += $this->remapArticles('source_id', $row->id, $source->id);
-
-            $counts['fetch_logs_remapped'] += DB::table('source_fetch_logs')->where('source_id', (string) $row->id)
-                ->update(['source_id' => $source->id]);
         }
         foreach (User::whereNotNull('favorite_category_ids')->cursor() as $user) {
             $before = $user->favorite_category_ids;

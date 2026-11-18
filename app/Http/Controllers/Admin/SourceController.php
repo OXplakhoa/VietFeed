@@ -9,12 +9,14 @@ use App\Http\Requests\Admin\UpdateSourceRequest;
 use App\Jobs\FetchSourceFeedJob;
 use App\Models\Category;
 use App\Models\Source;
-use App\Models\SourceFetchLog;
 use App\Services\Rss\FeedIngestionService;
+use App\SourceHistory\SourceFetchHistory;
 use App\Support\MongoCounts;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SourceController extends Controller
 {
@@ -54,10 +56,8 @@ class SourceController extends Controller
         return view('admin.sources.index', compact('sources'));
     }
 
-    public function health(Request $request)
+    public function health(Request $request, SourceFetchHistory $history)
     {
-        $hasFetchLogsTable = Schema::hasTable('source_fetch_logs');
-
         $query = Source::with('category');
 
         if ($request->filled('q')) {
@@ -69,15 +69,6 @@ class SourceController extends Controller
         }
 
         $sources = $query->get();
-
-        if ($hasFetchLogsTable) {
-            $ranked = SourceFetchLog::select('source_fetch_logs.*')
-                ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source_id ORDER BY created_at DESC, id DESC) AS recent_rank')
-                ->whereIn('source_id', $sources->modelKeys());
-            $logs = SourceFetchLog::query()->fromSub($ranked, 'recent_logs')
-                ->where('recent_rank', '<=', 5)->get()->groupBy('source_id');
-            $sources->each(fn ($source) => $source->setRelation('fetchLogs', ($logs[$source->id] ?? collect())));
-        }
 
         $articlesBySource = MongoCounts::byField('source_id');
         $sources->each(fn ($source) => $source->articles_count = (int) ($articlesBySource[$source->id] ?? 0));
@@ -110,9 +101,23 @@ class SourceController extends Controller
         $summary = collect(['healthy', 'warning', 'failed', 'stale', 'critical', 'disabled', 'never_fetched'])
             ->mapWithKeys(fn ($status) => [$status => $sources->where('health_status', $status)->count()]);
 
-        $recentLogs = $hasFetchLogsTable
-            ? SourceFetchLog::with('source')->latest()->take(20)->get()
-            : collect();
+        $sourceLabels = Source::all(['_id', 'name'])->keyBy('id');
+        $recentLogs = collect();
+        $historyAvailable = true;
+        try {
+            $recentLogs = $history->global(20, fn ($id) => $sourceLabels->has($id), days: 7);
+            $recentLogs->each(fn ($log) => $log->source = $sourceLabels[$log->source_id]);
+            foreach ($paginated as $source) {
+                $source->setRelation('fetchLogs', $history->forSource($source->id, 5, days: 7));
+            }
+        } catch (Throwable $e) {
+            Log::warning('Source fetch history unavailable', ['exception_type' => $e::class]);
+            $historyAvailable = false;
+            $recentLogs = collect();
+            foreach ($paginated as $source) {
+                $source->setRelation('fetchLogs', collect());
+            }
+        }
         $categories = Category::orderBy('name')->get();
 
         return view('admin.sources.health', [
@@ -120,23 +125,13 @@ class SourceController extends Controller
             'summary' => $summary,
             'recentLogs' => $recentLogs,
             'categories' => $categories,
-            'hasFetchLogsTable' => $hasFetchLogsTable,
+            'historyAvailable' => $historyAvailable,
         ]);
     }
 
     public function test(Source $source, FeedIngestionService $service)
     {
-        if (! Schema::hasTable('source_fetch_logs')) {
-            return back()->with('error', 'Thiếu bảng source_fetch_logs. Hãy chạy php artisan migrate trước.');
-        }
-
-        $log = $source->fetchLogs()->create([
-            'type' => 'rss_test',
-            'status' => 'running',
-            'started_at' => now(),
-        ]);
-
-        $result = $service->testSource($source, $log);
+        $result = $service->testSource($source);
 
         return back()->with('test_result', [
             'source' => $source->name,
@@ -154,18 +149,11 @@ class SourceController extends Controller
         ])->with('success', 'Đã chạy kiểm tra RSS cho nguồn tin.');
     }
 
-    public function retry(Source $source)
+    public function retry(Source $source, SourceFetchHistory $history)
     {
-        if (! Schema::hasTable('source_fetch_logs')) {
-            return back()->with('error', 'Thiếu bảng source_fetch_logs. Hãy chạy php artisan migrate trước.');
-        }
-
-        $log = $source->fetchLogs()->create([
-            'type' => 'manual_retry',
-            'status' => 'queued',
-        ]);
-
-        FetchSourceFeedJob::dispatch($source->id, $log->id);
+        $job = new FetchSourceFeedJob($source->id);
+        Bus::dispatch($job);
+        $history->publish($job->attempt, 0, ['status' => 'queued']);
 
         return back()->with('success', 'Đã đưa yêu cầu retry vào hàng đợi.');
     }
@@ -192,7 +180,7 @@ class SourceController extends Controller
             ->with('success', 'Đã thêm nguồn tin mới.');
     }
 
-    public function show(Source $source)
+    public function show(Source $source, SourceFetchHistory $history)
     {
         $source->load('category');
         $articles = $source->articles()
@@ -200,12 +188,16 @@ class SourceController extends Controller
             ->paginate(15);
         ArticleCounts::attach($articles->getCollection());
 
-        $hasFetchLogsTable = Schema::hasTable('source_fetch_logs');
-        $recentLogs = $hasFetchLogsTable
-            ? $source->fetchLogs()->latest()->take(15)->get()
-            : collect();
+        $historyAvailable = true;
+        try {
+            $recentLogs = $history->forSource($source->id, 15);
+        } catch (Throwable $e) {
+            Log::warning('Source fetch history unavailable', ['exception_type' => $e::class]);
+            $historyAvailable = false;
+            $recentLogs = collect();
+        }
 
-        return view('admin.sources.show', compact('source', 'articles', 'recentLogs', 'hasFetchLogsTable'));
+        return view('admin.sources.show', compact('source', 'articles', 'recentLogs', 'historyAvailable'));
     }
 
     public function edit(Source $source)

@@ -63,9 +63,9 @@
             </div>
         @endif
 
-        @unless($hasFetchLogsTable)
+        @unless($historyAvailable)
             <div class="alert alert-warning mb-4" style="border-radius:12px">
-                Thiếu bảng <code>source_fetch_logs</code>. Chạy <code>php artisan migrate</code> để bật log, test RSS và retry fetch.
+                Lịch sử lấy tin tạm thời không khả dụng.
             </div>
         @endunless
 
@@ -187,6 +187,7 @@
 
         <div class="p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
             <div class="sidebar-title mb-3">Recent fetch logs</div>
+            @if($historyAvailable)
             <div class="table-responsive">
                 <table class="table table-sm mb-0" style="color:var(--text)">
                     <thead>
@@ -211,6 +212,7 @@
                     </tbody>
                 </table>
             </div>
+            @endif
         </div>
     </div>
 </x-app-layout>

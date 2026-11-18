@@ -3,9 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\Source;
-use App\Models\SourceFetchLog;
 use App\Services\Rss\Exceptions\FeedFetchException;
 use App\Services\Rss\FeedIngestionService;
+use App\SourceHistory\SourceFetchAttempt;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -18,10 +18,12 @@ class FetchSourceFeedJob implements ShouldQueue
 
     public int $tries = 5;
 
-    public function __construct(
-        public string $sourceId,
-        public int $logId,
-    ) {}
+    public SourceFetchAttempt $attempt;
+
+    public function __construct(public string $sourceId)
+    {
+        $this->attempt = SourceFetchAttempt::begin($sourceId, 'manual_retry', now());
+    }
 
     public function backoff(): array
     {
@@ -31,15 +33,9 @@ class FetchSourceFeedJob implements ShouldQueue
     public function handle(FeedIngestionService $service): void
     {
         $source = Source::findOrFail($this->sourceId);
-        $log = SourceFetchLog::findOrFail($this->logId);
-
-        $log->forceFill([
-            'status' => 'running',
-            'started_at' => $log->started_at ?? now(),
-        ])->save();
 
         try {
-            $service->fetchSource($source, 'manual_retry', $log);
+            $service->fetchSource($source, 'manual_retry', $this->attempt, $this->attempts());
         } catch (FeedFetchException $e) {
             if ($e->retryable) {
                 throw $e;

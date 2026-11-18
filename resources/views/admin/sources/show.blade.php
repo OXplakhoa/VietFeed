@@ -88,11 +88,11 @@
 
         <div class="p-3 mb-4" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
             <div class="sidebar-title mb-3">Recent fetch logs</div>
-            @unless($hasFetchLogsTable)
+            @unless($historyAvailable)
                 <div class="alert alert-warning mb-3" style="border-radius:10px">
-                    Thiếu bảng <code>source_fetch_logs</code>. Chạy <code>php artisan migrate</code> để bật log, test RSS và retry fetch.
+                    Lịch sử lấy tin tạm thời không khả dụng.
                 </div>
-            @endunless
+            @else
             <div class="table-responsive">
                 <table class="table table-sm mb-0" style="color:var(--text)">
                     <thead><tr><th>Loại</th><th>Trạng thái</th><th>HTTP</th><th>Items</th><th>Created</th><th>Updated</th><th>Started</th><th>Error</th></tr></thead>
@@ -115,6 +115,7 @@
                     </tbody>
                 </table>
             </div>
+            @endunless
         </div>
 
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">

@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Redis;
 use Mockery;
 use PHPUnit\Framework\AssertionFailedError;
 use Tests\Concerns\GuardsRedisTestDatabase;
+use Tests\Concerns\SourceHistoryFixtures;
 use Tests\TestCase;
 
 // Gate 5.2 spike (GitHub #14): cache + queue on live Redis (CACHE_STORE=redis,
@@ -31,6 +32,7 @@ class RedisQueueTest extends TestCase
 {
     use GuardsRedisTestDatabase;
     use RefreshDatabase;
+    use SourceHistoryFixtures;
 
     private const FEED_XML = '<?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0"><channel><title>Feed</title>
@@ -56,6 +58,7 @@ class RedisQueueTest extends TestCase
             $this->assertSame(15, Redis::connection($name)->client()->getDbNum());
         }
 
+        Http::preventStrayRequests();
         Http::fake([
             'https://example.com/feed.xml' => Http::response(self::FEED_XML, 200),
             'https://v6.exchangerate-api.com/*' => Http::response(['conversion_rates' => ['VND' => 25000]], 200),
@@ -114,9 +117,9 @@ class RedisQueueTest extends TestCase
     public function test_fetch_job_dispatches_for_real_and_runs_on_redis_worker(): void
     {
         $source = $this->makeSource();
-        $log = $source->fetchLogs()->create(['type' => 'manual_retry', 'status' => 'queued']);
-
-        FetchSourceFeedJob::dispatch($source->id, $log->id);
+        $history = $this->bootSourceHistory();
+        $job = new FetchSourceFeedJob($source->id);
+        dispatch($job);
 
         $this->assertSame(1, Queue::size());
 
@@ -126,7 +129,9 @@ class RedisQueueTest extends TestCase
             '--once' => true,
         ]);
 
-        $log->refresh();
+        $history->consume('test', 10);
+        $log = $history->forSource($source->id, 1)->sole();
+        $this->assertSame($job->attempt->id, $log->attempt_id);
         $this->assertSame('success', $log->status);
         $this->assertSame(2, (int) $log->items_found);
         $this->assertSame(0, Queue::size());

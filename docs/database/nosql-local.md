@@ -894,9 +894,8 @@ read/write MongoDB. Fresh setups use `CategorySeeder` then `SourceSeeder`.
 
 Migrations: `2026_11_18_100001_create_mongodb_config_indexes.php` (idempotent indexes)
 and `2026_11_18_100002_widen_source_fetch_logs_source_id.php` (remove SQL FK, widen
-to varchar(36), forward-only). `source_fetch_logs` remains SQL in this slice and
-resolves Mongo Sources by explicit string key. Source deletion still deletes its
-SQL fetch logs. Article/Source/Category lists batch reads/counts within each store.
+to varchar(36), forward-only). Slice 4 moved runtime fetch history to Cassandra.
+Article/Source/Category lists batch reads and counts within each store.
 
 The layout composer obtains active navigation categories through `CategoryList`.
 The existing default cache store (Redis in the local runtime) holds plain arrays,
@@ -910,8 +909,9 @@ Optional legacy-data cutover, in maintenance mode with writers/queue workers
 quiesced: back up SQL, apply both migrations, run `php artisan config:import-sql`,
 verify its counts, then resume workers and HTTP. The command matches slug/feed_url,
 inserts UUIDv7 documents once, preserves existing Mongo configuration on rerun,
-remaps both numeric/string legacy article references, embedded favorites, SQL
-fetch-log references; snapshots keep their deterministic UUIDv5s. It leaves SQL rows intact.
+remaps both numeric/string legacy article references and embedded favorites, and
+leaves SQL rows and deterministic UUIDv5 snapshots intact. Slice 4 resolves SQL
+fetch-log references during its separate history import.
 Snapshot-only Story replay articles retain their existing public eligibility;
 replay does not create configuration or automatically publish them.
 
@@ -924,8 +924,8 @@ those SQL duplicates before retrying. The seeder remains unchanged.
 
 Model assignment normalizes Category/Source active flags to BSON booleans and
 Source prestige/failure/metric fields to integers or null, including SQL-import
-values. Source Health computes its five recent logs per source in SQL using
-ROW_NUMBER, before hydrating them; it does not load complete source histories.
+values. The Source Health page reads its recent logs from Cassandra as described
+in slice 4 below.
 
 This is an offline, rerunnable workflow, not a distributed transaction. Keep
 natural keys fixed until import completes and drain legacy integer-ID RSS jobs
@@ -1299,3 +1299,87 @@ Known limitations:
   subject (legacy behaviour); the session id is regenerated at login.
 - The admin user list makes one quota read per listed user (legacy: one SQL
   count per user).
+
+## Gate 9.5 slice 4 — Source fetch history on Cassandra
+
+MongoDB still holds the Source configuration and current health summary. Cassandra
+holds fetch history in two tables with UTC `YYYY-MM-DD` buckets.
+
+| Table | Partition key | Clustering order | Query |
+|---|---|---|---|
+| `source_fetches_by_source_day` | `(source_id, day)` | `started_at DESC, attempt_id DESC` | One source over a day/week, last 5 on Source Health, last 15 on Source Show |
+| `source_fetches_by_day` | `day` | `started_at DESC, attempt_id DESC` | Global recent 20 on Source Health |
+
+Both tables retain attempts for **30 days from the attempt key timestamp**.
+Replays and SQL backfill apply only the remaining TTL. Both tables keep
+Cassandra deletion markers for 30 days so old snapshots cannot restore cleared
+fields during retention. The `attempt_id` is UUIDv7.
+A manual retry request keeps one key across queue executions, anchored to the
+enqueue time. `fetch_started_at` holds the first execution start and is empty
+while queued. The global table keeps one day of traffic per partition, including
+diagnostics and retries. Deleted Sources disappear from global results while
+their stored rows expire normally. Source Health looks back seven UTC calendar
+days, including today, for both its global and per-source history.
+
+RSS writers publish queued, running and outcome snapshots to Redis
+`sources:history:events:v1`. Cassandra stays outside the fetch path. The shared
+consumer writes both tables and acknowledges delivery after both writes succeed.
+Replays reuse the same keys and lifecycle version. The scheduler consumes up to
+100 deliveries every five seconds. Each run checks a 35-second budget before
+taking another delivery.
+With PCNTL, a 45-second alarm terminates stuck socket calls before the one-minute
+scheduler mutex expires. Application warnings and retry metadata omit event payloads. The Source admin pages show an unavailable state after a Cassandra
+read failure and retain Mongo health and RSS actions.
+
+```bash
+php artisan sources:history-manage bootstrap
+php artisan sources:history-manage consume --consumer=local --limit=100
+php artisan sources:history-manage inspect
+php artisan sources:history-manage replay --id=<dead-letter-stream-id>
+php artisan sources:history --source=<mongo-source-id> --days=1
+php artisan sources:history --source=<mongo-source-id> --days=7
+```
+
+The demo command includes today in the UTC calendar-day window. For the same
+query in `cqlsh`, substitute a real Mongo Source ID and the required UTC date.
+Run the source query per day for a week and read the buckets newest first.
+
+```sql
+SELECT started_at, fetch_started_at, attempt_id, status, http_status, duration_ms, error_type
+FROM vietfeed.source_fetches_by_source_day
+WHERE source_id = '<mongo-source-id>' AND day = '2026-11-18';
+
+SELECT started_at, attempt_id, source_id, status, http_status
+FROM vietfeed.source_fetches_by_day
+WHERE day = '2026-11-18'
+LIMIT 20;
+```
+
+### Source history cutover
+
+1. Pause RSS scheduling and manual retry submissions, then drain existing
+   `FetchSourceFeedJob` jobs on the old release. They carry SQL log IDs. Take
+   a read-only legacy SQL backup if retaining old history.
+2. Deploy and run `php artisan sources:history-manage bootstrap` before enabling
+   the consumer. Fresh development setups seed Mongo configuration and collect
+   new history from subsequent fetches.
+3. For legacy data, make Mongo configuration available first using the slice 1
+   import if needed. Point the default SQL connection at the legacy database and
+   run `php artisan sources:import-history-sql`. The importer accepts already
+   remapped Source IDs and resolves numeric IDs through the legacy feed URL.
+   Review scanned, written, expired, unresolved-source and missing-timestamp
+   totals. The command records the start of the import in Cassandra and requires
+   `--force` for an intentional repeat or resume. Source IDs and the legacy input
+   must stay stable during the cutover. SQL rows remain untouched.
+4. Resume traffic, queue workers and scheduling. Use `inspect` to check pending
+   and dead-letter counts, replay if needed, and verify a Source with the demo query.
+
+History can lag behind the Mongo summary while the consumer catches up.
+Eviction of the stream or dead-letter queue loses any unconsumed history it
+holds. A failed Redis publish also leaves a history gap. An outage that outlasts
+the retry budget sends affected deliveries to `sources:history:dead:v1` after
+five failed attempts. Once Cassandra recovers, use `inspect` to find dead-letter
+IDs and `replay --id=<dead-letter-stream-id>` to requeue them. MongoDB still has
+the current health summary. On page requests, the shared CQL driver may wait
+for a peer that accepts a connection and never responds. Ordinary connection
+failures and CQL errors surface as unavailable on the admin pages.
