@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\ApiTokens\ApiTokenService;
 use App\ApiTokens\TokenException;
 use App\Http\Middleware\ApiBearer;
+use App\Interaction\InteractionStream;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Comment;
@@ -348,6 +349,18 @@ class ApiTokensTest extends TestCase
         $user->update(['email_verified_at' => now()]);
         Sanction::create(['user_id' => $user->id, 'admin_id' => $user->id, 'type' => 'temporary_ban', 'reason' => 'Fixture', 'is_active' => true]);
         $this->postJson('/api/v1/boosts/toggle', ['article_id' => $article->id])->assertUnauthorized()->assertJsonPath('error.code', 'token_family_revoked');
+        // The bearer layer normally rejects the revoked family first. Simulate a ban
+        // visible only at action time to exercise the endpoint's own 403 guard.
+        $this->mock(ApiTokenService::class, fn ($mock) => $mock->shouldReceive('authenticate')
+            ->once()->andReturn(['user' => $user->fresh(), 'family' => 'fixture']));
+        $this->postJson('/api/v1/boosts/toggle', ['article_id' => $article->id])->assertForbidden()
+            ->assertJsonPath('error.code', 'interaction_forbidden');
+
+        $stream = Redis::connection('nosql')->client()->xRange(InteractionStream::STREAM, '-', '+');
+        $events = array_map(fn ($entry) => json_decode($entry['event'], true, flags: JSON_THROW_ON_ERROR), array_values($stream));
+        $this->assertSame(['BOOSTED', 'UNBOOSTED'], array_column($events, 'type'));
+        $this->assertSame([$user->id, $user->id], array_column($events, 'user_id'));
+        $this->assertSame([$article->id, $article->id], array_column($events, 'article_id'));
         $this->assertFalse(app('session')->driver()->isStarted());
     }
 

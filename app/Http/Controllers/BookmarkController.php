@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Content\ArticleCounts;
+use App\Interaction\InteractionToggle;
 use App\Models\Bookmark;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -21,11 +23,12 @@ class BookmarkController extends Controller
             ->get();
 
         $articles = $bookmarks->pluck('article')->filter();
+        ArticleCounts::attach($articles);
 
         return view('bookmarks.index', compact('articles'));
     }
 
-    public function toggle(Request $request)
+    public function toggle(Request $request, InteractionToggle $toggle)
     {
         /** @var User $user */
         $user = Auth::user();
@@ -46,21 +49,6 @@ class BookmarkController extends Controller
 
         $request->validate(['article_id' => 'required|string|exists:mongodb.articles,_id']);
 
-        $existing = $user
-            ->bookmarks()
-            ->where('article_id', $request->article_id)
-            ->first();
-
-        if ($existing) {
-            $existing->delete();
-            $action = 'removed';
-        } else {
-            $user->bookmarks()->create(['article_id' => $request->article_id]);
-            $action = 'added';
-        }
-
-        $count = Bookmark::where('article_id', $request->article_id)->count();
-
-        return response()->json(['action' => $action, 'count' => $count]);
+        return response()->json($toggle->run(Bookmark::class, (string) $user->getKey(), $request->string('article_id')->toString()));
     }
 }

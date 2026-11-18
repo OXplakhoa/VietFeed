@@ -26,7 +26,7 @@ class BoostTest extends TestCase
             ->assertOk()
             ->assertJson(['action' => 'added', 'count' => 1]);
 
-        $this->assertDatabaseHas('boosts', [
+        $this->assertDatabaseHas(Boost::class, [
             'user_id' => $user->id,
             'article_id' => $article->id,
         ]);
@@ -36,7 +36,7 @@ class BoostTest extends TestCase
             ->assertOk()
             ->assertJson(['action' => 'removed', 'count' => 0]);
 
-        $this->assertDatabaseMissing('boosts', [
+        $this->assertDatabaseMissing(Boost::class, [
             'user_id' => $user->id,
             'article_id' => $article->id,
         ]);

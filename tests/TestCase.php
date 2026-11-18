@@ -22,6 +22,8 @@ abstract class TestCase extends BaseTestCase
             $app['config']->set("database.redis.$name.database", 15);
         }
 
+        $this->assertSame(15, $app['redis']->connection('nosql')->client()->getDbNum());
+
         return $app;
     }
 
@@ -31,8 +33,8 @@ abstract class TestCase extends BaseTestCase
     protected function tearDown(): void
     {
         $this->assertSame('vietfeed_test', DB::connection('mongodb')->getDatabaseName());
-        // Gate 9b: moderation documents (reports, sanctions, cases) also live on Mongo; Gate 9.5: comments too.
-        foreach (['categories', 'sources', 'users', 'articles', 'stories', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases', 'comments', 'reports_duplicates'] as $collection) {
+        // Gate 9b and 9.5: moderation documents, comments, bookmarks and boosts also live on MongoDB.
+        foreach (['categories', 'sources', 'users', 'articles', 'stories', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases', 'comments', 'reports_duplicates', 'bookmarks', 'boosts'] as $collection) {
             DB::connection('mongodb')->table($collection)->delete();
         }
 

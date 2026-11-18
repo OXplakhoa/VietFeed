@@ -106,7 +106,7 @@ Set each password from your shell env / `.env`, never commit real values.
 
 ## Gate 5 / #15 — interaction Streams, synthetic trending, recovery
 
-This is a thin infrastructure proof, not the StoryLens product pipeline. The
+This section describes the original synthetic infrastructure proof. Slice 3a below covers the live producer and activity projection. The
 `nosql` Laravel Redis connection uses `REDIS_NOSQL_DB` (default **2**) independently
 of `REDIS_URL` (a URL `/db` can override a configured database). Sessions/default
 remain DB0, cache DB1. Tests pin all three connections to DB15 and clear their URL;
@@ -122,8 +122,8 @@ Logical keys (the configured `database.redis.options.prefix` is added by phpredi
 | `trending-v1` | Consumer group, created at `0` with MKSTREAM |
 | `interactions:dead:v1` | DLQ Stream: original stream ID, raw event JSON, attempts, last error |
 | `interactions:errors:v1` | Last failure message by input ID while pending; removed at ACK/DLQ |
-| `interactions:trending:v1` | Sorted Set containing scores and idempotency/version markers |
-| `interactions:trending:v1:rebuild:<random>` | Temporary rebuild projection, renamed on success |
+| `interactions:trending:demo:v1` | Synthetic Sorted Set containing scores and idempotency/version markers |
+| `interactions:trending:demo:v1:rebuild:<random>` | Temporary demo projection, renamed on success |
 
 `App\Interaction\InteractionStream` is the processing seam; `Trending` is the
 projection seam. Producers supply immutable envelopes with UUIDv7 `event_id`,
@@ -132,8 +132,7 @@ projection seam. Producers supply immutable envelopes with UUIDv7 `event_id`,
 aggregate is an independent interaction, not an Article-wide sequence. Duplicate
 event IDs and versions less than or equal to the latest interaction version are ignored.
 Both UUID fields are canonicalized to lowercase before dedupe/version comparisons.
-A view adds **1**, a boost adds **5**. Unboost, decay, windows and live product
-producers are later work. Ties use Redis reverse lexicographic member ordering.
+In the synthetic fixture, a view adds **1** and a boost adds **5**. Ties use Redis reverse lexicographic member ordering.
 
 A single Lua operation updates score, event marker and aggregate version. They
 share one Sorted Set eviction unit: `article:<id>` has a positive score,
@@ -155,9 +154,7 @@ XREADGROUP, retry-error HSET, apply, ACK, DLQ, replay and rebuild operations;
 detected errors (including phpredis false replies with native error state) raise
 contextual failures. Apply failures enter the bounded retry/DLQ path and can
 return a successful consume exit when that failure is handled. Read, retry-error
-recording, ACK/move and rebuild failures propagate to a non-zero CLI exit. This
-is not a guarantee for every Redis call: group creation, publish, terminal-error HGET, inspection and
-top reads are not all wrapped with command-specific result validation.
+recording, ACK/move and rebuild failures propagate to a non-zero CLI exit. Group creation, publication, terminal-error HGET, inspection and top reads also validate their Redis replies.
 An empty XREADGROUP is legitimate; a false reply with native error state is not.
 Retry-error HSET accepts integer 0 (updated field) or 1 (new field). If it fails,
 the command stops without ACK or deletion; the delivery stays pending with its
@@ -188,8 +185,8 @@ not sleep while waiting for retry eligibility.
 php artisan interactions consume --consumer=demo-1 --limit=10
 php artisan interactions inspect
 php artisan interactions replay --id=<dead-letter-stream-id>
-php artisan interactions top --limit=10
-# Pause all interaction consumers/producers before replacing the projection:
+php artisan interactions top --synthetic --limit=10
+# Pause synthetic stream writers while replacing the demo projection:
 php artisan interactions rebuild --synthetic
 ```
 
@@ -213,9 +210,7 @@ the old ranking survived. Failed staging cleanup is checked as well;
 successful RENAME consumes staging without a redundant DEL. An
 empty source replaces it with an empty ranking. Rebuild requires paused writers;
 it does not coordinate concurrent live ingestion. A killed rebuild can leave a
-temporary key to inspect/delete individually. There is no fixture-to-product
-producer connection. The Cassandra activity-by-article/day replay adapter is
-explicitly deferred to Gate 6; its library remains require-dev.
+temporary key to inspect/delete individually. The demo fixture uses synthetic article IDs and a separate sorted set. Slice 3a uses MongoDB current state for the default live rebuild.
 
 ### Eviction, flush and durability boundary
 
@@ -1012,3 +1007,127 @@ SELECT occurred_at, type, comment_id, comment_ref FROM vietfeed.moderation_event
 
 Tests: `CommentsMongoTest` (Mongo `vietfeed_test`, Redis DB15 guard, Cassandra keyspace
 `vietfeed_test`, SQLite `:memory:` for legacy rows only).
+
+## Gate 9.5 slice 3a — bookmarks, boosts, and activity
+
+MongoDB collections `bookmarks` and `boosts` hold active memberships. Each
+document has a UUIDv7 string `_id`, string `user_id` and `article_id`, BSON
+`created_at` and `updated_at`, and an integer `legacy_sql_id` on imported rows.
+Each collection has a unique `{user_id: 1, article_id: 1}` index, a recent-user
+list index `{user_id: 1, created_at: -1}`, and an `{article_id: 1}` count
+index. Toggles insert a new membership or delete one by its exact ID.
+A conflict retries from current state, so concurrent successful toggles
+each perform one change. The response count reads MongoDB.
+
+After the write, the producer sends `BOOKMARKED`, `UNBOOKMARKED`, `BOOSTED` or
+`UNBOOSTED` to `interactions:events:v1`. The membership ID is the aggregate
+ID and the add event ID. Each removal has its own UUIDv7 event ID. An add
+has version 1, a removal has version 2, and the event includes both entity
+IDs and an RFC3339 UTC occurrence time. Imported adds carry `backfill: true`.
+If Redis rejects the publish, the action still succeeds and the warning
+records the exception type.
+
+The existing `trending-v1` consumer group writes two Cassandra projections
+before acknowledging a real event. Clustering in both tables is
+`occurred_at DESC, event_id ASC`. A retry writes the same primary keys in
+both tables, including if the first insert succeeded before an interruption.
+
+| Table | Partition key | Query |
+|---|---|---|
+| `activity_by_user_month` | `(user_id, year_month)` | Recent activity for one user, reading UTC months newest first |
+| `activity_by_article_day` | `(article_id, activity_day)` | Activity for one article in one UTC day, optionally bounded by occurrence time |
+
+Real boosts contribute five Redis ranking points per active membership.
+The version marker, scores, and `meta:ready` sentinel share one sorted set,
+`interactions:trending:v1`. An unboost removes its membership's contribution
+and version marker. A late add checks the exact MongoDB membership before it
+can score. A short Redis lock serializes this check and write with other live
+projection changes, including rebuild promotion.
+
+Home uses MongoDB counts for the current ranking when the sentinel is absent,
+even if new events have recreated a partial sorted set. That request triggers
+a best-effort rebuild for following requests. With a ready projection, the
+sidebar reads up to 100 positive Redis scores, considers eligible articles
+published within 72 hours, and uses MongoDB counts for missing scores. It
+also falls back to MongoDB when Redis is unavailable. Card and page counts
+always read MongoDB. Web bookmark and boost toggles share a 30-request-per-minute
+budget per authenticated user. A limited request gets a JSON 429 and a retry
+interval.
+
+### Operation and recovery
+
+Create the Cassandra tables before enabling the scheduled consumer. In a
+running Laravel scheduler, it processes batches of up to 100 every five
+seconds.
+
+```bash
+php artisan interactions schema
+php artisan interactions consume --consumer=local-activity --limit=100
+php artisan interactions inspect
+php artisan interactions replay --id=<dead-letter-stream-id>
+php artisan interactions top --limit=10
+php artisan interactions reemit
+# Pause interaction writes and consumers while replacing the ranking:
+php artisan interactions rebuild
+# Synthetic Gate 5 demo uses its own key:
+php artisan interactions rebuild --synthetic
+php artisan interactions top --synthetic
+```
+
+`reemit` republishes current adds using the original IDs and timestamps,
+so a previously delivered add remains one Cassandra row in each table.
+Removed memberships cannot be reemitted from current state. Replay the DLQ
+when it still holds the original event. The default rebuild recreates the
+ranking from active MongoDB boosts, including boosts that were never
+published and excluding memberships whose remove event was lost. Resume
+consumers after the rebuild. Use `interactions rebuild` to repair the ranking
+after a lost removal. `DemoEngagementSeeder` writes memberships without events,
+so run `interactions rebuild` after seeding. Queued adds for previously removed membership
+IDs are checked against MongoDB and cannot restore the old score.
+
+For local development, use the fresh seed and re-ingestion path. To retain
+legacy SQL interactions in a migration window, back up SQL, pause writes and
+consumers, run the MongoDB index migration and `interactions schema`, then
+run `php artisan interactions:import-sql` once, in the cutover window
+(optionally add `--emit`). The command refuses a repeat if either collection
+has a document carrying `legacy_sql_id`. Use `--force` only to resume an
+intentional cutover import. A forced rerun can recreate a membership removed
+after the initial copy. The import copies by natural key, preserves existing MongoDB documents, and prints
+inserted, existing, published and failed counts for each table. If both legacy
+timestamps are NULL, the imported document uses its import time. Run the default
+rebuild before resuming. Use `interactions reemit` after a backfill
+publish failure to recover current additions. Keep the legacy tables
+available through the cutover window.
+
+### Native inspection
+
+Use the configured Redis prefix and database for the Redis queries.
+
+```javascript
+db.bookmarks.getIndexes()
+db.boosts.find({user_id: "<user-id>"}).sort({created_at: -1}).limit(10)
+db.boosts.aggregate([{$match: {article_id: "<article-id>"}}, {$count: "active"}])
+```
+
+```text
+XRANGE <prefix>interactions:events:v1 - + COUNT 5
+XPENDING <prefix>interactions:events:v1 trending-v1
+ZRANGE <prefix>interactions:trending:v1 +inf (0 BYSCORE REV LIMIT 0 10 WITHSCORES
+```
+
+```sql
+SELECT occurred_at, event_id, type, article_id, backfill
+FROM vietfeed.activity_by_user_month
+WHERE user_id = '<user-id>' AND year_month = '2026-11' LIMIT 10;
+
+SELECT occurred_at, event_id, type, user_id, backfill
+FROM vietfeed.activity_by_article_day
+WHERE article_id = '<article-id>' AND activity_day = '2026-11-18'
+  AND occurred_at >= '2026-11-18T12:00:00Z' LIMIT 20;
+```
+
+Count-sorted admin lists and the dashboard use whole-collection MongoDB
+aggregations with O(collection) work.
+
+The automated checks use MongoDB `vietfeed_test`, Redis DB15 with a live
+`getDbNum()` check, Cassandra `vietfeed_test`, and SQLite `:memory:`.

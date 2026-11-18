@@ -4,8 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Content\ArticleCounts;
 use App\Models\Article;
-use App\Models\Bookmark;
-use App\Models\Boost;
 use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
@@ -66,8 +64,6 @@ class ArticleController extends Controller
             ->whereIn('category_id', Category::active()->pluck('id'))
             ->whereIn('source_id', Source::active()->pluck('id'))
             ->firstOrFail();
-        $article->bookmarks_count = Bookmark::where('article_id', $article->getKey())->count();
-        $article->boosts_count = Boost::where('article_id', $article->getKey())->count();
 
         /** @var User|null $user */
         $user = Auth::user();
@@ -117,7 +113,7 @@ class ArticleController extends Controller
             );
         }
 
-        ArticleCounts::attach($related);
+        ArticleCounts::attach(collect([$article])->concat($related));
 
         // Per-viewer sanction checks run once per request, never per rendered comment.
         $blockingSanction = $user?->blockingCommentSanction();

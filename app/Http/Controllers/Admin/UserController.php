@@ -33,13 +33,13 @@ class UserController extends Controller
 
         $users = $query->paginate(20)->withQueryString();
         $billing->primeEntitlements($users->getCollection());
-        // User lives on Mongo; bookmarks/unlocks still belong to SQL, comments to Mongo (Gate 9.5):
-        // one grouped count per store for the page ids.
         $pageIds = array_map('strval', $users->getCollection()->modelKeys());
-        $counts = ['comments' => MongoCounts::group(Comment::class, 'user_id', $pageIds)];
-        foreach (['bookmarks' => Bookmark::class, 'article_unlocks' => ArticleUnlock::class] as $name => $model) {
-            $counts[$name] = $model::whereIn('user_id', $pageIds)->select('user_id')->selectRaw('COUNT(*) as n')->groupBy('user_id')->pluck('n', 'user_id');
-        }
+        $counts = [
+            'comments' => MongoCounts::group(Comment::class, 'user_id', $pageIds),
+            'bookmarks' => MongoCounts::group(Bookmark::class, 'user_id', $pageIds),
+            'article_unlocks' => ArticleUnlock::whereIn('user_id', $pageIds)->select('user_id')
+                ->selectRaw('COUNT(*) as n')->groupBy('user_id')->pluck('n', 'user_id'),
+        ];
         foreach ($counts as $name => $byUser) {
             foreach ($users as $user) {
                 $user->{$name.'_count'} = (int) ($byUser[$user->id] ?? 0);

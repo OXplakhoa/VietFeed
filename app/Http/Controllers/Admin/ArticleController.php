@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Content\ArticleCounts;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\ArticleUnlock;
@@ -9,18 +10,14 @@ use App\Models\Bookmark;
 use App\Models\Boost;
 use App\Models\Category;
 use App\Models\Source;
+use App\Support\MongoCounts;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class ArticleController extends Controller
 {
-    private const COUNT_CHUNK_SIZE = 500;
-
-    protected int $countChunkSize = self::COUNT_CHUNK_SIZE;
-
     public function index(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -60,17 +57,13 @@ class ArticleController extends Controller
         }
 
         $query->latest('published_at')->orderBy('_id');
-        if (in_array($request->get('sort'), ['boosts', 'bookmarks'], true)) {
+        $sort = $request->get('sort');
+        $groupedCounts = [];
+        if (in_array($sort, ['boosts', 'bookmarks'], true)) {
             // Project ids only in published order; never hydrate the candidate set.
             $ids = $query->toBase()->pluck('id')->all();
-            $model = $request->get('sort') === 'boosts' ? Boost::class : Bookmark::class;
-            $counts = [];
-            // Bound SQL parameters (including SQLite's conservative 999 limit).
-            foreach (array_chunk($ids, $this->countChunkSize) as $chunk) {
-                $counts += $model::select('article_id')->selectRaw('COUNT(*) as n')
-                    ->whereIn('article_id', $chunk)->groupBy('article_id')
-                    ->orderByDesc('n')->pluck('n', 'article_id')->all();
-            }
+            $model = $sort === 'boosts' ? Boost::class : Bookmark::class;
+            $counts = $groupedCounts[$sort] = MongoCounts::group($model, 'article_id');
             $publishedOrder = array_flip($ids);
             usort($ids, fn ($a, $b) => (($counts[$b] ?? 0) <=> ($counts[$a] ?? 0))
                 ?: ($publishedOrder[$a] <=> $publishedOrder[$b]));
@@ -86,9 +79,7 @@ class ArticleController extends Controller
         } else {
             $articles = $query->paginate(20)->withQueryString();
         }
-        $this->attachCounts($articles->getCollection(), [
-            'bookmarks' => Bookmark::class, 'boosts' => Boost::class,
-        ]);
+        ArticleCounts::attach($articles->getCollection(), $groupedCounts);
         $categories = Category::orderBy('name')->get();
         $sources = Source::orderBy('name')->get();
 
@@ -99,27 +90,10 @@ class ArticleController extends Controller
     {
         $article->load(['source', 'category', 'comments' => fn ($q) => $q->with('user')->latest()]);
 
-        $this->attachCounts(collect([$article]), [
-            'bookmarks' => Bookmark::class, 'boosts' => Boost::class, 'unlocks' => ArticleUnlock::class,
-        ]);
+        ArticleCounts::attach(collect([$article]));
+        $article->unlocks_count = ArticleUnlock::where('article_id', $article->getKey())->count();
 
         return view('admin.articles.show', compact('article'));
-    }
-
-    private function attachCounts(Collection $articles, array $types): void
-    {
-        if ($articles->isEmpty()) {
-            return;
-        }
-
-        $ids = $articles->map->getKey()->all();
-        foreach ($types as $name => $model) {
-            $counts = $model::select('article_id')->selectRaw('COUNT(*) as n')
-                ->whereIn('article_id', $ids)->groupBy('article_id')->pluck('n', 'article_id');
-            foreach ($articles as $article) {
-                $article->setAttribute($name.'_count', (int) ($counts[$article->getKey()] ?? 0));
-            }
-        }
     }
 
     public function edit(Article $article)
