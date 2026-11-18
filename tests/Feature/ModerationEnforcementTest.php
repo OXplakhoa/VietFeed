@@ -8,16 +8,14 @@ use App\Models\Comment;
 use App\Models\Report;
 use App\Models\User;
 use Database\Seeders\ModerationDemoSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\ModerationFixtures;
 use Tests\TestCase;
 
 /** Gate 9a: rules 13-14 plus hidden-comment visibility (owner decision 1). */
 class ModerationEnforcementTest extends TestCase
 {
-    use ModerationFixtures, RefreshDatabase;
+    use ModerationFixtures;
 
     // Rule 13 (D5)
     public function test_deleting_a_comment_by_author_or_admin_keeps_reports_and_snapshots(): void
@@ -167,65 +165,6 @@ class ModerationEnforcementTest extends TestCase
         $this->assertSame(1, Comment::count());
         $this->actingAs($admin)->get(route('admin.reports.index'))->assertOk()->assertSee('thuốc giảm cân');
         $this->get('/articles/'.ModerationDemoSeeder::ARTICLE_SLUG)->assertOk()->assertSee('Người bình luận demo');
-    }
-
-    public function test_repair_migration_is_rerunnable_and_cleans_legacy_reviewed_rows(): void
-    {
-        $migration = require base_path('database/migrations/2026_11_17_100001_moderation_report_repair.php');
-        // Gate 9.5: this migration backfills from the legacy SQL comments table (Comment is on MongoDB now).
-        $author = $this->user();
-        $comment = (object) ['id' => DB::table('comments')->insertGetId(['user_id' => (string) $author->id, 'article_id' => (string) $this->article()->id,
-            'body' => 'Nội dung cũ trước khi có ảnh chụp', 'created_at' => now(), 'updated_at' => now()])];
-
-        $migration->down();
-        $this->assertTrue(Schema::hasColumn('reports', 'reviewed_at'));
-        $this->assertFalse(Schema::hasColumn('reports', 'comment_body'));
-        DB::table('reports')->insert([
-            ['reporter_id' => 'r1', 'comment_id' => $comment->id, 'reason' => 'spam', 'status' => 'reviewed', 'admin_id' => 'a1', 'reviewed_at' => now(), 'created_at' => now(), 'updated_at' => now()],
-            ['reporter_id' => 'r2', 'comment_id' => $comment->id, 'reason' => 'spam', 'status' => 'actioned', 'admin_id' => 'a1', 'reviewed_at' => now(), 'created_at' => now(), 'updated_at' => now()],
-            ['reporter_id' => 'r3', 'comment_id' => 9999, 'reason' => 'spam', 'status' => 'pending', 'admin_id' => null, 'reviewed_at' => null, 'created_at' => now(), 'updated_at' => now()],
-        ]);
-
-        $migration->up();
-        $migration->up(); // idempotent without a down() in between
-
-        $schema = Schema::class;
-        foreach (['decided_at', 'comment_body', 'comment_user_id', 'comment_article_id', 'decision_note', 'sanction_id'] as $column) {
-            $this->assertTrue($schema::hasColumn('reports', $column), $column);
-        }
-        $this->assertFalse($schema::hasColumn('reports', 'reviewed_at'));
-        $this->assertTrue($schema::hasColumn('comments', 'hidden_by_sanction_id'));
-        $this->assertTrue($schema::hasColumn('sanctions', 'revoked_at'));
-
-        // down() refuses while evidence exists and drops nothing.
-        try {
-            $migration->down();
-            $this->fail('down() must refuse when moderation evidence exists');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('Refusing to roll back', $e->getMessage());
-        }
-        $this->assertTrue($schema::hasColumn('reports', 'comment_body'));
-        $this->assertSame(3, DB::table('reports')->count()); // Gate 9b: legacy SQL table (Report is on MongoDB)
-
-        $reviewed = DB::table('reports')->where('reporter_id', 'r1')->sole();
-        $this->assertSame('pending', $reviewed->status);
-        $this->assertNull($reviewed->decided_at);
-        $this->assertNull($reviewed->admin_id);
-        $this->assertSame('Nội dung cũ trước khi có ảnh chụp', $reviewed->comment_body);
-        $actioned = DB::table('reports')->where('reporter_id', 'r2')->sole();
-        $this->assertSame('actioned', $actioned->status);
-        $this->assertNotNull($actioned->decided_at);
-        $this->assertNull(DB::table('reports')->where('reporter_id', 'r3')->sole()->comment_body);
-
-        // With the evidence cleared the full cycle works again.
-        DB::table('reports')->update(['comment_body' => null, 'comment_user_id' => null, 'comment_article_id' => null]);
-        $migration->down();
-        $migration->up();
-        $migration->up();
-        $this->assertSame('Nội dung cũ trước khi có ảnh chụp', DB::table('reports')->where('reporter_id', 'r1')->sole()->comment_body);
-
-        DB::table('comments')->where('id', $comment->id)->delete();
-        $this->assertSame(3, DB::table('reports')->count()); // Gate 9b: legacy SQL table (Report is on MongoDB)
     }
 
     // R1: per-viewer sanction checks are computed once per request

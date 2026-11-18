@@ -12,7 +12,6 @@ use App\Models\Boost;
 use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -22,7 +21,6 @@ use Tests\TestCase;
 class CatalogArticlePagesTest extends TestCase
 {
     use GuardsRedisTestDatabase;
-    use RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -163,21 +161,18 @@ class CatalogArticlePagesTest extends TestCase
                 Boost::create(['user_id' => auth()->id(), 'article_id' => $article->id]);
             }
             foreach (['published_at', 'boosts', 'bookmarks'] as $sort) {
-                $sql = DB::connection();
+                // Gate 9.5 slice 5: MongoDB is the only connection (TestCase forbids SQL), so only its log is measured.
                 $mongo = DB::connection('mongodb');
-                $sql->enableQueryLog();
                 $mongo->enableQueryLog();
-                $sql->flushQueryLog();
                 $mongo->flushQueryLog();
                 $hydrated = 0;
                 try {
                     $response = $this->get('/admin/articles?sort='.$sort)->assertOk();
-                    $measurements[$size][$sort] = [count($sql->getQueryLog()), count($mongo->getQueryLog())];
+                    $measurements[$size][$sort] = count($mongo->getQueryLog());
                     $this->assertSame(min($size, 20), $hydrated);
                     $this->assertSame($size, $response->viewData('articles')->total());
                     $this->assertSame([1], $response->viewData('articles')->pluck('bookmarks_count')->unique()->values()->all());
                 } finally {
-                    $sql->disableQueryLog();
                     $mongo->disableQueryLog();
                 }
             }
@@ -185,7 +180,7 @@ class CatalogArticlePagesTest extends TestCase
         foreach (['published_at', 'boosts', 'bookmarks'] as $sort) {
             $this->assertSame($measurements[5][$sort], $measurements[25][$sort], $sort);
             // Gate 9.5: Category/Source eager reads and configuration lists now use MongoDB.
-            $this->assertSame([0, 9], $measurements[25][$sort], $sort);
+            $this->assertSame(9, $measurements[25][$sort], $sort);
         }
     }
 
@@ -246,24 +241,19 @@ class CatalogArticlePagesTest extends TestCase
             }
         }
         $expected = [$ids[4], $ids[2], $ids[0], $ids[3], $ids[1], $ids[5]];
-        $sql = DB::connection();
         $mongo = DB::connection('mongodb');
         foreach (['boosts', 'bookmarks'] as $sort) {
-            $sql->enableQueryLog();
             $mongo->enableQueryLog();
-            $sql->flushQueryLog();
             $mongo->flushQueryLog();
             try {
                 $items = $this->get('/admin/articles?sort='.$sort)->assertOk()->viewData('articles');
                 $this->assertSame($expected, $items->getCollection()->map->getKey()->all());
                 $this->assertSame([3, 2, 1, 1, 0, 0], $items->pluck($sort.'_count')->all());
-                $this->assertSame([], $sql->getQueryLog());
                 foreach (['bookmarks', 'boosts'] as $collection) {
                     $aggregates = collect($mongo->getQueryLog())->filter(fn ($query) => str_contains($query['query'], $collection) && str_contains($query['query'], 'aggregate'));
                     $this->assertCount(1, $aggregates);
                 }
             } finally {
-                $sql->disableQueryLog();
                 $mongo->disableQueryLog();
             }
         }
@@ -329,13 +319,13 @@ class CatalogArticlePagesTest extends TestCase
         Bookmark::create(['user_id' => auth()->id(), 'article_id' => $article->id]);
         Boost::create(['user_id' => auth()->id(), 'article_id' => $article->id]);
         ArticleUnlock::create(['user_id' => auth()->id(), 'article_id' => $article->id, 'unlocked_at' => now()]);
-        DB::connection()->enableQueryLog();
-        DB::connection()->flushQueryLog();
+        DB::connection('mongodb')->enableQueryLog();
+        DB::connection('mongodb')->flushQueryLog();
         foreach (['bookmarks_count', 'boosts_count', 'unlocks_count'] as $attribute) {
             $this->assertNull($article->$attribute);
         }
-        $this->assertCount(0, DB::connection()->getQueryLog());
-        DB::connection()->disableQueryLog();
+        $this->assertCount(0, DB::connection('mongodb')->getQueryLog());
+        DB::connection('mongodb')->disableQueryLog();
         $loaded = $this->get('/admin/articles/'.$article->id)->assertOk()->viewData('article');
         foreach (['bookmarks_count', 'boosts_count', 'unlocks_count'] as $attribute) {
             $this->assertSame(1, $loaded->$attribute);

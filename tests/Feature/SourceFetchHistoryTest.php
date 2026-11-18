@@ -10,9 +10,6 @@ use App\Services\Rss\FeedIngestionService;
 use App\SourceHistory\SourceFetchAttempt;
 use App\SourceHistory\SourceFetchHistory;
 use App\StoryProcessing\CassandraClient;
-use Cassandra\Value\Timestamp;
-use Cassandra\Value\Uuid;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -21,7 +18,6 @@ use Tests\TestCase;
 
 class SourceFetchHistoryTest extends TestCase
 {
-    use RefreshDatabase;
     use SourceHistoryFixtures;
 
     private const FEED = '<rss version="2.0"><channel><title>Publisher</title><item><title>Headline</title>
@@ -46,7 +42,7 @@ class SourceFetchHistoryTest extends TestCase
         Http::fake([$source->feed_url => Http::sequence()->push(self::FEED)->push(self::FEED)->push('', 503)]);
         $this->travelTo(now()->startOfSecond());
 
-        DB::connection()->enableQueryLog();
+        DB::connection('mongodb')->enableQueryLog();
         try {
             $this->assertSame('success', $service->fetchSource($source)->status);
             $this->assertSame('success', $source->fresh()->last_fetch_outcome);
@@ -75,9 +71,9 @@ class SourceFetchHistoryTest extends TestCase
             $this->assertSame('HTTP 503', $rows[0]->error_message);
             $this->assertEquals(1, $rows[1]->duplicate_count);
             $this->assertEquals(1, $rows[2]->items_created);
-            $this->assertFalse(collect(DB::connection()->getQueryLog())->contains(fn ($query) => str_contains($query['query'], 'source_fetch_logs')));
+            $this->assertFalse(collect(DB::connection('mongodb')->getQueryLog())->contains(fn ($query) => str_contains($query['query'], 'source_fetch_logs')));
         } finally {
-            DB::connection()->disableQueryLog();
+            DB::connection('mongodb')->disableQueryLog();
         }
     }
 
@@ -263,61 +259,5 @@ class SourceFetchHistoryTest extends TestCase
         $this->assertSame(1, $history->stream()->lengths()['stream']);
         $this->artisan('sources:history-manage', ['action' => 'consume'])->expectsOutput('Processed: 1')->assertSuccessful();
         $this->assertSame('success', $history->forSource($source->id, 1)->sole()->status);
-    }
-
-    public function test_sql_import_maps_both_reference_shapes_and_requires_force_to_repair(): void
-    {
-        $history = $this->bootSourceHistory();
-        $this->clearSourceHistoryImportMarker();
-        try {
-            $source = $this->source();
-            $categoryId = DB::table('categories')->insertGetId(['name' => 'Legacy', 'slug' => 'legacy']);
-            $sourceId = (string) DB::table('sources')->insertGetId([
-                'name' => $source->name, 'url' => $source->url, 'feed_url' => $source->feed_url, 'category_id' => $categoryId,
-            ]);
-            $start = now()->startOfSecond()->subDays(2);
-            $legacyId = DB::table('source_fetch_logs')->insertGetId([
-                'source_id' => $sourceId, 'type' => 'manual_retry', 'status' => 'warning',
-                'started_at' => $start, 'created_at' => $start->copy()->subSecond(), 'finished_at' => $start->copy()->addSeconds(4),
-                'items_found' => 4, 'items_updated' => 1, 'duration_ms' => 4000,
-            ]);
-            $queuedAt = now()->startOfSecond()->subDay();
-            DB::table('source_fetch_logs')->insert([
-                ['source_id' => $source->id, 'type' => 'manual_retry', 'status' => 'queued', 'created_at' => $queuedAt],
-                ['source_id' => '99999', 'type' => 'rss_test', 'status' => 'failed', 'created_at' => $queuedAt],
-                ['source_id' => $sourceId, 'type' => 'rss_test', 'status' => 'failed', 'created_at' => now()->subDays(31)],
-                ['source_id' => $sourceId, 'type' => 'rss_test', 'status' => 'failed', 'created_at' => null],
-            ]);
-
-            $this->artisan('sources:import-history-sql')
-                ->expectsOutput('scanned: 5')->expectsOutput('written: 2')->expectsOutput('expired: 1')
-                ->expectsOutput('unresolved_source: 1')->expectsOutput('missing_timestamp: 1')->assertSuccessful();
-            $rows = $history->forSource($source->id, 10);
-            $this->assertCount(2, $rows);
-            $this->assertSame(['queued', 'warning'], $rows->pluck('status')->all());
-            $this->assertTrue($rows->every(fn ($row) => Str::isUuid($row->attempt_id, 7)));
-            $this->assertNull($rows[0]->started_at);
-            $this->assertTrue($rows[0]->created_at->equalTo($queuedAt));
-            $this->assertTrue($rows[1]->started_at->equalTo($start));
-            $this->assertEquals(4000, $rows[1]->duration_ms);
-            $this->assertEquals(1, $rows[1]->items_updated);
-
-            $client = app(CassandraClient::class);
-            $this->assertSame('vietfeed_test', $client->keyspace());
-            $ttl = $client->rows('SELECT TTL(status) AS remaining FROM vietfeed_test.'.SourceFetchHistory::BY_SOURCE
-                .' WHERE source_id = ? AND day = ? AND started_at = ? AND attempt_id = ?', [
-                    $source->id, $start->copy()->utc()->format('Y-m-d'), new Timestamp($start), new Uuid($rows[1]->attempt_id),
-                ])[0]['remaining'];
-            $this->assertEqualsWithDelta(28 * 86400, $ttl, 10);
-
-            $this->artisan('sources:import-history-sql')->expectsOutputToContain('already started')->assertExitCode(1);
-            $this->artisan('sources:import-history-sql', ['--force' => true])->expectsOutput('written: 2')->assertSuccessful();
-            $this->assertSame($rows->pluck('attempt_id')->all(), $history->forSource($source->id, 10)->pluck('attempt_id')->all());
-            $this->assertEquals($rows->all(), $history->global(5, fn ($id) => $source->id === $id)->all());
-            $this->assertSame($sourceId, DB::table('source_fetch_logs')->where('id', $legacyId)->value('source_id'));
-            $this->assertSame(5, DB::table('source_fetch_logs')->count());
-        } finally {
-            $this->clearSourceHistoryImportMarker();
-        }
     }
 }

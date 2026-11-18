@@ -67,29 +67,32 @@ Ví dụ mở `/articles/cong-nghe-abc`:
 
 ## 3. DATABASE & ĐỔI TÊN DB
 
-### 🔴 Kịch bản "đổi tên DB rồi chạy lại" — đúng thứ tự
+### 🔴 Kịch bản "đổi tên DB rồi chạy lại" — đúng thứ tự (đổi tên, KHÔNG xóa)
 ```bash
-# B1. Tạo DB mới
-mysql -u root -p -e "CREATE DATABASE vietfeed_new CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-# B2. Sửa .env → DB_DATABASE=vietfeed_new
+# B1. Chọn tên mới; MongoDB/Cassandra tự tạo khi ghi lần đầu. Kiểm tra DB Redis còn trống:
+redis-cli -n 3 dbsize; redis-cli -n 4 dbsize; redis-cli -n 5 dbsize   # → 0, 0, 0 (có mật khẩu: export REDISCLI_AUTH=...)
+# B2. Sửa .env → MONGO_DB=vietfeed_new, CASSANDRA_KEYSPACE=vietfeed_new, REDIS_NOSQL_DB=3, REDIS_CACHE_DB=4, REDIS_DB=5
+#     (REDIS_DB = hàng đợi/phiên/khóa; hoặc dừng worker và chờ hàng đợi chạy hết trước khi đổi)
 # B3. Xóa cache config (RẤT QUAN TRỌNG, hay quên → vẫn dùng tên DB cũ)
 php artisan config:clear
-# B4. Tạo lại bảng + dữ liệu mẫu
-php artisan migrate:fresh --seed
+# B4. Tạo index MongoDB + schema Cassandra + dữ liệu mẫu
+php artisan migrate --force
+php artisan storylens schema && php artisan interactions schema && php artisan reading-pass schema
+php artisan moderation:audit schema && php artisan sources:history-manage bootstrap
+php artisan db:seed --force
 # B5. Kéo tin RSS thật
 php artisan feeds:fetch
 ```
-Cấu hình DB: `.env` (`DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`) + `config/database.php`.
+Cấu hình DB: `.env` (`MONGO_DB`, `CASSANDRA_KEYSPACE`, `REDIS_NOSQL_DB`, `REDIS_CACHE_DB`, …) + `config/database.php`, `config/nosql.php`. Dữ liệu cũ vẫn còn — trả `.env` về tên cũ là quay lại. Neo4j dùng chung: các node StoryLens cũ vẫn còn (theo UUID, vô hại).
 
 ### Bảng lệnh DB
 | Lệnh | Tác dụng |
 |---|---|
-| `php artisan migrate` | Chạy migration **chưa** chạy |
-| `php artisan migrate:fresh` | **Xóa sạch** mọi bảng → tạo lại |
-| `php artisan migrate:fresh --seed` | Xóa sạch + tạo lại + **đổ dữ liệu mẫu** |
+| `php artisan migrate` | Chạy migration **chưa** chạy (lịch sử migration nằm trong MongoDB) |
+| `php artisan migrate:status` | Xem migration đã chạy |
+| ⛔ `migrate:fresh` / `db:wipe` / `migrate:reset` / `migrate:rollback` | **Bị chặn** ngoài môi trường test (với MongoDB sẽ xóa cả database / index) — dùng kịch bản đổi tên ở trên |
 | `php artisan db:seed` | Chỉ đổ dữ liệu mẫu |
 | `php artisan db:seed --class=SourceSeeder` | Chạy **một** seeder |
-| `php artisan migrate:rollback` | Lùi batch gần nhất |
 | `php artisan route:list` | Xem mọi route (chứng minh routing) |
 | `php artisan tinker` | Shell tương tác để query thử |
 
@@ -352,7 +355,7 @@ User 1─∞ Comment / Report / Sanction / ArticleUnlock
 10. **CRUD chuyên mục:** thêm/sửa/toggle active.
 11. **Quản lý bài viết:** sửa 1 bài, xóa hàng loạt (bulkDestroy).
 12. **Kiểm duyệt:** xử lý **report** → ra **sanction** (mute/ban) cho user → ẩn bình luận. Đổi **role** user.
-13. Mở terminal: `php artisan route:list` (chứng minh routing) · `php artisan migrate:fresh --seed` (dựng lại DB).
+13. Mở terminal: `php artisan route:list` (chứng minh routing) · `php artisan migrate:status` (lịch sử migration trong MongoDB); dựng lại DB theo mục 3 (đổi tên, không xóa).
 
 ---
 

@@ -5,8 +5,8 @@ on a disposable/demo dataset. The implementation worker has not executed this
 walkthrough end to end (including its browser steps). Use the four
 stores healthy, no cached config, and the usual local app and Vite/build setup.
 Do not use production data. Do not restart/stop containers or delete volumes.
-The app uses the existing SQL layout/navigation alongside canonical Mongo Stories;
-normal SQL migrations must already be installed for the demo app.
+The app layout/navigation reads Mongo configuration alongside canonical Mongo Stories;
+run `php artisan migrate --force` (Mongo indexes) and the schema commands first (Gate 9.5 slice 5: no SQL).
 
 Routes:
 
@@ -17,11 +17,11 @@ Routes:
 
 Use the same environment/store selection for every command and the web process.
 Test isolation is documented in [nosql-local.md](../database/nosql-local.md#tests-and-boundaries):
-Mongo `vietfeed_test`, Redis DB15 with a live guard, SQLite `:memory:`, Cassandra
+Mongo `vietfeed_test`, Redis DB15 with a live guard, no SQL connection, Cassandra
 `vietfeed_test`, and UUID-scoped graph cleanup. The automated HTTP walkthrough is
 `vendor/bin/phpunit tests/Integration/StoryPageProjectionsTest.php`; it uses one
 Article, creates no server, and cleans only its owned projections. A separately
-started web process cannot share PHPUnit's SQLite `:memory:` database.
+started web process must use the same isolated store names (Mongo `vietfeed_test`, DB15).
 
 Automated checks (run sequentially on the isolated test stores):
 

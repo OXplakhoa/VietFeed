@@ -6,8 +6,8 @@ Do not run a server against development data for this verification.
 
 Control/demo setup: provide a factory-created Mongo User with a known password,
 a second admin for the existing sanction action, one Story UUID and one Article
-UUID. Existing SQL tables for sanctions and boosts must be available on that
-instance (their migration is outside Gate 8). No registration API is added.
+UUID. Sanctions and boosts are Mongo collections (Gate 9b / 9.5; no SQL since
+slice 5); run `php artisan migrate --force` for their indexes. No registration API is added.
 Use an otherwise idle, loopback demo instance with a fresh login throttle window.
 Configure its process environment, without changing the owner's active `.env`:
 
@@ -17,7 +17,7 @@ AUTH_REFRESH_TOKEN_TTL_SECONDS=5
 ```
 
 For the automated equivalent, `tests/Feature/ApiTokensTest.php` supplies all fixtures
-using Mongo `vietfeed_test`, SQLite `:memory:` and guarded Redis DB15. It needs no
+using Mongo `vietfeed_test` and guarded Redis DB15 (no SQL connection). It needs no
 HTTP server. Run it sequentially; it clears DB15 and removes test Mongo fixtures.
 The walkthrough below assumes Bash, curl and Python 3. Run in a fresh disposable
 Bash subshell (`bash`); a failed login exits only that subshell. Disable shell tracing;

@@ -191,8 +191,8 @@ final class StoryPipeline
         }
         if (file_exists(base_path('bootstrap/cache/config.php'))
             || DB::connection('mongodb')->getDatabaseName() !== 'vietfeed_test'
-            || config('database.default') !== 'sqlite'
-            || config('database.connections.sqlite.database') !== ':memory:'
+            || config('database.default') !== 'mongodb'
+            || array_keys(config('database.connections')) !== ['mongodb']
             || config('nosql.cassandra.keyspace') !== 'vietfeed_test'
             || Redis::connection('nosql')->client()->getDbNum() !== 15) {
             throw new \RuntimeException('Refusing StoryLens test command without isolated stores and live Redis DB15');

@@ -7,14 +7,13 @@ use App\Models\Report;
 use App\Models\Sanction;
 use App\Moderation\ModerationException;
 use App\Moderation\ModerationService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\ModerationFixtures;
 use Tests\TestCase;
 
 /** Gate 9a: rules 10-12 (sanction list, appeal review, revoke). */
 class ModerationSanctionTest extends TestCase
 {
-    use ModerationFixtures, RefreshDatabase;
+    use ModerationFixtures;
 
     // Rule 10 (D3, D2)
     public function test_sanction_list_filters_by_type_and_status(): void

@@ -7,15 +7,12 @@ use App\Models\Boost;
 use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class BoostTest extends TestCase
 {
-    use RefreshDatabase;
-
     public function test_authenticated_user_can_toggle_article_boost(): void
     {
         $user = User::factory()->create(['email_verified_at' => null]);

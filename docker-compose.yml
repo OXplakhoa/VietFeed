@@ -1,8 +1,8 @@
 # VietFeed local NoSQL dev stack (Gate 1 / GitHub #1).
 #
 # Single-node MongoDB + Cassandra + Neo4j + Redis for M1/8GB.
-# MySQL intentionally NOT in this file: it stays on the host (session/cache/queue
-# are `database` driver, so the app still boots from host MySQL).
+# No SQL database (Gate 9.5 slice 5): the app boots, tests and demos on these four
+# stores only; sessions/cache/queue run on Redis.
 #
 # All services bind 127.0.0.1 only, use default ports, and read throwaway
 # local-only creds from the environment with dev-default fallbacks:

@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Billing\StripeClient;
 use App\Billing\StripeSdkClient;
+use App\Console\DestructiveCommandGuard;
 use App\Content\CategoryList;
 use App\Interaction\InteractionReplaySource;
 use App\Interaction\SyntheticInteractionReplaySource;
@@ -15,6 +16,7 @@ use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Routing\Events\Routing;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -23,6 +25,14 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Gate 9.5 slice 5: the SQL runtime is gone. Laravel merges its own default `database` connections
+        // (sqlite, mysql, ...), cache store and queue connection into ours, so drop them: MongoDB is the only
+        // database connection and nothing can fall back to a SQL driver.
+        $config = $this->app['config'];
+        $config->set('database.connections', ['mongodb' => $config->get('database.connections.mongodb')]);
+        $config->set('cache.stores', Arr::except($config->get('cache.stores', []), ['database']));
+        $config->set('queue.connections', Arr::except($config->get('queue.connections', []), ['database']));
+
         $this->app->bind(StripeClient::class, StripeSdkClient::class);
         $this->app->bind(InteractionReplaySource::class, SyntheticInteractionReplaySource::class);
         $this->app->singleton(SanctionSnapshot::class);
@@ -38,6 +48,9 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Gate 9.5 slice 5 (REVIEW-1 MAJOR-1): refuse database-dropping commands outside `testing`.
+        DestructiveCommandGuard::apply($this->app);
+
         // Tailwind is the framework default; switch to Bootstrap 5 because
         // our UI is Bootstrap, and the Tailwind view would render
         // unstyled (full-size) SVG arrows.

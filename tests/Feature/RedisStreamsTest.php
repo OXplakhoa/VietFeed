@@ -10,7 +10,6 @@ use App\Models\Article;
 use App\Models\Bookmark;
 use App\Models\Story;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Redis\Connections\PhpRedisConnection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
@@ -25,7 +24,6 @@ use Tests\TestCase;
 class RedisStreamsTest extends TestCase
 {
     use GuardsRedisTestDatabase;
-    use RefreshDatabase;
 
     protected function setUp(): void
     {

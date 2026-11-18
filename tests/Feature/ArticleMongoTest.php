@@ -9,15 +9,12 @@ use App\Models\Category;
 use App\Models\Source;
 use App\Models\Story;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 // Gate 3 T3: Article (+ minimal Story) CRUD on Mongo with Laravel UUIDv7 IDs,
 // original_url dedup, slug route resolution, and Dashboard numbers parity.
 class ArticleMongoTest extends TestCase
 {
-    use RefreshDatabase;
-
     public function test_crud_with_uuid7_ids(): void
     {
         $article = Article::create([

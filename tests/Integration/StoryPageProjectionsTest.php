@@ -11,7 +11,6 @@ use App\StoryProcessing\Neo4jClient;
 use App\StoryProcessing\StoryPipeline;
 use App\StoryProcessing\StoryTimeline;
 use Cassandra\Value\Uuid;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Tests\Concerns\GuardsRedisTestDatabase;
@@ -19,7 +18,7 @@ use Tests\TestCase;
 
 class StoryPageProjectionsTest extends TestCase
 {
-    use GuardsRedisTestDatabase, RefreshDatabase;
+    use GuardsRedisTestDatabase;
 
     private array $storyIds = [];
 
