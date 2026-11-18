@@ -3,7 +3,6 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
@@ -11,8 +10,6 @@ use Tests\TestCase;
 
 class GoogleAuthenticationTest extends TestCase
 {
-    use RefreshDatabase;
-
     public function test_new_users_can_authenticate_with_google_and_are_redirected_to_onboarding(): void
     {
         Socialite::shouldReceive('driver->user')

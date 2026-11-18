@@ -14,7 +14,6 @@ use Cassandra\Value\Timestamp;
 use Cassandra\Value\Uuid;
 use Database\Seeders\DemoEngagementSeeder;
 use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
@@ -24,11 +23,12 @@ use Tests\TestCase;
 
 /**
  * Gate 9.5 slice 2: comments on MongoDB. Isolated stores only: Mongo vietfeed_test, Redis DB15 (guard in
- * ModerationFixtures), Cassandra keyspace vietfeed_test, SQLite :memory: (legacy SQL comments only).
+ * ModerationFixtures), Cassandra keyspace vietfeed_test. Gate 9.5 slice 5: no SQL connection exists; the legacy
+ * comment import was removed (tag `pre-sql-removal`).
  */
 class CommentsMongoTest extends TestCase
 {
-    use ModerationFixtures, RefreshDatabase;
+    use ModerationFixtures;
 
     private const UUID7 = '/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/';
 
@@ -89,7 +89,6 @@ class CommentsMongoTest extends TestCase
         $this->assertSame([(string) $author->id, (string) $article->id, $root->id, false, null],
             [$doc['user_id'], $doc['article_id'], $doc['parent_id'], $doc['is_hidden'], $doc['hidden_by_sanction_id']]);
         $this->assertNull($this->raw('comments')->findOne(['_id' => $root->id])['parent_id']);
-        $this->assertSame(0, DB::table('comments')->count(), 'no runtime write reaches the legacy SQL table');
 
         // Unknown parent (valid UUID, absent) is refused like the former SQL exists rule.
         $this->actingAs($author)->post(route('comments.store', $article->slug), ['body' => 'Lạc', 'parent_id' => (string) Str::uuid7()])
@@ -225,148 +224,6 @@ class CommentsMongoTest extends TestCase
         $this->assertSame(['42', $ref], array_column($events, 'comment'));
     }
 
-    public function test_comment_import_copies_parents_first_remaps_moderation_references_and_is_idempotent(): void
-    {
-        $admin = $this->admin();
-        $author = $this->user();
-        $article = $this->article();
-        $at = now()->subDays(3)->startOfSecond();
-        $sql = fn (array $row) => DB::table('comments')->insertGetId($row + ['user_id' => (string) $author->id, 'article_id' => (string) $article->id,
-            'created_at' => $at, 'updated_at' => $at]);
-        // Ids deliberately out of thread order: deep (id 2) is the reply of reply (id 3).
-        $root = $sql(['body' => 'Gốc SQL']);
-        $deep = $sql(['body' => 'Cấp 2 SQL']);
-        $reply = $sql(['body' => 'Cấp 1 SQL', 'parent_id' => $root]);
-        DB::table('comments')->where('id', $deep)->update(['parent_id' => $reply]);
-        // Legacy hide link: SQL comment hidden by legacy sanction #7 (already imported to Mongo by 9b).
-        $hider = $this->sanctionFor($author, $admin, 'warning');
-        $this->raw('sanctions')->updateOne(['_id' => (string) $hider->id], ['$set' => ['legacy_sql_id' => 7]]);
-        DB::table('comments')->where('id', $root)->update(['is_hidden' => true, 'hidden_by_sanction_id' => '7']);
-        // Moderation documents written before this slice: 9b import and 9b runtime both store integers.
-        DB::table('reports')->insert(['reporter_id' => 'legacy-r', 'comment_id' => $reply, 'reason' => 'spam', 'status' => 'pending',
-            'comment_body' => 'Cấp 1 SQL', 'comment_user_id' => (string) $author->id, 'comment_article_id' => (string) $article->id, 'created_at' => $at, 'updated_at' => $at]);
-        DB::table('reports')->insert(['reporter_id' => 'legacy-gone', 'comment_id' => 999, 'reason' => 'spam', 'status' => 'pending',
-            'comment_body' => 'Đã xóa trước cutover', 'created_at' => $at, 'updated_at' => $at]);
-        $this->artisan('moderation:import-sql')->assertExitCode(0);
-        $runtime = Report::withoutEvents(fn () => Report::create(['reporter_id' => 'runtime-9b', 'comment_id' => 'x', 'reason' => 'spam']));
-        $this->raw('reports')->updateOne(['_id' => (string) $runtime->id], ['$set' => ['comment_id' => $deep]]); // int, as 9b stored it
-        $replyCase = app(ModerationCases::class)->findByComment($reply);
-        $this->assertNotNull($replyCase);
-        $this->consumeAll(); // cutover step: drain the audit consumer before the import
-        // Before the comment import a legacy (numeric) reference lands in the historical bigint column only.
-        $before = $this->rows((string) $replyCase['_id']);
-        $this->assertSame([[$reply, null]], array_map(fn ($r) => [$r['comment_id'], $r['comment_ref']], $before));
-
-        $this->artisan('comments:import-sql')
-            ->expectsOutputToContain('sql_comments              3')->expectsOutputToContain('comments_imported         3')
-            ->expectsOutputToContain('comments_skipped          0')->expectsOutputToContain('orphans_skipped           0')
-            ->expectsOutputToContain('reports_remapped          2')->expectsOutputToContain('cases_remapped            1')
-            ->expectsOutputToContain('case_events_remapped      1')->expectsOutputToContain('refs_unmapped             1')
-            ->assertExitCode(0);
-        $this->artisan('moderation:audit', ['action' => 'reemit'])->assertExitCode(0); // cutover step after the import
-
-        $copy = fn (int $legacy) => Comment::where('legacy_sql_id', $legacy)->sole();
-        [$rootC, $replyC, $deepC] = [$copy($root), $copy($reply), $copy($deep)];
-        $this->assertMatchesRegularExpression(self::UUID7, $rootC->id);
-        $this->assertSame([null, $rootC->id, $replyC->id], [$rootC->parent_id, $replyC->parent_id, $deepC->parent_id]);
-        $this->assertSame([true, (string) $hider->id], [$rootC->is_hidden, $rootC->hidden_by_sanction_id]);
-        $this->assertSame($at->toIso8601String(), $replyC->created_at->toIso8601String());
-        $this->assertSame($replyC->id, Report::where('reporter_id', 'legacy-r')->sole()->comment_id);
-        $this->assertSame($deepC->id, $this->raw('reports')->findOne(['_id' => (string) $runtime->id])['comment_id']);
-        $this->assertSame(999, $this->raw('reports')->findOne(['reporter_id' => 'legacy-gone'])['comment_id'], 'a comment deleted before the cutover stays a legacy ref');
-        $case = app(ModerationCases::class)->find((string) $replyCase['_id']);
-        $this->assertSame([$replyC->id, $reply], [$case['comment_id'], $case['legacy_comment_id']]);
-        $reported = collect($case['events'])->firstWhere('type', 'REPORTED');
-        $this->assertSame([$replyC->id, $reply], [$reported['comment_id'], $reported['legacy_comment_id']]);
-
-        // Cassandra history is never rewritten: the old bigint stays, the re-emitted event adds comment_ref.
-        $this->consumeAll();
-        $rows = $this->rows((string) $case['_id']);
-        $this->assertCount(1, $rows);
-        $this->assertSame([$reply, $replyC->id], [$rows[0]['comment_id'], $rows[0]['comment_ref']]);
-        $this->assertSame('ready', app(ModerationAudit::class)->timeline((string) $case['_id'])['state']);
-
-        // Imported state works through the normal flows (case page shows the live comment; the thread renders).
-        $this->actingAs($admin)->get(route('admin.reports.show', Report::where('reporter_id', 'legacy-r')->sole()))->assertOk()->assertSee('Cấp 1 SQL');
-        $this->get('/articles/'.$article->slug)->assertOk()->assertSeeInOrder(['Cấp 1 SQL', 'Cấp 2 SQL']);
-
-        // Rerun: nothing copied or remapped twice; the SQL table is left in place.
-        $snapshot = $this->raw('comments')->find([], ['sort' => ['_id' => 1]])->toArray();
-        $this->artisan('comments:import-sql')
-            ->expectsOutputToContain('comments_imported         0')->expectsOutputToContain('comments_skipped          3')
-            ->expectsOutputToContain('reports_remapped          0')->expectsOutputToContain('cases_remapped            0')
-            ->expectsOutputToContain('case_events_remapped      0')->assertExitCode(0);
-        $this->assertEquals($snapshot, $this->raw('comments')->find([], ['sort' => ['_id' => 1]])->toArray());
-        $this->assertSame(3, DB::table('comments')->count());
-    }
-
-    /** REVIEW-1 M1: an int-keyed and a "5"-keyed case for one legacy comment (faulty earlier run) converge to one case. */
-    public function test_comment_import_merges_int_and_string_keyed_duplicate_cases_and_converges(): void
-    {
-        $admin = $this->admin();
-        $author = $this->user();
-        $legacy = DB::table('comments')->insertGetId(['user_id' => (string) $author->id, 'article_id' => (string) $this->article()->id,
-            'body' => 'Trùng vụ việc', 'created_at' => now(), 'updated_at' => now()]);
-        $snap = ['comment_body' => 'Trùng vụ việc', 'comment_user_id' => (string) $author->id];
-        [$a, $b] = [$this->user(), $this->user()];
-        $live = $this->legacyKeyedReport((string) $a->id, $legacy, $snap);
-        $this->travel(1)->minutes();
-        $duplicateOfLive = $this->legacyKeyedReport((string) $a->id, (string) $legacy, ['reason' => 'harassment'] + $snap);
-        $other = $this->legacyKeyedReport((string) $b->id, (string) $legacy, ['reason' => 'harassment'] + $snap);
-        $liveCase = (string) $live->case_id;
-        $duplicateCase = (string) $other->case_id;
-        $this->assertNotSame($liveCase, $duplicateCase);
-        $this->assertSame(2, DB::connection('mongodb')->table('moderation_cases')->count());
-
-        $this->artisan('comments:import-sql')->expectsOutputToContain('cases_merged              1')
-            ->expectsOutputToContain('reports_deduplicated      1')->expectsOutputToContain('cases_remapped            1')
-            ->expectsOutputToContain('case_conflicts            0')->assertExitCode(0);
-
-        $uuid = Comment::where('legacy_sql_id', $legacy)->sole()->id;
-        $case = $this->raw('moderation_cases')->find()->toArray();
-        $this->assertCount(1, $case);
-        $case = $case[0];
-        $this->assertSame([$liveCase, $uuid, $legacy, 'pending', 2, 2, [$duplicateCase]],
-            [$case['_id'], $case['comment_id'], $case['legacy_comment_id'], $case['status'], $case['pending_count'], $case['severity'], $case['merged_case_ids']]);
-        $this->assertEqualsCanonicalizing([(string) $live->id, (string) $other->id], Report::pluck('id')->all());
-        $this->assertSame([[$uuid], [$liveCase]], [Report::pluck('comment_id')->unique()->values()->all(), Report::pluck('case_id')->unique()->values()->all()]);
-        $archived = $this->raw('reports_duplicates')->findOne(['_id' => (string) $duplicateOfLive->id]);
-        $this->assertSame((string) $live->id, $archived['duplicate_of'], 'evidence kept, never hard-deleted');
-        $this->assertSame([$liveCase], collect($case['events'])->pluck('case_id')->unique()->values()->all());
-        $this->assertSame([$uuid], collect($case['events'])->pluck('comment_id')->unique()->values()->all());
-
-        // Rerun is a no-op; the merged case decides once for both remaining reports.
-        $this->artisan('comments:import-sql')->expectsOutputToContain('cases_merged              0')
-            ->expectsOutputToContain('reports_deduplicated      0')->expectsOutputToContain('cases_remapped            0')->assertExitCode(0);
-        $this->assertSame(2, app(ModerationService::class)->resolveCase($admin, $live, 'dismissed', null));
-        $this->assertSame(['dismissed'], Report::pluck('status')->unique()->values()->all());
-        $this->consumeAll();
-        app(ModerationAudit::class)->reemit($liveCase);
-        $this->consumeAll();
-        $this->assertSame('ready', app(ModerationAudit::class)->timeline($liveCase)['state']);
-        $this->partitions[] = $duplicateCase;
-    }
-
-    /** REVIEW-1 m2: comments hidden by an unimported legacy sanction are counted and warned about. */
-    public function test_comments_hidden_by_an_unimported_legacy_sanction_are_counted_and_warned(): void
-    {
-        $admin = $this->admin();
-        $author = $this->user();
-        $legacy = DB::table('comments')->insertGetId(['user_id' => (string) $author->id, 'article_id' => (string) $this->article()->id,
-            'body' => 'Ẩn bởi án cũ', 'is_hidden' => true, 'hidden_by_sanction_id' => '8', 'created_at' => now(), 'updated_at' => now()]);
-
-        $this->artisan('comments:import-sql')->expectsOutputToContain('hidden_unlinked           1')->assertExitCode(0);
-        $this->actingAs($admin)->get(route('admin.processing.index'))->assertOk()
-            ->assertSee('id="comment-legacy-warning"', false)->assertSee('Còn 1 bình luận đang bị ẩn');
-
-        $sanction = $this->sanctionFor($author, $admin, 'warning');
-        $this->raw('sanctions')->updateOne(['_id' => (string) $sanction->id], ['$set' => ['legacy_sql_id' => 8]]);
-        $this->artisan('comments:import-sql')->expectsOutputToContain('hidden_relinked           1')
-            ->expectsOutputToContain('hidden_unlinked           0')->assertExitCode(0);
-        $this->assertSame((string) $sanction->id, Comment::where('legacy_sql_id', $legacy)->sole()->hidden_by_sanction_id);
-        $this->actingAs($admin)->get(route('admin.processing.index'))->assertOk()->assertDontSee('id="moderation-legacy-warning"', false);
-    }
-
     /** REVIEW-1 m1: only "column already exists" is tolerated by the schema ALTERs. */
     public function test_cassandra_schema_alter_only_tolerates_an_existing_column(): void
     {
@@ -395,26 +252,9 @@ class CommentsMongoTest extends TestCase
         }
     }
 
-    public function test_comment_import_finishes_an_interrupted_thread_copy(): void
+    public function test_no_code_reads_sql_comments(): void
     {
-        $author = $this->user();
-        $article = $this->article();
-        $row = fn (array $r) => DB::table('comments')->insertGetId($r + ['user_id' => (string) $author->id, 'article_id' => (string) $article->id,
-            'created_at' => now(), 'updated_at' => now()]);
-        $root = $row(['body' => 'Gốc']);
-        $reply = $row(['body' => 'Trả lời', 'parent_id' => $root]);
-        $this->artisan('comments:import-sql')->assertExitCode(0);
-        // Simulate a crash after the parent copy: the reply copy is lost.
-        $this->raw('comments')->deleteOne(['legacy_sql_id' => $reply]);
-
-        $this->artisan('comments:import-sql')->expectsOutputToContain('comments_imported         1')
-            ->expectsOutputToContain('comments_skipped          1')->assertExitCode(0);
-        $this->assertSame(Comment::where('legacy_sql_id', $root)->sole()->id, Comment::where('legacy_sql_id', $reply)->sole()->parent_id);
-    }
-
-    public function test_only_the_import_classes_read_sql_comments(): void
-    {
-        // Source proof: any SQL access to the `comments` table lives in the two import classes.
+        // Source proof (Gate 9.5 slice 5: the import classes were removed): no SQL access to a `comments` table remains.
         $hits = [];
         $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(base_path('app')));
         foreach ($files as $file) {
@@ -426,7 +266,7 @@ class CommentsMongoTest extends TestCase
             }
         }
         sort($hits);
-        $this->assertSame(['app/Content/CommentSqlImport.php', 'app/Moderation/SqlImport.php'], $hits);
+        $this->assertSame([], $hits);
         $this->assertSame('mongodb', (new Comment)->getConnectionName());
 
         // Runtime proof: no SQL statement touches `comments` on any comment, moderation or count page.
@@ -455,10 +295,9 @@ class CommentsMongoTest extends TestCase
             'type' => 'warning', 'reason' => 'x', 'hide_comment' => 1])->assertSessionHas('success');
         $this->actingAs($admin)->delete(route('admin.comments.destroy', $comment))->assertSessionHas('success');
 
-        // Gate 9.5 slice 3b: these pages no longer issue SQL (Reading Pass left `article_unlocks`), so probe the listener explicitly.
-        DB::select('select 1');
-        $this->assertNotEmpty($sql, 'the listener sees SQL traffic');
-        $this->assertSame([], array_values(array_filter($sql, fn ($s) => preg_match('/\bcomments\b/i', $s))));
+        // Gate 9.5 slice 5: no SQL connection is configured, so no page issues any SQL statement at all.
+        $this->assertSame([], $sql);
+        $this->assertSame(['mongodb'], array_keys(DB::getConnections()));
     }
 
     public function test_counts_are_one_grouped_mongo_query_per_page(): void
@@ -497,7 +336,7 @@ class CommentsMongoTest extends TestCase
         $root = Comment::whereNull('parent_id')->sole();
         $this->assertSame([(string) $first->id, (string) $article->id], [$root->user_id, $root->article_id]);
         $this->assertSame($root->id, Comment::whereNotNull('parent_id')->sole()->parent_id);
-        $this->assertSame(0, DB::table('comments')->count());
+        $this->assertSame(2, Comment::count());
     }
 
     public function test_comment_index_migration_is_idempotent(): void

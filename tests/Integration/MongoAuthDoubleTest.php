@@ -28,7 +28,7 @@ class MongoAuthDoubleTest extends TestCase
         $this->assertAuthenticated();
         $this->assertTrue(
             DB::connection('mongodb')->table('users')->where('email', 'mongo-login@example.com')->exists(),
-            'user doc lives in the mongo test DB, not sqlite',
+            'user doc lives in the mongo test DB',
         );
 
         DB::connection('mongodb')->table('users')->where('email', 'mongo-login@example.com')->delete();

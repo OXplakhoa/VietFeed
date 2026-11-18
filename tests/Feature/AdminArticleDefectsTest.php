@@ -8,7 +8,6 @@ use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
 use App\Services\Rss\FeedIngestionService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -17,8 +16,6 @@ use Tests\TestCase;
 
 class AdminArticleDefectsTest extends TestCase
 {
-    use RefreshDatabase;
-
     private Article $article;
 
     protected function setUp(): void

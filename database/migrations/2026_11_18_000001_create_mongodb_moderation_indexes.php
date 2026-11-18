@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use MongoDB\Driver\Exception\CommandException;
 
 // Gate 9b: moderation state on MongoDB. createIndex is idempotent, so reruns are safe.
 // The unique indexes carry the invariants that 9a held with SQL constraints and locks.
@@ -38,10 +39,23 @@ return new class extends Migration
 
     public function down(): void
     {
-        $mongo = DB::connection('mongodb');
         foreach (['reports', 'sanctions', 'moderation_cases'] as $name) {
             // Indexes only; documents (moderation evidence) are never dropped by a rollback.
-            $mongo->getCollection($name)->dropIndexes();
+            $this->dropIndex($name, null);
+        }
+    }
+
+    /** REVIEW-1 m1: a rollback tolerates an index (or collection) that is already gone. */
+    private function dropIndex(string $collection, ?string $index): void
+    {
+        try {
+            $index === null
+                ? DB::connection('mongodb')->getCollection($collection)->dropIndexes()
+                : DB::connection('mongodb')->getCollection($collection)->dropIndex($index);
+        } catch (CommandException $e) {
+            if (! in_array($e->getCode(), [26, 27], true)) { // NamespaceNotFound, IndexNotFound
+                throw $e;
+            }
         }
     }
 };

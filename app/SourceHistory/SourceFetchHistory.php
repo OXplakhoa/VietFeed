@@ -21,8 +21,6 @@ final class SourceFetchHistory
 
     public const GLOBAL = 'source_fetches_by_day';
 
-    public const IMPORTS = 'source_fetch_history_imports';
-
     public const STREAM = 'sources:history:events:v1';
 
     public const DLQ = 'sources:history:dead:v1';
@@ -62,7 +60,6 @@ final class SourceFetchHistory
                 PRIMARY KEY (($partition), started_at, attempt_id)
             ) WITH CLUSTERING ORDER BY (started_at DESC, attempt_id DESC) AND gc_grace_seconds = $grace");
         }
-        $this->client->execute('CREATE TABLE IF NOT EXISTS '.$keyspace.'.'.self::IMPORTS.' (name text PRIMARY KEY, started_at timestamp)');
     }
 
     /** Cassandra is accessed by the consumer, never during an RSS request or fetch job. */

@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Moderation\ModerationAudit;
-use App\Moderation\SqlImport;
 use App\StoryProcessing\StoryPipeline;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,12 +14,10 @@ use MongoDB\Driver\Exception\ConnectionException;
 
 class ProcessingController extends Controller
 {
-    public function index(StoryPipeline $pipeline, ModerationAudit $audit, SqlImport $import): View
+    public function index(StoryPipeline $pipeline, ModerationAudit $audit): View
     {
         // Gate 9b: the moderation section is independent of the Story overview (REVIEW-1 NIT-5).
-        $moderation = $this->moderationPart(fn () => $audit->overview(), 'overview');
-        $legacy = $this->moderationPart(fn () => $import->unimported(), 'legacy check');
-        $data = ['moderation' => $moderation, 'legacyUnimported' => $legacy];
+        $data = ['moderation' => $this->moderationPart(fn () => $audit->overview(), 'overview')];
         try {
             return view('admin.processing', ['overview' => $pipeline->overview(), 'unavailable' => false] + $data);
         } catch (\Throwable $error) {

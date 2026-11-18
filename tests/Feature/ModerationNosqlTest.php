@@ -14,7 +14,6 @@ use App\Moderation\ModerationQueue;
 use App\Moderation\ModerationService;
 use App\StoryProcessing\CassandraClient;
 use Cassandra\Value\Uuid;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
@@ -25,11 +24,11 @@ use Tests\TestCase;
 /**
  * Gate 9b: moderation on MongoDB (case-document atomicity), Redis review queue (projection) and
  * Cassandra audit (moderation_events_by_case). Isolated stores only: Mongo vietfeed_test, Redis DB15,
- * Cassandra keyspace vietfeed_test, SQLite :memory:.
+ * Cassandra keyspace vietfeed_test.
  */
 class ModerationNosqlTest extends TestCase
 {
-    use ModerationFixtures, RefreshDatabase;
+    use ModerationFixtures;
 
     protected function setUp(): void
     {
@@ -450,26 +449,22 @@ class ModerationNosqlTest extends TestCase
         $this->assertSame(0, app(ModerationQueue::class)->pendingCases());
     }
 
-    /** F3 + NIT-5: the moderation section survives a Story overview failure and warns about unimported SQL rows. */
-    public function test_processing_page_warns_about_unimported_legacy_rows_even_when_story_overview_fails(): void
+    /** F3 + NIT-5: the moderation section survives a Story overview failure (Gate 9.5 slice 5: legacy SQL warnings removed). */
+    public function test_processing_page_moderation_section_survives_a_story_overview_failure(): void
     {
         $admin = $this->admin();
-        DB::table('sanctions')->insert(['user_id' => 'legacy-user', 'admin_id' => (string) $admin->id, 'type' => 'permanent_ban', 'reason' => 'legacy',
-            'is_active' => true, 'appeal_status' => 'none', 'created_at' => now(), 'updated_at' => now()]);
         $this->actingAs($admin)->get(route('admin.processing.index'))->assertOk()
-            ->assertSee('id="moderation-legacy-warning"', false)->assertSee('1 biện pháp xử lý');
+            ->assertSee('Kiểm duyệt · lịch sử quyết định')->assertDontSee('id="moderation-legacy-warning"', false);
 
         $manager = Redis::getFacadeRoot();
         Redis::shouldReceive('connection')->with('nosql')->andThrow(new \RuntimeException('down', 0, new \RedisException('down')));
         try {
             $this->actingAs($admin)->get(route('admin.processing.index'))->assertOk()
                 ->assertSee('Tạm thời không thể tải tình trạng xử lý.')->assertSee('Kiểm duyệt · lịch sử quyết định')
-                ->assertSee('Tạm thời không thể tải tình trạng luồng kiểm duyệt.')->assertSee('id="moderation-legacy-warning"', false);
+                ->assertSee('Tạm thời không thể tải tình trạng luồng kiểm duyệt.')->assertDontSee('import-sql');
         } finally {
             Redis::swap($manager);
         }
-        $this->artisan('moderation:import-sql')->assertExitCode(0);
-        $this->actingAs($admin)->get(route('admin.processing.index'))->assertOk()->assertDontSee('id="moderation-legacy-warning"', false);
     }
 
     public function test_duplicate_report_is_refused_by_the_unique_index_without_double_counting(): void
@@ -698,109 +693,6 @@ class ModerationNosqlTest extends TestCase
     }
 
     // --- Data move ------------------------------------------------------------------------------
-
-    public function test_sql_import_is_idempotent_and_builds_cases_links_and_queue(): void
-    {
-        $admin = $this->admin();
-        $author = $this->user();
-        $article = $this->article();
-        $now = now();
-        // Gate 9.5: legacy rows reference legacy SQL comments (integer ids); comments:import-sql moves them after this import.
-        $sqlComment = fn (string $body) => DB::table('comments')->insertGetId(['user_id' => (string) $author->id, 'article_id' => (string) $article->id,
-            'body' => $body, 'created_at' => $now, 'updated_at' => $now]);
-        $pending = (object) ['id' => $sqlComment('Đang chờ từ SQL')];
-        $actioned = (object) ['id' => $sqlComment('Đã xử lý từ SQL')];
-        $legacy = fn (array $row) => DB::table('reports')->insertGetId($row + ['reason' => 'spam', 'created_at' => $now, 'updated_at' => $now,
-            'comment_user_id' => (string) $author->id, 'comment_article_id' => (string) $article->id]);
-        $p1 = $legacy(['reporter_id' => 'legacy-r1', 'comment_id' => $pending->id, 'status' => 'pending', 'comment_body' => 'Đang chờ từ SQL']);
-        $legacy(['reporter_id' => 'legacy-r2', 'comment_id' => $pending->id, 'status' => 'pending', 'comment_body' => 'Đang chờ từ SQL', 'reason' => 'harassment']);
-        $a1 = $legacy(['reporter_id' => 'legacy-r3', 'comment_id' => $actioned->id, 'status' => 'actioned', 'comment_body' => 'Đã xử lý từ SQL',
-            'admin_id' => (string) $admin->id, 'decided_at' => $now, 'decision_note' => 'cũ']);
-        $s1 = DB::table('sanctions')->insertGetId(['user_id' => (string) $author->id, 'admin_id' => (string) $admin->id, 'report_id' => $a1,
-            'type' => 'mute', 'reason' => 'Legacy mute', 'expires_at' => $now->copy()->addDays(3), 'is_active' => true, 'appeal_status' => 'pending',
-            'appeal_message' => 'Xin xem lại', 'appealed_at' => $now, 'created_at' => $now, 'updated_at' => $now]);
-        $s2 = DB::table('sanctions')->insertGetId(['user_id' => (string) $author->id, 'admin_id' => (string) $admin->id, 'type' => 'warning',
-            'reason' => 'Legacy revoked', 'is_active' => false, 'appeal_status' => 'none', 'revoked_at' => $now, 'revoked_by' => (string) $admin->id,
-            'revoke_note' => 'thu hồi', 'revoked_via' => 'admin', 'created_at' => $now, 'updated_at' => $now]);
-        DB::table('reports')->where('id', $a1)->update(['sanction_id' => $s1]);
-        DB::table('comments')->where('id', $actioned->id)->update(['is_hidden' => true, 'hidden_by_sanction_id' => (string) $s1]);
-
-        $this->artisan('moderation:import-sql')->expectsOutputToContain('reports_imported    3')
-            ->expectsOutputToContain('sanctions_imported  2')->expectsOutputToContain('cases_built         2')
-            ->expectsOutputToContain('comments_relinked   1')->expectsOutputToContain('queue_size          1')->assertExitCode(0);
-        $snapshot = [Report::count(), Sanction::count(), DB::connection('mongodb')->table('moderation_cases')->count()];
-        $this->artisan('moderation:import-sql')->expectsOutputToContain('reports_skipped     3')
-            ->expectsOutputToContain('sanctions_skipped   2')->expectsOutputToContain('cases_built         0')
-            ->expectsOutputToContain('events_published    0')->assertExitCode(0);
-        $this->assertSame([3, 2, 2], $snapshot);
-        $this->assertSame($snapshot, [Report::count(), Sanction::count(), DB::connection('mongodb')->table('moderation_cases')->count()]);
-        // Gate 9.5 cutover order: drain the audit consumer, import comments, re-emit the remapped canonical events.
-        $this->consumeAll();
-        $this->artisan('comments:import-sql')->assertExitCode(0);
-        $this->artisan('moderation:audit', ['action' => 'reemit'])->assertExitCode(0);
-        $actioned = Comment::where('legacy_sql_id', $actioned->id)->sole();
-
-        $mute = Sanction::where('legacy_sql_id', $s1)->sole();
-        $actionedReport = Report::where('legacy_sql_id', $a1)->sole();
-        $this->assertSame($mute->id, $actionedReport->sanction_id);
-        $this->assertSame($actionedReport->id, $mute->report_id);
-        $this->assertSame($actionedReport->case_id, $mute->audit_case_id);
-        $this->assertSame($mute->id, $actioned->fresh()->hidden_by_sanction_id);
-        $this->assertSame(['SANCTION_ISSUED', 'COMMENT_HIDDEN', 'APPEAL_SUBMITTED'], collect($mute->events)->pluck('type')->all());
-        $revoked = Sanction::where('legacy_sql_id', $s2)->sole();
-        $this->assertSame($revoked->id, $revoked->audit_case_id);
-        $this->assertSame(['SANCTION_ISSUED', 'SANCTION_REVOKED'], collect($revoked->events)->pluck('type')->all());
-        $pendingCase = $this->caseOf(Report::where('legacy_sql_id', $p1)->sole());
-        $this->assertSame(['pending', 2, 2, 2], [$pendingCase['status'], $pendingCase['pending_count'], $pendingCase['reports_count'], $pendingCase['severity']]);
-        $this->assertSame('actioned', $this->caseOf($actionedReport)['status']);
-        $this->assertTrue($author->fresh()->isMuted());
-
-        // Imported state works through the normal flows.
-        $this->assertSame(1, app(ModerationQueue::class)->pendingAppeals());
-        $this->actingAs($admin)->put(route('admin.reports.update', Report::where('legacy_sql_id', $p1)->sole()), ['status' => 'dismissed'])->assertSessionHas('success');
-        $this->assertSame(0, Report::where('status', 'pending')->count());
-        $this->actingAs($admin)->put(route('admin.sanctions.update', $mute), ['appeal_status' => 'approved'])->assertSessionHas('success');
-        $this->assertFalse((bool) $actioned->fresh()->is_hidden);
-        $this->consumeAll();
-        $this->assertSame('ready', app(ModerationAudit::class)->timeline($actionedReport->case_id)['state']);
-    }
-
-    public function test_sql_import_merges_legacy_reports_into_an_existing_live_case(): void
-    {
-        $admin = $this->admin();
-        $author = $this->user();
-        $now = now();
-        // Gate 9.5: before the comment move a live 9b case is keyed by the legacy SQL comment id (an int),
-        // exactly like the legacy SQL reports of the same comment.
-        $commentId = DB::table('comments')->insertGetId(['user_id' => (string) $author->id, 'article_id' => (string) $this->article()->id,
-            'body' => 'Đã có vụ việc mới', 'created_at' => $now, 'updated_at' => $now]);
-        $live = $this->legacyKeyedReport((string) $this->user()->id, $commentId, ['comment_body' => 'Đã có vụ việc mới', 'comment_user_id' => (string) $author->id]);
-        $this->assertSame($commentId, $this->caseOf($live)['comment_id']);
-        $base = ['comment_id' => $commentId, 'reason' => 'spam', 'comment_body' => 'Đã có vụ việc mới', 'comment_user_id' => (string) $author->id, 'created_at' => $now, 'updated_at' => $now];
-        DB::table('reports')->insert($base + ['reporter_id' => 'legacy-pending', 'status' => 'pending']);
-        DB::table('reports')->insert($base + ['reporter_id' => 'legacy-dismissed', 'status' => 'dismissed', 'admin_id' => (string) $admin->id, 'decided_at' => $now]);
-
-        $this->artisan('moderation:import-sql')->expectsOutputToContain('cases_built         0')->expectsOutputToContain('cases_merged        1')->assertExitCode(0);
-        $this->artisan('moderation:import-sql')->expectsOutputToContain('cases_merged        0')->assertExitCode(0);
-
-        $case = $this->caseOf($live);
-        $this->assertSame(['pending', 2, 3], [$case['status'], $case['pending_count'], $case['reports_count']]);
-        $this->assertSame(3, collect($case['events'])->where('type', 'REPORTED')->count());
-        $this->assertSame(1, DB::connection('mongodb')->table('moderation_cases')->count());
-
-        // Gate 9.5: the comment import converts the int refs; still one case, every report on the new id.
-        $this->artisan('comments:import-sql')->expectsOutputToContain('cases_remapped            1')
-            ->expectsOutputToContain('reports_remapped          3')->expectsOutputToContain('cases_merged              0')->assertExitCode(0);
-        $this->artisan('comments:import-sql')->expectsOutputToContain('cases_remapped            0')
-            ->expectsOutputToContain('reports_remapped          0')->assertExitCode(0);
-        $uuid = Comment::where('legacy_sql_id', $commentId)->sole()->id;
-        $case = $this->caseOf($live);
-        $this->assertSame([$uuid, $commentId, 2, 3], [$case['comment_id'], $case['legacy_comment_id'], $case['pending_count'], $case['reports_count']]);
-        $this->assertSame(1, DB::connection('mongodb')->table('moderation_cases')->count());
-        $this->assertSame([$uuid], Report::pluck('comment_id')->unique()->values()->all());
-        $this->assertSame(2, $this->service()->resolveCase($admin, $live, 'dismissed', null));
-        $this->assertSame('dismissed', Report::where('reporter_id', 'legacy-pending')->sole()->status);
-    }
 
     // --- API-token hooks ----------------------------------------------------------------------------
 

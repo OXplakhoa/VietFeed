@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use MongoDB\Driver\Exception\CommandException;
 
 return new class extends Migration
 {
@@ -31,10 +32,23 @@ return new class extends Migration
 
     public function down(): void
     {
-        $mongo = DB::connection('mongodb');
-        $mongo->getCollection('users')->dropIndex('stripe_customer_id_1');
-        $mongo->getCollection('subscriptions')->dropIndex('stripe_subscription_id_1');
-        $mongo->getCollection('subscriptions')->dropIndex('user_id_1');
-        $mongo->getCollection('processed_stripe_events')->dropIndex('type_1');
+        $this->dropIndex('users', 'stripe_customer_id_1');
+        $this->dropIndex('subscriptions', 'stripe_subscription_id_1');
+        $this->dropIndex('subscriptions', 'user_id_1');
+        $this->dropIndex('processed_stripe_events', 'type_1');
+    }
+
+    /** REVIEW-1 m1: a rollback tolerates an index (or collection) that is already gone. */
+    private function dropIndex(string $collection, ?string $index): void
+    {
+        try {
+            $index === null
+                ? DB::connection('mongodb')->getCollection($collection)->dropIndexes()
+                : DB::connection('mongodb')->getCollection($collection)->dropIndex($index);
+        } catch (CommandException $e) {
+            if (! in_array($e->getCode(), [26, 27], true)) { // NamespaceNotFound, IndexNotFound
+                throw $e;
+            }
+        }
     }
 };

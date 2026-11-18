@@ -34,17 +34,6 @@
         {{-- Gate 9b: moderation audit (Mongo outbox -> Redis Stream -> Cassandra moderation_events_by_case) --}}
         <section class="p-3 mb-4 rounded" id="moderation-audit" style="background:var(--surface);border:1px solid var(--border)">
             <h2 class="h4">Kiểm duyệt · lịch sử quyết định</h2>
-            @if($legacyUnimported && ($legacyUnimported['reports'] > 0 || $legacyUnimported['sanctions'] > 0 || ($legacyUnimported['hidden_comments'] ?? 0) > 0))
-                <div role="alert" id="moderation-legacy-warning" style="color:#ef4444">
-                    @if($legacyUnimported['reports'] > 0 || $legacyUnimported['sanctions'] > 0)
-                        <p class="mb-1">Còn {{ $legacyUnimported['reports'] }} báo cáo và {{ $legacyUnimported['sanctions'] }} biện pháp xử lý trong SQL chưa được chuyển sang MongoDB — các biện pháp này chưa có hiệu lực. Chạy <code>php artisan moderation:import-sql</code> (trong chế độ bảo trì).</p>
-                    @endif
-                    {{-- Gate 9.5: comments still hidden by a legacy integer sanction id that has no MongoDB copy. --}}
-                    @if(($legacyUnimported['hidden_comments'] ?? 0) > 0)
-                        <p class="mb-1" id="comment-legacy-warning">Còn {{ $legacyUnimported['hidden_comments'] }} bình luận đang bị ẩn bởi biện pháp xử lý cũ chưa được chuyển sang MongoDB. Chạy <code>php artisan moderation:import-sql</code> rồi <code>php artisan comments:import-sql</code> (trong chế độ bảo trì).</p>
-                    @endif
-                </div>
-            @endif
             @if($moderation === null)
                 <p role="alert">Tạm thời không thể tải tình trạng luồng kiểm duyệt.</p>
             @else

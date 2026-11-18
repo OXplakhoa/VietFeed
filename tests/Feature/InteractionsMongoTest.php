@@ -11,7 +11,6 @@ use App\Models\Bookmark;
 use App\Models\Boost;
 use App\Processing\StreamConsumer;
 use App\StoryProcessing\CassandraClient;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
@@ -24,7 +23,6 @@ use Tests\TestCase;
 class InteractionsMongoTest extends TestCase
 {
     use ModerationFixtures;
-    use RefreshDatabase;
 
     private array $partitions = [];
 
@@ -338,81 +336,6 @@ class InteractionsMongoTest extends TestCase
         $this->actingAs($this->user())->postJson(route('boosts.toggle'), $payload)->assertOk();
     }
 
-    public function test_import_guard_stops_resurrection_when_only_a_legacy_boost_remains(): void
-    {
-        $key = ['user_id' => $this->user()->id, 'article_id' => $this->article()->id];
-        DB::table('bookmarks')->insert($key + ['id' => 41]);
-        DB::table('boosts')->insert($key + ['id' => 42]);
-        $this->artisan('interactions:import-sql')->assertSuccessful();
-        Bookmark::query()->delete();
-
-        $this->artisan('interactions:import-sql')->assertFailed();
-        $this->assertSame(0, Bookmark::count());
-        $this->assertSame(42, Boost::sole()->legacy_sql_id);
-
-        $this->artisan('interactions:import-sql', ['--force' => true])->assertSuccessful();
-        $this->assertSame(41, Bookmark::sole()->legacy_sql_id);
-    }
-
-    public function test_import_preserves_existing_membership_and_emits_only_new_backfill_events(): void
-    {
-        $article = $this->article();
-        $user = $this->user();
-        $existing = Bookmark::create(['user_id' => $user->id, 'article_id' => $article->id]);
-        $legacyUser = $this->user();
-        $time = now('UTC')->subHours(1)->toDateTimeString();
-        foreach (['bookmarks', 'boosts'] as $table) {
-            DB::table($table)->insert([
-                ['id' => 41, 'user_id' => $user->id, 'article_id' => $article->id, 'created_at' => $time, 'updated_at' => $time],
-                ['id' => 42, 'user_id' => $legacyUser->id, 'article_id' => $article->id, 'created_at' => $time, 'updated_at' => $time],
-            ]);
-        }
-
-        $this->artisan('interactions:import-sql', ['--emit' => true])
-            ->expectsOutput('bookmarks inserted=1 existing=1 published=1 publish_failed=0')
-            ->expectsOutput('boosts inserted=2 existing=0 published=2 publish_failed=0')->assertSuccessful();
-        $events = $this->published();
-        $this->assertCount(3, $events);
-        $this->assertSame([true, true, true], array_column($events, 'backfill'));
-        $copy = Bookmark::where('user_id', $legacyUser->id)->sole();
-        $this->assertSame(42, $copy->legacy_sql_id);
-        $this->assertSame($time, $copy->created_at->utc()->toDateTimeString());
-        $this->assertNull($existing->fresh()->legacy_sql_id);
-        $this->artisan('interactions:import-sql', ['--emit' => true])
-            ->expectsOutputToContain('Legacy interactions already exist. Run this import once, in the cutover window.')
-            ->assertFailed();
-        $this->assertSame($events, $this->published());
-        $this->artisan('interactions:import-sql', ['--emit' => true, '--force' => true])
-            ->expectsOutput('bookmarks inserted=0 existing=2 published=0 publish_failed=0')
-            ->expectsOutput('boosts inserted=0 existing=2 published=0 publish_failed=0')->assertSuccessful();
-        $this->assertSame($events, $this->published());
-        $this->assertSame($copy->id, Bookmark::where('legacy_sql_id', 42)->sole()->id);
-        $this->assertSame(2, DB::table('bookmarks')->count());
-        $this->assertSame(2, DB::table('boosts')->count());
-
-        $this->startActivity($legacyUser->id, $article->id);
-        $this->partitions[] = [$user->id, $article->id];
-        $this->assertSame(3, app(InteractionStream::class)->consume('import', 10));
-        $this->assertSame([true, true, true], array_column($this->activityFor('article', $article->id), 'backfill'));
-    }
-
-    public function test_import_without_emit_can_recover_legacy_rows_with_null_timestamps(): void
-    {
-        $key = ['user_id' => $this->user()->id, 'article_id' => $this->article()->id];
-        DB::table('bookmarks')->insert($key + ['id' => 72]);
-
-        $this->artisan('interactions:import-sql')
-            ->expectsOutput('bookmarks inserted=1 existing=0 published=0 publish_failed=0')->assertSuccessful();
-        $this->assertSame([], $this->published());
-        $membership = Bookmark::sole();
-        $this->assertSame(72, $membership->legacy_sql_id);
-        $this->assertTrue(now()->equalTo($membership->created_at));
-        $this->assertTrue(now()->equalTo($membership->updated_at));
-
-        $this->artisan('interactions', ['action' => 'reemit'])->assertSuccessful();
-        $this->assertSame([true], array_column($this->published(), 'backfill'));
-    }
-
     public function test_indexes_are_rerunnable_and_membership_references_are_bson_strings(): void
     {
         $migration = require database_path('migrations/2026_11_18_210001_create_mongodb_interaction_indexes.php');
@@ -430,19 +353,17 @@ class InteractionsMongoTest extends TestCase
         }
     }
 
-    public function test_admin_counts_group_mongo_once_and_application_routes_ignore_legacy_rows(): void
+    public function test_admin_counts_group_mongo_once_on_application_routes(): void
     {
         $admin = $this->admin();
         $user = $this->user();
         $article = $this->article();
-        foreach (['bookmarks' => Bookmark::class, 'boosts' => Boost::class] as $table => $model) {
+        foreach ([Bookmark::class, Boost::class] as $model) {
             $model::create(['user_id' => $admin->id, 'article_id' => $article->id]);
-            DB::table($table)->insert(['user_id' => $user->id, 'article_id' => $article->id]);
         }
         $this->actingAs($admin);
-        $sql = DB::connection();
+        // Gate 9.5 slice 5: the legacy SQL rows and SQL query log are gone (no SQL connection; TestCase guard).
         $mongo = DB::connection('mongodb');
-        $sql->enableQueryLog();
         $mongo->enableQueryLog();
         try {
             foreach (['/', '/bookmarks', '/articles/'.$article->slug, '/admin/dashboard', '/admin/articles?sort=boosts', '/admin/users'] as $path) {
@@ -459,9 +380,7 @@ class InteractionsMongoTest extends TestCase
                     $this->assertSame([1, 0], [$users[$admin->id]->bookmarks_count, $users[$user->id]->bookmarks_count]);
                 }
             }
-            $this->assertSame([], collect($sql->getQueryLog())->filter(fn ($q) => preg_match('/\b(bookmarks|boosts)\b/i', $q['query']))->all());
         } finally {
-            $sql->disableQueryLog();
             $mongo->disableQueryLog();
         }
     }

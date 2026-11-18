@@ -3,7 +3,6 @@
 namespace Tests\Concerns;
 
 use App\SourceHistory\SourceFetchHistory;
-use App\StoryProcessing\CassandraClient;
 
 trait SourceHistoryFixtures
 {
@@ -14,12 +13,5 @@ trait SourceHistoryFixtures
         $history->bootstrap();
 
         return $history;
-    }
-
-    private function clearSourceHistoryImportMarker(): void
-    {
-        $client = app(CassandraClient::class);
-        $this->assertSame('vietfeed_test', $client->keyspace());
-        $client->execute('DELETE FROM vietfeed_test.'.SourceFetchHistory::IMPORTS." WHERE name = 'legacy-sql'")->asVoidResult();
     }
 }

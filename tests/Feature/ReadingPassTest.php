@@ -8,7 +8,6 @@ use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
 use App\Services\ReadingPassService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
@@ -16,8 +15,6 @@ use Tests\TestCase;
 
 class ReadingPassTest extends TestCase
 {
-    use RefreshDatabase;
-
     public function test_guest_gets_five_daily_unlocks(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-03 10:00:00', 'Asia/Ho_Chi_Minh'));

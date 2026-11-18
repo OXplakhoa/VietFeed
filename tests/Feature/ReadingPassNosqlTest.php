@@ -13,7 +13,6 @@ use App\Services\ReadingPassService;
 use App\StoryProcessing\CassandraClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
@@ -32,7 +31,6 @@ class ReadingPassNosqlTest extends TestCase
 {
     use GuardsRedisTestDatabase;
     use ModerationFixtures;
-    use RefreshDatabase;
 
     private const LOCKED = 'Gói đọc VietFeed đã hết lượt';
 
@@ -314,13 +312,13 @@ class ReadingPassNosqlTest extends TestCase
         // Independent PHP processes, each with its own Mongo and Redis connections on the isolated stores.
         $worker = <<<'PHP'
         require getcwd().'/vendor/autoload.php';
-        foreach (['APP_ENV'=>'testing','DB_CONNECTION'=>'sqlite','DB_DATABASE'=>':memory:','MONGO_DB'=>'vietfeed_test','DB_URL'=>'','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','CASSANDRA_KEYSPACE'=>'vietfeed_test','TELESCOPE_ENABLED'=>'false','NIGHTWATCH_ENABLED'=>'false'] as $key=>$value) {
+        foreach (['APP_ENV'=>'testing','MONGO_DB'=>'vietfeed_test','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','CASSANDRA_KEYSPACE'=>'vietfeed_test','TELESCOPE_ENABLED'=>'false','NIGHTWATCH_ENABLED'=>'false'] as $key=>$value) {
             putenv($key.'='.$value); $_ENV[$key]=$value; $_SERVER[$key]=$value;
         }
         if (file_exists(getcwd().'/bootstrap/cache/config.php')) { exit(10); }
         $app = require getcwd().'/bootstrap/app.php';
         $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-        if (config('database.connections.mongodb.database') !== 'vietfeed_test' || config('database.default') !== 'sqlite') { exit(11); }
+        if (config('database.connections.mongodb.database') !== 'vietfeed_test' || config('database.default') !== 'mongodb' || array_keys(config('database.connections')) !== ['mongodb']) { exit(11); }
         foreach (['nosql','default','cache'] as $name) { config(['database.redis.'.$name.'.url'=>null,'database.redis.'.$name.'.database'=>15]); }
         foreach (['nosql','default','cache'] as $name) { if (\Illuminate\Support\Facades\Redis::connection($name)->client()->getDbNum() !== 15) { exit(12); } }
         $service = app(\App\Services\ReadingPassService::class);
@@ -501,46 +499,6 @@ class ReadingPassNosqlTest extends TestCase
         $this->assertSame(1, ArticleUnlock::where('article_id', $slow->id)->count());
     }
 
-    public function test_import_copies_once_by_natural_key_and_invalidates_windows(): void
-    {
-        $this->at('2026-06-03 12:00:00');
-        $user = $this->user();
-        $existing = ArticleUnlock::create(['user_id' => $user->id, 'article_id' => 'art-1', 'unlocked_at' => now()->subHour()]);
-        $time = now('UTC')->subHours(2)->format('Y-m-d H:i:s');
-        DB::table('article_unlocks')->insert([
-            ['id' => 11, 'article_id' => 'art-1', 'user_id' => $user->id, 'session_id' => null, 'unlocked_at' => $time],
-            ['id' => 12, 'article_id' => 'art-2', 'user_id' => $user->id, 'session_id' => null, 'unlocked_at' => $time],
-            ['id' => 13, 'article_id' => 'art-2', 'user_id' => null, 'session_id' => 'legacy-session', 'unlocked_at' => $time],
-            ['id' => 14, 'article_id' => 'art-3', 'user_id' => null, 'session_id' => null, 'unlocked_at' => $time],
-        ]);
-        $this->service()->allowance($user);
-        $this->service()->accessOrLock($this->article('before-import'), $user);
-        $subject = UnlockLedger::userSubject($user->id);
-        $this->assertCount(3, $this->windowMembers($subject));
-        $generation = app(ReadingPassQuota::class)->generation();
-
-        $this->artisan('unlocks:import-sql', ['--emit' => true])
-            ->expectsOutput('article_unlocks inserted=2 existing=1 skipped=1 published=2 publish_failed=0')->assertSuccessful();
-        $this->assertNotSame($generation, app(ReadingPassQuota::class)->generation());
-        $this->assertNull($existing->fresh()->legacy_sql_id);
-        $copy = ArticleUnlock::where('legacy_sql_id', 12)->sole();
-        $this->assertSame([$user->id, 'granted', 'import', $time], [$copy->user_id, $copy->state, $copy->origin, $copy->unlocked_at->utc()->format('Y-m-d H:i:s')]);
-        $guest = ArticleUnlock::where('legacy_sql_id', 13)->sole();
-        $this->assertSame([null, UnlockLedger::sessionHash('legacy-session')], [$guest->user_id, $guest->session_hash]);
-        $this->assertSame(3, $this->service()->allowance($user)['used'], 'window rebuilt lazily with the imported unlock');
-        $this->service()->accessOrLock($this->article('after-import'), $user);
-        $this->assertContains('g:art-2', $this->windowMembers($subject));
-        $events = array_map(fn ($entry) => json_decode($entry['event'], true), array_values(Redis::connection('nosql')->client()->xRange(ReadingPassHistory::STREAM, '-', '+')));
-        $this->assertSame([true, true], array_values(array_column(array_filter($events, fn ($e) => $e['origin'] === 'import'), 'backfill')));
-
-        $this->artisan('unlocks:import-sql')->expectsOutputToContain('Legacy unlocks already exist. Run this import once, in the cutover window.')->assertFailed();
-        $copy->delete();
-        $this->artisan('unlocks:import-sql', ['--force' => true])
-            ->expectsOutput('article_unlocks inserted=1 existing=2 skipped=1 published=0 publish_failed=0')->assertSuccessful();
-        $this->assertSame(5, ArticleUnlock::count());
-        $this->assertSame(4, DB::table('article_unlocks')->count(), 'the SQL table is left in place');
-    }
-
     public function test_history_projects_to_cassandra_idempotently_with_dlq_replay_and_reemit(): void
     {
         $this->at('2026-06-03 12:00:00');
@@ -652,7 +610,7 @@ class ReadingPassNosqlTest extends TestCase
         $this->assertContains('g:'.$outage->id, $this->windowMembers($subject));
     }
 
-    public function test_missing_generation_key_means_not_built_and_imported_unlocks_are_counted(): void
+    public function test_missing_generation_key_means_not_built_and_out_of_band_ledger_rows_are_counted(): void
     {
         $this->at('2026-06-03 12:00:00');
         $redis = Redis::connection('nosql')->client();
@@ -661,8 +619,10 @@ class ReadingPassNosqlTest extends TestCase
         $subject = UnlockLedger::userSubject($user->id);
         $this->service()->accessOrLock($this->article('gen-before'), $user);
         $this->assertIsString($redis->get(ReadingPassQuota::GEN), 'rebuild creates a generation with SET NX');
-        DB::table('article_unlocks')->insert(['id' => 7, 'article_id' => 'gen-legacy', 'user_id' => $user->id, 'session_id' => null, 'unlocked_at' => now('UTC')->subHour()]);
-        $this->artisan('unlocks:import-sql')->assertSuccessful();
+        // A granted ledger row written outside the quota window (formerly by the removed SQL import).
+        app(UnlockLedger::class)->collection()->insertOne(['_id' => (string) Str::uuid7(), 'subject' => $subject, 'user_id' => (string) $user->id,
+            'session_hash' => null, 'article_id' => 'gen-legacy', 'state' => UnlockLedger::GRANTED, 'unlocked_at' => UnlockLedger::date(now('UTC')->subHour()),
+            'tier' => null, 'origin' => 'seed', 'created_at' => UnlockLedger::date(now('UTC')), 'updated_at' => UnlockLedger::date(now('UTC'))]);
 
         $redis->del(ReadingPassQuota::GEN); // evicted
         $this->assertSame(2, $this->service()->allowance($user)['used'], 'no generation: answered from MongoDB');
@@ -702,13 +662,13 @@ class ReadingPassNosqlTest extends TestCase
     {
         $boot = <<<'PHP'
         require getcwd().'/vendor/autoload.php';
-        foreach (['APP_ENV'=>'testing','DB_CONNECTION'=>'sqlite','DB_DATABASE'=>':memory:','MONGO_DB'=>'vietfeed_test','DB_URL'=>'','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','CASSANDRA_KEYSPACE'=>'vietfeed_test','TELESCOPE_ENABLED'=>'false','NIGHTWATCH_ENABLED'=>'false'] as $key=>$value) {
+        foreach (['APP_ENV'=>'testing','MONGO_DB'=>'vietfeed_test','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','CASSANDRA_KEYSPACE'=>'vietfeed_test','TELESCOPE_ENABLED'=>'false','NIGHTWATCH_ENABLED'=>'false'] as $key=>$value) {
             putenv($key.'='.$value); $_ENV[$key]=$value; $_SERVER[$key]=$value;
         }
         if (file_exists(getcwd().'/bootstrap/cache/config.php')) { exit(10); }
         $app = require getcwd().'/bootstrap/app.php';
         $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-        if (config('database.connections.mongodb.database') !== 'vietfeed_test' || config('database.default') !== 'sqlite') { exit(11); }
+        if (config('database.connections.mongodb.database') !== 'vietfeed_test' || config('database.default') !== 'mongodb' || array_keys(config('database.connections')) !== ['mongodb']) { exit(11); }
         foreach (['nosql','default','cache'] as $name) { config(['database.redis.'.$name.'.url'=>null,'database.redis.'.$name.'.database'=>15]); }
         foreach (['nosql','default','cache'] as $name) { if (\Illuminate\Support\Facades\Redis::connection($name)->client()->getDbNum() !== 15) { exit(12); } }
         echo "ready\n"; fflush(STDOUT);
@@ -737,7 +697,7 @@ class ReadingPassNosqlTest extends TestCase
         return $output;
     }
 
-    public function test_only_the_import_reads_sql_article_unlocks(): void
+    public function test_no_code_reads_sql_article_unlocks(): void
     {
         $hits = [];
         foreach (['app', 'routes', 'resources', 'database/seeders'] as $dir) {
@@ -747,14 +707,13 @@ class ReadingPassNosqlTest extends TestCase
                 }
             }
         }
-        $this->assertSame(['app/ReadingPass/ReadingPassSqlImport.php'], $hits);
+        $this->assertSame([], $hits, 'Gate 9.5 slice 5: the SQL import was removed');
         $this->assertSame('mongodb', (new ArticleUnlock)->getConnectionName());
 
         $this->at('2026-06-03 12:00:00');
         $user = $this->user();
         $article = $this->article('runtime-proof');
         $admin = $this->admin();
-        DB::table('article_unlocks')->insert(['id' => 99, 'article_id' => $article->id, 'user_id' => $user->id, 'session_id' => null, 'unlocked_at' => now('UTC')]);
         $sql = [];
         Event::listen(QueryExecuted::class, function (QueryExecuted $q) use (&$sql) {
             if ($q->connectionName !== 'mongodb') {
@@ -768,9 +727,9 @@ class ReadingPassNosqlTest extends TestCase
             $this->actingAs($admin)->get($path)->assertOk();
         }
         $this->artisan('unlocks:cleanup')->assertSuccessful();
-        DB::select('select 1');
-        $this->assertNotEmpty($sql, 'the listener sees SQL traffic');
-        $this->assertSame([], array_values(array_filter($sql, fn ($s) => preg_match('/\barticle_unlocks\b/i', $s))));
+        // Gate 9.5 slice 5: no SQL connection is configured, so nothing reaches SQL at all.
+        $this->assertSame([], $sql);
+        $this->assertSame(['mongodb'], array_keys(DB::getConnections()));
     }
 
     public function test_indexes_are_rerunnable_and_references_are_bson_strings(): void

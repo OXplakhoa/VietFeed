@@ -4,14 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\Report;
 use App\Models\Sanction;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\ModerationFixtures;
 use Tests\TestCase;
 
 /** Gate 9a, admin side: rules 5-9 (reports inbox, case page, statuses, sanction/dismiss from a case). */
 class ModerationAdminCaseTest extends TestCase
 {
-    use ModerationFixtures, RefreshDatabase;
+    use ModerationFixtures;
 
     // Rule 5 (D2, D3)
     public function test_inbox_lists_cases_newest_first_grouped_by_comment_with_counts(): void

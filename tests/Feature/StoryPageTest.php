@@ -9,7 +9,6 @@ use App\Models\User;
 use App\StoryProcessing\StoryPipeline;
 use App\StoryProcessing\StoryTimeline;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Redis\Connections\PhpRedisConnection;
 use Illuminate\Redis\RedisManager;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +22,7 @@ use Tests\TestCase;
 
 class StoryPageTest extends TestCase
 {
-    use GuardsRedisTestDatabase, RefreshDatabase;
+    use GuardsRedisTestDatabase;
 
     protected function setUp(): void
     {

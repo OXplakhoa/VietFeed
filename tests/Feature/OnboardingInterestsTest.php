@@ -4,15 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 // Gate 3 T2: onboarding interests round-trip on embedded favorite_category_ids
 // (category_user pivot retired for user writes).
 class OnboardingInterestsTest extends TestCase
 {
-    use RefreshDatabase;
-
     public function test_interests_save_embeds_ids_and_show_preselects(): void
     {
         $user = User::factory()->create();
