@@ -21,7 +21,8 @@ use Throwable;
  * Gate 9b: reports, sanctions and the per-comment case document live on MongoDB (standalone, no
  * transactions). Each rule is one conditional single-document write; follow-up writes (report
  * settlement, comment hide/unhide, audit publish, queue sync) are idempotent and converge through
- * {@see repair()}. Comments stay on SQL until Gate 9.5. Evidence is never hard-deleted.
+ * {@see repair()}. Gate 9.5: comments are MongoDB documents too; hide/unhide are single-document
+ * conditional updates on the comment. Evidence is never hard-deleted.
  */
 class ModerationService
 {
@@ -57,7 +58,7 @@ class ModerationService
         }
 
         $duplicate = new ModerationException('Bạn đã báo cáo bình luận này rồi.');
-        if (Report::where('reporter_id', (string) $reporter->id)->where('comment_id', $comment->id)->exists()) {
+        if (Report::where('reporter_id', (string) $reporter->id)->where('comment_id', (string) $comment->id)->exists()) {
             throw $duplicate;
         }
 
@@ -65,7 +66,7 @@ class ModerationService
             // Unique {reporter_id, comment_id} index: a concurrent duplicate fails here with no record.
             return Report::create([
                 'reporter_id' => (string) $reporter->id,
-                'comment_id' => $comment->id,
+                'comment_id' => (string) $comment->id,
                 'reason' => $reason,
                 'description' => $description,
                 'status' => 'pending',
@@ -328,7 +329,7 @@ class ModerationService
     private function sweepCommentsOfLiftedSanctions(): int
     {
         $count = 0;
-        Comment::whereNotNull('hidden_by_sanction_id')->distinct()->pluck('hidden_by_sanction_id')
+        collect($this->collection('comments')->distinct('hidden_by_sanction_id', ['hidden_by_sanction_id' => ['$ne' => null]]))
             ->chunk(500)->each(function ($ids) use (&$count) {
                 $lifted = Sanction::whereIn('_id', $ids->map(fn ($id) => (string) $id)->values()->all())
                     ->where(fn ($q) => $q->whereNotNull('revoked_at')->orWhere('is_active', false))->get(['_id', 'revoked_by', 'admin_id']);
@@ -415,10 +416,13 @@ class ModerationService
 
             return;
         }
-        // Only a currently visible comment is taken over; one already hidden by another sanction keeps its owner.
-        Comment::where('id', $case['comment_id'])->where('is_hidden', false)->update(['is_hidden' => true, 'hidden_by_sanction_id' => $sanctionId]);
-        $comment = Comment::find($case['comment_id']);
-        $applied = $comment !== null && $comment->is_hidden && (string) $comment->hidden_by_sanction_id === $sanctionId;
+        // Single-document conditional update: only a currently visible comment is taken over; one already
+        // hidden by another sanction keeps its owner (owner decision 1, R4).
+        $commentId = (string) $case['comment_id'];
+        $this->collection('comments')->updateOne(['_id' => $commentId, 'is_hidden' => ['$ne' => true]],
+            ['$set' => ['is_hidden' => true, 'hidden_by_sanction_id' => $sanctionId, 'updated_at' => new UTCDateTime(now())]]);
+        $comment = $this->collection('comments')->findOne(['_id' => $commentId], ['projection' => ['is_hidden' => 1, 'hidden_by_sanction_id' => 1]]);
+        $applied = $comment !== null && ($comment['is_hidden'] ?? false) === true && (string) ($comment['hidden_by_sanction_id'] ?? '') === $sanctionId;
         // Re-check BEFORE recording the outcome: a revoke that ran between our check and the hide must win.
         if ($applied && $lifted(Sanction::find($sanctionId))) {
             $this->unhideComments($sanctionId, $decision['admin_id']);
@@ -427,7 +431,7 @@ class ModerationService
             return;
         }
         if ($this->cases->markHide($caseId, $opId, $applied ? 'applied' : 'skipped') && $applied) {
-            $this->sanctionWrite($sanctionId, [], [], [['COMMENT_HIDDEN', $decision['admin_id'], null, ['comment_id' => (int) $case['comment_id']]]]);
+            $this->sanctionWrite($sanctionId, [], [], [['COMMENT_HIDDEN', $decision['admin_id'], null, ['comment_id' => $commentId]]]);
         }
     }
 
@@ -443,10 +447,10 @@ class ModerationService
         }
     }
 
-    /** Apply the recorded unhide decision on SQL (idempotent) and clear the marker. */
+    /** Apply the recorded unhide decision (idempotent: only comments still hidden by this sanction) and clear the marker. */
     private function finishUnhide(string $sanctionId): void
     {
-        Comment::where('hidden_by_sanction_id', $sanctionId)->update(['is_hidden' => false, 'hidden_by_sanction_id' => null]);
+        $this->collection('comments')->updateMany(['hidden_by_sanction_id' => $sanctionId], $this->unhideUpdate());
         $this->collection()->updateOne(['_id' => $sanctionId], ['$unset' => ['unhide_pending' => '']]);
     }
 
@@ -454,11 +458,11 @@ class ModerationService
     private function unhideComments(string $sanctionId, ?string $actorId): int
     {
         $count = 0;
-        foreach (Comment::where('hidden_by_sanction_id', $sanctionId)->pluck('id') as $commentId) {
-            $changed = Comment::where('id', $commentId)->where('hidden_by_sanction_id', $sanctionId)
-                ->update(['is_hidden' => false, 'hidden_by_sanction_id' => null]);
+        foreach ($this->commentsHiddenBy($sanctionId) as $commentId) {
+            // Conditional on this very sanction: a comment re-hidden by another sanction is never unhidden.
+            $changed = $this->collection('comments')->updateOne(['_id' => $commentId, 'hidden_by_sanction_id' => $sanctionId], $this->unhideUpdate())->getModifiedCount();
             if ($changed > 0) {
-                $this->sanctionWrite($sanctionId, [], [], [['COMMENT_UNHIDDEN', $actorId, null, ['comment_id' => (int) $commentId]]]);
+                $this->sanctionWrite($sanctionId, [], [], [['COMMENT_UNHIDDEN', $actorId, null, ['comment_id' => $commentId]]]);
                 $count++;
             }
         }
@@ -466,15 +470,27 @@ class ModerationService
         return $count;
     }
 
-    /** COMMENT_UNHIDDEN decisions recorded in the same write as the revoke (applied on SQL right after). */
+    /** COMMENT_UNHIDDEN decisions recorded in the same write as the revoke (applied to the comments right after). */
     private function revokeEvents(string $sanctionId, User $admin, ?string $note): array
     {
         $events = [['SANCTION_REVOKED', (string) $admin->id, $note, []]];
-        foreach (Comment::where('hidden_by_sanction_id', $sanctionId)->pluck('id') as $commentId) {
-            $events[] = ['COMMENT_UNHIDDEN', (string) $admin->id, null, ['comment_id' => (int) $commentId]];
+        foreach ($this->commentsHiddenBy($sanctionId) as $commentId) {
+            $events[] = ['COMMENT_UNHIDDEN', (string) $admin->id, null, ['comment_id' => $commentId]];
         }
 
         return $events;
+    }
+
+    /** @return list<string> ids of the comments currently hidden by this sanction */
+    private function commentsHiddenBy(string $sanctionId): array
+    {
+        return array_map(fn ($doc) => (string) $doc['_id'],
+            $this->collection('comments')->find(['hidden_by_sanction_id' => $sanctionId], ['projection' => ['_id' => 1]])->toArray());
+    }
+
+    private function unhideUpdate(): array
+    {
+        return ['$set' => ['is_hidden' => false, 'hidden_by_sanction_id' => null, 'updated_at' => new UTCDateTime(now())]];
     }
 
     private function revocation(User $admin, ?string $note, string $via): array

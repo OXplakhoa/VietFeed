@@ -72,7 +72,7 @@ cho các bước còn lại.
     mọi thao tác kiểm duyệt vẫn thành công. Sau khi Cassandra hoạt động lại: **Xử lý Story** (`/admin/processing`) → mục
     *Kiểm duyệt · lịch sử quyết định* → **Thử lại** các mục DLQ, rồi chạy consume.
 12. **Kiểm tra trực tiếp trên từng CSDL.**
-    - `mongosh`: `db.getSiblingDB('vietfeed').moderation_cases.findOne({comment_id: <id>})` (trạng thái, `version`, `decisions`, `events`).
+    - `mongosh`: `db.getSiblingDB('vietfeed').moderation_cases.findOne({comment_id: '<comment-uuid>'})` (trạng thái, `version`, `decisions`, `events`).
     - `redis-cli` (DB NoSQL đã cấu hình): `ZREVRANGE <prefix>moderation:queue:v1 0 -1 WITHSCORES`.
     - `cqlsh`: `SELECT occurred_at, type, actor_id, case_version, note FROM vietfeed.moderation_events_by_case WHERE case_id = <case-uuid>;`
       (`case_id` lấy từ `moderation_cases._id`; biện pháp không qua báo cáo dùng chính id của biện pháp).

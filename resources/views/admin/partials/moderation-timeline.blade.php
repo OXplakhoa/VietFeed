@@ -17,7 +17,8 @@
         @endif
         <ol class="list-unstyled mb-0">
             @forelse($timeline['events'] as $event)
-                <li class="py-2" style="border-bottom:1px solid var(--border);font-size:.85rem">
+                {{-- Gate 9.5: `comment` is the string comment_ref, or the legacy comment_id bigint of older rows. --}}
+                <li class="py-2" style="border-bottom:1px solid var(--border);font-size:.85rem" @if(! empty($event['comment'])) data-comment="{{ $event['comment'] }}" @endif>
                     <strong style="color:var(--text)">{{ $eventLabels[$event['type']] ?? $event['type'] }}</strong>
                     <span style="color:var(--text-muted)">· {{ \Carbon\CarbonImmutable::parse($event['occurred_at'])->timezone('Asia/Ho_Chi_Minh')->format('d/m/Y H:i') }}
                         · {{ $event['actor_name'] ?? 'Người dùng đã xóa' }} · {{ isset($event['case_version']) ? 'vụ việc v'.$event['case_version'] : 'biện pháp v'.($event['aggregate_version'] ?? '') }}</span>

@@ -1095,7 +1095,7 @@ class ApiTokensTest extends TestCase
             'report_id' => $report->id, 'comment_id' => $comment->id,
         ])->assertRedirect('/admin/sanctions')->assertSessionHas('error', 'Không thể áp dụng biện pháp xử lý. Vui lòng thử lại.')->assertSessionMissing('success');
         $this->assertSame(0, Sanction::count());
-        $this->assertSame($beforeComment, $comment->fresh()->getAttributes());
+        $this->assertEquals($beforeComment, $comment->fresh()->getAttributes()); // Gate 9.5: comment on Mongo, same reason as below
         $this->assertEquals($beforeReport, $report->fresh()->getAttributes()); // Gate 9b: Mongo dates hydrate as new Carbon instances
         $this->assertSame(count($beforeTokens), count($redis->keys('*')));
         foreach ($beforeTokens as $key => $value) {

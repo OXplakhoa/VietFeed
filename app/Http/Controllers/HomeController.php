@@ -10,6 +10,7 @@ use App\Models\Category;
 use App\Models\Comment;
 use App\Models\Source;
 use App\Models\User;
+use App\Support\MongoCounts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
@@ -31,7 +32,8 @@ class HomeController extends Controller
             ->whereNotNull('image_url')
             ->get();
         $bmCounts = Bookmark::select('article_id')->selectRaw('COUNT(*) as n')->groupBy('article_id')->pluck('n', 'article_id');
-        $cmCounts = Comment::select('article_id')->selectRaw('COUNT(*) as n')->groupBy('article_id')->pluck('n', 'article_id');
+        // Gate 9.5: comments live on Mongo — one native $group per request.
+        $cmCounts = MongoCounts::group(Comment::class, 'article_id');
         $now = now();
         $ranked = $candidates->map(function ($article) use ($bmCounts, $cmCounts, $now) {
             $hoursOld = max(0, ($now->timestamp - ($article->published_at?->timestamp ?? $now->timestamp)) / 3600);

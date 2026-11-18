@@ -15,6 +15,10 @@ use MongoDB\BSON\UTCDateTime;
  * still reads those SQL tables (they are dropped in Gate 9.5). Idempotent: every imported document
  * carries `legacy_sql_id` (unique index) and is inserted once with its backfill events, so a rerun or
  * a rerun after a crash skips what exists and finishes the rest.
+ *
+ * Gate 9.5: comment references stay legacy SQL integers here (every legacy moderation ref is an int
+ * before the comment move); `comments:import-sql` is the single place that converts them to the
+ * comment's MongoDB string id, so it must run after this import.
  */
 final class SqlImport
 {
@@ -110,7 +114,10 @@ final class SqlImport
      * Cutover health check: legacy SQL rows that have no `legacy_sql_id` copy in MongoDB yet (their
      * sanctions are NOT enforced until `moderation:import-sql` runs).
      *
-     * @return array{reports: int, sanctions: int}
+     * Gate 9.5: also counts MongoDB comments still hidden by a legacy integer sanction id (no imported
+     * sanction to relink to; `comments:import-sql` relinks them once the sanction exists).
+     *
+     * @return array{reports: int, sanctions: int, hidden_comments: int}
      */
     public function unimported(): array
     {
@@ -124,6 +131,8 @@ final class SqlImport
             $imported = array_flip(array_map('intval', $this->collection($table)->distinct('legacy_sql_id', ['legacy_sql_id' => ['$exists' => true]])));
             $missing[$table] = DB::table($table)->pluck('id')->reject(fn ($id) => isset($imported[(int) $id]))->count();
         }
+
+        $missing['hidden_comments'] = $this->collection('comments')->countDocuments(['hidden_by_sanction_id' => ['$regex' => '^[0-9]+$']]);
 
         return $missing;
     }

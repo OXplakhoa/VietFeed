@@ -704,9 +704,12 @@ class ModerationNosqlTest extends TestCase
         $admin = $this->admin();
         $author = $this->user();
         $article = $this->article();
-        $pending = $this->comment($author, $article, 'Đang chờ từ SQL');
-        $actioned = $this->comment($author, $article, 'Đã xử lý từ SQL');
         $now = now();
+        // Gate 9.5: legacy rows reference legacy SQL comments (integer ids); comments:import-sql moves them after this import.
+        $sqlComment = fn (string $body) => DB::table('comments')->insertGetId(['user_id' => (string) $author->id, 'article_id' => (string) $article->id,
+            'body' => $body, 'created_at' => $now, 'updated_at' => $now]);
+        $pending = (object) ['id' => $sqlComment('Đang chờ từ SQL')];
+        $actioned = (object) ['id' => $sqlComment('Đã xử lý từ SQL')];
         $legacy = fn (array $row) => DB::table('reports')->insertGetId($row + ['reason' => 'spam', 'created_at' => $now, 'updated_at' => $now,
             'comment_user_id' => (string) $author->id, 'comment_article_id' => (string) $article->id]);
         $p1 = $legacy(['reporter_id' => 'legacy-r1', 'comment_id' => $pending->id, 'status' => 'pending', 'comment_body' => 'Đang chờ từ SQL']);
@@ -731,6 +734,11 @@ class ModerationNosqlTest extends TestCase
             ->expectsOutputToContain('events_published    0')->assertExitCode(0);
         $this->assertSame([3, 2, 2], $snapshot);
         $this->assertSame($snapshot, [Report::count(), Sanction::count(), DB::connection('mongodb')->table('moderation_cases')->count()]);
+        // Gate 9.5 cutover order: drain the audit consumer, import comments, re-emit the remapped canonical events.
+        $this->consumeAll();
+        $this->artisan('comments:import-sql')->assertExitCode(0);
+        $this->artisan('moderation:audit', ['action' => 'reemit'])->assertExitCode(0);
+        $actioned = Comment::where('legacy_sql_id', $actioned->id)->sole();
 
         $mute = Sanction::where('legacy_sql_id', $s1)->sole();
         $actionedReport = Report::where('legacy_sql_id', $a1)->sole();
@@ -761,10 +769,14 @@ class ModerationNosqlTest extends TestCase
     {
         $admin = $this->admin();
         $author = $this->user();
-        $comment = $this->comment($author, $this->article(), 'Đã có vụ việc mới');
-        $live = $this->report($this->user(), $comment);
         $now = now();
-        $base = ['comment_id' => $comment->id, 'reason' => 'spam', 'comment_body' => 'Đã có vụ việc mới', 'comment_user_id' => (string) $author->id, 'created_at' => $now, 'updated_at' => $now];
+        // Gate 9.5: before the comment move a live 9b case is keyed by the legacy SQL comment id (an int),
+        // exactly like the legacy SQL reports of the same comment.
+        $commentId = DB::table('comments')->insertGetId(['user_id' => (string) $author->id, 'article_id' => (string) $this->article()->id,
+            'body' => 'Đã có vụ việc mới', 'created_at' => $now, 'updated_at' => $now]);
+        $live = $this->legacyKeyedReport((string) $this->user()->id, $commentId, ['comment_body' => 'Đã có vụ việc mới', 'comment_user_id' => (string) $author->id]);
+        $this->assertSame($commentId, $this->caseOf($live)['comment_id']);
+        $base = ['comment_id' => $commentId, 'reason' => 'spam', 'comment_body' => 'Đã có vụ việc mới', 'comment_user_id' => (string) $author->id, 'created_at' => $now, 'updated_at' => $now];
         DB::table('reports')->insert($base + ['reporter_id' => 'legacy-pending', 'status' => 'pending']);
         DB::table('reports')->insert($base + ['reporter_id' => 'legacy-dismissed', 'status' => 'dismissed', 'admin_id' => (string) $admin->id, 'decided_at' => $now]);
 
@@ -775,6 +787,17 @@ class ModerationNosqlTest extends TestCase
         $this->assertSame(['pending', 2, 3], [$case['status'], $case['pending_count'], $case['reports_count']]);
         $this->assertSame(3, collect($case['events'])->where('type', 'REPORTED')->count());
         $this->assertSame(1, DB::connection('mongodb')->table('moderation_cases')->count());
+
+        // Gate 9.5: the comment import converts the int refs; still one case, every report on the new id.
+        $this->artisan('comments:import-sql')->expectsOutputToContain('cases_remapped            1')
+            ->expectsOutputToContain('reports_remapped          3')->expectsOutputToContain('cases_merged              0')->assertExitCode(0);
+        $this->artisan('comments:import-sql')->expectsOutputToContain('cases_remapped            0')
+            ->expectsOutputToContain('reports_remapped          0')->assertExitCode(0);
+        $uuid = Comment::where('legacy_sql_id', $commentId)->sole()->id;
+        $case = $this->caseOf($live);
+        $this->assertSame([$uuid, $commentId, 2, 3], [$case['comment_id'], $case['legacy_comment_id'], $case['pending_count'], $case['reports_count']]);
+        $this->assertSame(1, DB::connection('mongodb')->table('moderation_cases')->count());
+        $this->assertSame([$uuid], Report::pluck('comment_id')->unique()->values()->all());
         $this->assertSame(2, $this->service()->resolveCase($admin, $live, 'dismissed', null));
         $this->assertSame('dismissed', Report::where('reporter_id', 'legacy-pending')->sole()->status);
     }

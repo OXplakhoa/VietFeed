@@ -34,9 +34,9 @@ class ModerationAdminCaseTest extends TestCase
         $response->assertOk()->assertSeeInOrder(['Bình luận mới bị báo cáo', 'Bình luận cũ bị báo cáo'])->assertSee('Tác Giả Bị Báo');
         $cases = $response->viewData('cases');
         $this->assertCount(2, $cases);
-        $this->assertSame($new->id, (int) $cases[0]->comment_id);
+        $this->assertSame($new->id, (string) $cases[0]->comment_id);
         $this->assertSame(1, (int) $cases[0]->reports_count);
-        $this->assertSame($old->id, (int) $cases[1]->comment_id);
+        $this->assertSame($old->id, (string) $cases[1]->comment_id);
         $this->assertSame(2, (int) $cases[1]->reports_count);
     }
 

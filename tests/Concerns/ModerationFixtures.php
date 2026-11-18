@@ -9,12 +9,14 @@ use App\Models\Report;
 use App\Models\Sanction;
 use App\Models\Source;
 use App\Models\User;
+use App\Moderation\ModerationCases;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 
 /**
  * Shared fixtures for the Moderation*Test acceptance suites (Gate 9a).
- * Users/articles/reports/sanctions live on the isolated Mongo test database (Gate 9b), comments on
- * SQLite :memory:, the moderation queue and audit stream on Redis DB15.
+ * Users/articles/reports/sanctions (Gate 9b) and comments (Gate 9.5) live on the isolated Mongo test
+ * database, the moderation queue and audit stream on Redis DB15.
  */
 trait ModerationFixtures
 {
@@ -51,7 +53,7 @@ trait ModerationFixtures
         ]);
     }
 
-    protected function comment(User $author, Article $article, string $body = 'Bình luận cần xem xét', ?int $parentId = null): Comment
+    protected function comment(User $author, Article $article, string $body = 'Bình luận cần xem xét', ?string $parentId = null): Comment
     {
         return Comment::create([
             'user_id' => (string) $author->id, 'article_id' => (string) $article->id,
@@ -66,6 +68,22 @@ trait ModerationFixtures
             'reason' => 'Vi phạm quy định', 'is_active' => true,
             'expires_at' => in_array($type, ['mute', 'temporary_ban'], true) ? now()->addDays(3) : null,
         ], $attributes));
+    }
+
+    /**
+     * Gate 9.5: a pending report and its case exactly as 9b runtime stored them, keyed by a legacy SQL
+     * comment id (an int, or a numeric string from a faulty earlier run). Not creatable through the app.
+     */
+    protected function legacyKeyedReport(string $reporterId, int|string $commentId, array $attributes = []): Report
+    {
+        $report = Report::withoutEvents(fn () => Report::create($attributes + ['reporter_id' => $reporterId, 'comment_id' => 'fixture', 'reason' => 'spam']));
+        DB::connection('mongodb')->getMongoDB()->selectCollection('reports')->updateOne(['_id' => (string) $report->id], ['$set' => ['comment_id' => $commentId]]);
+        $cases = app(ModerationCases::class);
+        $caseId = $cases->ensureFor(Report::find($report->id));
+        Report::where('_id', $report->id)->update(['case_id' => $caseId]);
+        $cases->register(Report::find($report->id));
+
+        return Report::find($report->id);
     }
 
     protected function report(User $reporter, Comment $comment, array $attributes = []): Report

@@ -6,6 +6,7 @@ use App\Models\Comment;
 use App\Moderation\ModerationException;
 use App\Moderation\ModerationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class ReportController extends Controller
 {
@@ -17,7 +18,7 @@ class ReportController extends Controller
         ]);
 
         // Resolved by hand so a deleted comment gets a message instead of a 404.
-        $target = ctype_digit($comment) ? Comment::find((int) $comment) : null;
+        $target = Str::isUuid($comment) ? Comment::find($comment) : null;
 
         try {
             $moderation->reportComment($request->user(), $target, $data['reason'], $data['description'] ?? null);

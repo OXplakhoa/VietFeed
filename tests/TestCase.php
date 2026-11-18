@@ -31,8 +31,8 @@ abstract class TestCase extends BaseTestCase
     protected function tearDown(): void
     {
         $this->assertSame('vietfeed_test', DB::connection('mongodb')->getDatabaseName());
-        // Gate 9b: moderation documents (reports, sanctions, cases) also live on Mongo.
-        foreach (['categories', 'sources', 'users', 'articles', 'stories', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases'] as $collection) {
+        // Gate 9b: moderation documents (reports, sanctions, cases) also live on Mongo; Gate 9.5: comments too.
+        foreach (['categories', 'sources', 'users', 'articles', 'stories', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases', 'comments', 'reports_duplicates'] as $collection) {
             DB::connection('mongodb')->table($collection)->delete();
         }
 
