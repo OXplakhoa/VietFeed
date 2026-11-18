@@ -4,6 +4,7 @@ namespace Tests;
 
 use App\ReadingPass\ReadingPassHistory;
 use App\ReadingPass\ReadingPassQuota;
+use App\SourceHistory\SourceFetchHistory;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -47,6 +48,7 @@ abstract class TestCase extends BaseTestCase
         $this->assertSame(15, $redis->getDbNum());
         $redis->set(ReadingPassQuota::GEN, (string) Str::uuid7());
         $redis->del([ReadingPassHistory::STREAM, ReadingPassHistory::DLQ, ReadingPassHistory::ERRORS]);
+        $redis->del([SourceFetchHistory::STREAM, SourceFetchHistory::DLQ, SourceFetchHistory::ERRORS]);
 
         parent::tearDown();
     }

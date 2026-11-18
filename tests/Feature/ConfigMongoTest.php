@@ -8,9 +8,9 @@ use App\Jobs\FetchSourceFeedJob;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Source;
-use App\Models\SourceFetchLog;
 use App\Models\Story;
 use App\Models\User;
+use App\SourceHistory\SourceFetchAttempt;
 use Database\Seeders\CategorySeeder;
 use Database\Seeders\SourceSeeder;
 use Illuminate\Cache\ArrayStore;
@@ -24,12 +24,14 @@ use Illuminate\Support\Str;
 use MongoDB\Driver\Exception\BulkWriteException;
 use Ramsey\Uuid\Uuid;
 use Tests\Concerns\GuardsRedisTestDatabase;
+use Tests\Concerns\SourceHistoryFixtures;
 use Tests\TestCase;
 
 class ConfigMongoTest extends TestCase
 {
     use GuardsRedisTestDatabase;
     use RefreshDatabase;
+    use SourceHistoryFixtures;
 
     private function category(string $slug = 'topic'): Category
     {
@@ -66,11 +68,15 @@ class ConfigMongoTest extends TestCase
             $this->get($url)->assertOk();
         }
         $this->delete('/admin/categories/'.$category->id)->assertSessionHas('error');
-        $log = $source->fetchLogs()->create(['type' => 'manual_retry', 'status' => 'queued']);
+        $history = $this->bootSourceHistory();
+        $attempt = SourceFetchAttempt::begin($source->id, 'manual_retry', now());
+        $history->publish($attempt, 0, ['status' => 'queued']);
+        $history->consume('test', 10);
+        $log = $this->get('/admin/sources/health')->assertOk()->viewData('recentLogs')->sole();
         $this->assertSame($source->id, $log->source->id);
-        $this->assertSame([], Schema::getForeignKeys('source_fetch_logs'));
+        $this->assertSame($attempt->id, $log->attempt_id);
         $this->delete('/admin/sources/'.$source->id)->assertRedirect();
-        $this->assertNull($log->fresh());
+        $this->assertCount(0, $this->get('/admin/sources/health')->assertOk()->viewData('recentLogs'));
         $article->delete();
         $this->delete('/admin/categories/'.$category->id)->assertRedirect();
         $this->assertSame(0, Category::count());
@@ -125,7 +131,7 @@ class ConfigMongoTest extends TestCase
             $articles->push($article);
         }
         $user = User::factory()->create(['favorite_category_ids' => [$categoryId, (string) $categoryId]]);
-        $log = SourceFetchLog::create(['source_id' => (string) $sourceId, 'type' => 'scheduled_fetch', 'status' => 'success']);
+        $logId = DB::table('source_fetch_logs')->insertGetId(['source_id' => (string) $sourceId, 'type' => 'scheduled_fetch', 'status' => 'success']);
         // An interrupted earlier copy is reused rather than duplicated or overwritten.
         $category = $this->category('legacy');
         $this->artisan('config:import-sql')->expectsOutput('categories_matched: 1')->expectsOutput('sources_copied: 1')->assertExitCode(0);
@@ -143,9 +149,9 @@ class ConfigMongoTest extends TestCase
             $this->assertSame(Uuid::uuid5(Uuid::NAMESPACE_URL, 'vietfeed:category:legacy')->toString(), $fresh->category_snapshot['uuid']);
         }
         $this->assertSame([$category->id], $user->fresh()->favorite_category_ids);
-        $this->assertSame($source->id, $log->fresh()->source_id);
+        $this->assertSame((string) $sourceId, DB::table('source_fetch_logs')->where('id', $logId)->value('source_id'));
         $source->update(['name' => 'Edited after import']);
-        $this->artisan('config:import-sql')->expectsOutput('sources_copied: 0')->expectsOutput('article_references: 0')->expectsOutput('users_remapped: 0')->expectsOutput('fetch_logs_remapped: 0')->assertExitCode(0);
+        $this->artisan('config:import-sql')->expectsOutput('sources_copied: 0')->expectsOutput('article_references: 0')->expectsOutput('users_remapped: 0')->assertExitCode(0);
         $this->assertSame('Edited after import', $source->fresh()->name);
         $this->assertSame(1, Category::count());
         $this->assertSame(1, Source::count());
@@ -191,17 +197,22 @@ class ConfigMongoTest extends TestCase
         }
     }
 
-    public function test_rss_command_and_job_keep_uuid_references_in_articles_and_sql_logs(): void
+    public function test_rss_command_and_job_keep_uuid_references_in_articles_and_history(): void
     {
+        $history = $this->bootSourceHistory();
         $source = $this->source($this->category());
         Http::fake(['*' => Http::response('<rss version="2.0"><channel><title>Feed</title><item><title>Headline</title><link>https://example.test/article</link><description>Excerpt</description><pubDate>Wed, 18 Nov 2026 10:00:00 GMT</pubDate></item></channel></rss>', 200)]);
         $this->artisan('feeds:fetch')->assertExitCode(0);
         $article = Article::firstOrFail();
         $this->assertSame($source->id, $article->source_id);
         $this->assertSame($source->category_id, $article->category_id);
-        $log = $source->fetchLogs()->create(['type' => 'manual_retry', 'status' => 'queued']);
-        app()->call([new FetchSourceFeedJob($source->id, $log->id), 'handle']);
-        $this->assertSame('warning', $log->fresh()->status);
+        $job = new FetchSourceFeedJob($source->id);
+        app()->call([$job, 'handle']);
+        $history->consume('test', 10);
+        $logs = $history->forSource($source->id, 5)->keyBy('type');
+        $this->assertSame($source->id, $logs['scheduled_fetch']->source_id);
+        $this->assertSame($job->attempt->id, $logs['manual_retry']->attempt_id);
+        $this->assertSame('warning', $logs['manual_retry']->status);
         $this->assertSame(1, Article::count());
     }
 
@@ -232,8 +243,9 @@ class ConfigMongoTest extends TestCase
         }
         $this->assertSame($measurements[2], $measurements[8]);
         // Static guard complements executed query evidence and covers validation paths.
+        $offlineImports = [app_path('Content/ConfigSqlImport.php'), app_path('SourceHistory/SourceHistorySqlImport.php')];
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(app_path())) as $file) {
-            if ($file->getExtension() !== 'php' || $file->getFilename() === 'ConfigSqlImport.php') {
+            if ($file->getExtension() !== 'php' || in_array($file->getPathname(), $offlineImports, true)) {
                 continue;
             }
             $this->assertDoesNotMatchRegularExpression('/(?:DB::table|->table)\([\'\"](?:categories|sources)[\'\"]\)/', file_get_contents($file->getPathname()), $file->getPathname());
@@ -349,14 +361,14 @@ class ConfigMongoTest extends TestCase
         $y = DB::table('sources')->insertGetId(['name' => 'Y', 'url' => 'https://example.test', 'feed_url' => 'https://private.example.test/secret-feed', 'category_id' => $b]);
         $article = Article::create(['title' => 'Legacy', 'source_id' => $x, 'category_id' => $a]);
         $user = User::factory()->create(['favorite_category_ids' => [$a]]);
-        $log = SourceFetchLog::create(['source_id' => (string) $x, 'type' => 'scheduled_fetch', 'status' => 'success']);
+        $logId = DB::table('source_fetch_logs')->insertGetId(['source_id' => (string) $x, 'type' => 'scheduled_fetch', 'status' => 'success']);
         $this->artisan('config:import-sql')
             ->expectsOutput('categories.slug duplicate ids: '.$a.', '.$b.'; sources.feed_url duplicate ids: '.$x.', '.$y)->assertExitCode(1);
         $this->assertSame(0, Category::count());
         $this->assertSame(0, Source::count());
         $this->assertSame($x, $article->fresh()->source_id);
         $this->assertSame([$a], $user->fresh()->favorite_category_ids);
-        $this->assertSame((string) $x, $log->fresh()->source_id);
+        $this->assertSame((string) $x, DB::table('source_fetch_logs')->where('id', $logId)->value('source_id'));
         // Exact output above contains IDs only, never the private feed URL.
         // Source duplicates alone must still abort before even a category copy.
         DB::table('categories')->where('id', $b)->update(['slug' => 'other']);
@@ -369,37 +381,37 @@ class ConfigMongoTest extends TestCase
         $this->assertSame(0, Source::count());
     }
 
-    public function test_health_limits_history_in_sql_before_hydrating_each_source(): void
+    public function test_health_limits_cassandra_history_per_source_and_globally(): void
     {
+        $history = $this->bootSourceHistory();
         $this->actingAs(User::factory()->create(['role' => 'admin']));
         $category = $this->category();
-        $sourceIds = [];
+        $expected = [];
+        $at = now()->utc()->startOfDay()->addHours(2);
         foreach (['first', 'second'] as $feed) {
             $source = $this->source($category, 'https://example.test/'.$feed);
-            $sourceIds[] = $source->id;
-            foreach (range(1, 40) as $i) {
-                $source->fetchLogs()->create(['type' => 'scheduled_fetch', 'status' => 'success', 'created_at' => now()->subMinutes($i)]);
+            foreach (range(1, 25) as $i) {
+                $started = $at->copy()->subMinutes($i);
+                $attempt = SourceFetchAttempt::begin($source->id, 'scheduled_fetch', $started);
+                $expected[$source->id][] = $attempt->id;
+                $history->publish($attempt, 2, ['status' => 'success', 'fetch_started_at' => $started]);
             }
         }
-        $ranked = [];
-        SourceFetchLog::retrieved(function ($log) use (&$ranked) {
-            if ($log->recent_rank !== null) {
-                $ranked[] = $log;
-            }
-        });
+        $this->assertSame(50, $history->consume('test', 100));
+
         DB::connection()->enableQueryLog();
         DB::connection()->flushQueryLog();
         try {
-            $sources = $this->get('/admin/sources/health')->assertOk()->viewData('sources');
-            foreach ($sources as $source) {
-                $this->assertCount(5, $source->fetchLogs);
-                $this->assertSame([1, 2, 3, 4, 5], $source->fetchLogs->pluck('recent_rank')->all());
+            $response = $this->get('/admin/sources/health')->assertOk();
+            foreach ($response->viewData('sources') as $source) {
+                $this->assertSame(array_slice($expected[$source->id], 0, 5), $source->fetchLogs->pluck('attempt_id')->all());
+                $show = $this->get(route('admin.sources.show', $source))->assertOk();
+                $this->assertSame(array_slice($expected[$source->id], 0, 15), $show->viewData('recentLogs')->pluck('attempt_id')->all());
             }
-            $this->assertCount(10, $ranked);
-            $queries = collect(DB::connection()->getQueryLog())->filter(fn ($query) => str_contains($query['query'], 'ROW_NUMBER() OVER (PARTITION BY source_id'));
-            $this->assertCount(1, $queries);
-            $this->assertStringContainsString('"recent_rank" <= ?', $queries->first()['query']);
-            $this->assertSame([...$sourceIds, 5], $queries->first()['bindings']);
+            $recent = $response->viewData('recentLogs');
+            $this->assertCount(20, $recent);
+            $this->assertSame($recent->pluck('started_at')->sortDesc()->values()->all(), $recent->pluck('started_at')->all());
+            $this->assertFalse(collect(DB::connection()->getQueryLog())->contains(fn ($query) => str_contains($query['query'], 'source_fetch_logs')));
         } finally {
             DB::connection()->disableQueryLog();
         }

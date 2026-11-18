@@ -4,8 +4,9 @@ namespace App\Services\Rss;
 
 use App\Models\Article;
 use App\Models\Source;
-use App\Models\SourceFetchLog;
 use App\Services\Rss\Exceptions\FeedFetchException;
+use App\SourceHistory\SourceFetchAttempt;
+use App\SourceHistory\SourceFetchHistory;
 use Carbon\Carbon;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -13,18 +14,17 @@ use Illuminate\Support\Str;
 
 class FeedIngestionService
 {
-    public function fetchSource(Source $source, string $runType = 'scheduled_fetch', ?SourceFetchLog $log = null): FeedRunResult
+    public function __construct(private SourceFetchHistory $history) {}
+
+    public function fetchSource(Source $source, string $runType = 'scheduled_fetch', ?SourceFetchAttempt $attempt = null, int $execution = 1): FeedRunResult
     {
         $startedAt = now();
-        $log ??= $source->fetchLogs()->create([
-            'type' => $runType,
+        $attempt ??= SourceFetchAttempt::begin($source->id, $runType, $startedAt);
+        $revision = 2 * $execution;
+        $this->history->publish($attempt, $revision - 1, [
             'status' => 'running',
-            'started_at' => $startedAt,
+            'fetch_started_at' => $execution === 1 ? $startedAt : null,
         ]);
-
-        if (! $log->started_at) {
-            $log->forceFill(['started_at' => $startedAt])->save();
-        }
 
         try {
             [$response, $items] = $this->requestFeedItems($source);
@@ -52,27 +52,24 @@ class FeedIngestionService
                 sampleItems: $metrics['sample_items'],
             );
 
-            $this->syncSuccessfulRun($source, $log, $result, $runType);
+            $this->syncSuccessfulRun($source, $attempt, $startedAt, $result, $revision);
 
             return $result;
         } catch (FeedFetchException $e) {
-            $this->syncFailedRun($source, $log, $startedAt, $e);
+            $this->syncFailedRun($source, $attempt, $startedAt, $e, $revision);
             throw $e;
         } catch (\Throwable $e) {
             $wrapped = new FeedFetchException($e->getMessage(), 'unexpected_error');
-            $this->syncFailedRun($source, $log, $startedAt, $wrapped);
+            $this->syncFailedRun($source, $attempt, $startedAt, $wrapped, $revision);
             throw $wrapped;
         }
     }
 
-    public function testSource(Source $source, ?SourceFetchLog $log = null): FeedTestResult
+    public function testSource(Source $source): FeedTestResult
     {
         $startedAt = now();
-        $log ??= $source->fetchLogs()->create([
-            'type' => 'rss_test',
-            'status' => 'running',
-            'started_at' => $startedAt,
-        ]);
+        $attempt = SourceFetchAttempt::begin($source->id, 'rss_test', $startedAt);
+        $this->history->publish($attempt, 1, ['status' => 'running', 'fetch_started_at' => $startedAt]);
 
         try {
             [$response, $items] = $this->requestFeedItems($source);
@@ -92,7 +89,7 @@ class FeedIngestionService
                 sampleItems: $metrics['sample_items'],
             );
 
-            $log->forceFill([
+            $this->history->publish($attempt, 2, [
                 'status' => $result->status,
                 'http_status' => $result->httpStatus,
                 'items_found' => $result->itemsFound,
@@ -101,20 +98,22 @@ class FeedIngestionService
                 'missing_image_count' => $result->missingImageCount,
                 'date_parse_error_count' => $result->dateParseErrorCount,
                 'duration_ms' => $result->durationMs,
+                'fetch_started_at' => $startedAt,
                 'finished_at' => now(),
-            ])->save();
+            ]);
 
             return $result;
         } catch (FeedFetchException $e) {
             $durationMs = $this->durationMs($startedAt);
-            $log->forceFill([
+            $this->history->publish($attempt, 2, [
                 'status' => 'failed',
                 'error_type' => $e->errorType,
                 'error_message' => Str::limit($e->getMessage(), 1000),
                 'http_status' => $e->httpStatus,
                 'duration_ms' => $durationMs,
+                'fetch_started_at' => $startedAt,
                 'finished_at' => now(),
-            ])->save();
+            ]);
 
             return new FeedTestResult(
                 status: 'failed',
@@ -264,7 +263,7 @@ class FeedIngestionService
         return $metrics;
     }
 
-    private function syncSuccessfulRun(Source $source, SourceFetchLog $log, FeedRunResult $result, string $runType): void
+    private function syncSuccessfulRun(Source $source, SourceFetchAttempt $attempt, Carbon $startedAt, FeedRunResult $result, int $revision): void
     {
         $now = now();
 
@@ -281,8 +280,7 @@ class FeedIngestionService
             'last_duration_ms' => $result->durationMs,
         ])->save();
 
-        $log->forceFill([
-            'type' => $runType,
+        $this->history->publish($attempt, $revision, [
             'status' => $result->status,
             'http_status' => $result->httpStatus,
             'items_found' => $result->itemsFound,
@@ -296,11 +294,12 @@ class FeedIngestionService
             'duration_ms' => $result->durationMs,
             'error_type' => null,
             'error_message' => null,
+            'fetch_started_at' => $revision === 2 ? $startedAt : null,
             'finished_at' => $now,
-        ])->save();
+        ]);
     }
 
-    private function syncFailedRun(Source $source, SourceFetchLog $log, Carbon $startedAt, FeedFetchException $e): void
+    private function syncFailedRun(Source $source, SourceFetchAttempt $attempt, Carbon $startedAt, FeedFetchException $e, int $revision): void
     {
         $now = now();
         $durationMs = $this->durationMs($startedAt);
@@ -314,14 +313,15 @@ class FeedIngestionService
             'last_duration_ms' => $durationMs,
         ])->save();
 
-        $log->forceFill([
+        $this->history->publish($attempt, $revision, [
             'status' => 'failed',
             'error_type' => $e->errorType,
             'error_message' => Str::limit($e->getMessage(), 1000),
             'http_status' => $e->httpStatus,
             'duration_ms' => $durationMs,
+            'fetch_started_at' => $revision === 2 ? $startedAt : null,
             'finished_at' => $now,
-        ])->save();
+        ]);
     }
 
     private function determineOutcomeStatus(array $metrics, int $durationMs): string

@@ -18,7 +18,6 @@ class Source extends Model
     protected static function booted(): void
     {
         static::creating(fn (self $model) => $model->_id ??= (string) Str::uuid7());
-        static::deleting(fn (self $source) => $source->fetchLogs()->delete());
     }
 
     protected function newRelatedInstance($class)
@@ -79,11 +78,6 @@ class Source extends Model
     public function articles()
     {
         return $this->hasMany(Article::class, 'source_id', '_id');
-    }
-
-    public function fetchLogs()
-    {
-        return $this->hasMany(SourceFetchLog::class, 'source_id', '_id')->latest();
     }
 
     public function getHealthStatusAttribute(): string
