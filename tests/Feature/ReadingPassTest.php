@@ -129,7 +129,7 @@ class ReadingPassTest extends TestCase
             'article_id' => $article->id,
             'user_id' => $user->id,
             'session_id' => null,
-        ]);
+        ], 'mongodb');
     }
 
     private function article(string $slug): Article

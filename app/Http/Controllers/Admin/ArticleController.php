@@ -10,6 +10,7 @@ use App\Models\Bookmark;
 use App\Models\Boost;
 use App\Models\Category;
 use App\Models\Source;
+use App\ReadingPass\UnlockLedger;
 use App\Support\MongoCounts;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -91,7 +92,7 @@ class ArticleController extends Controller
         $article->load(['source', 'category', 'comments' => fn ($q) => $q->with('user')->latest()]);
 
         ArticleCounts::attach(collect([$article]));
-        $article->unlocks_count = ArticleUnlock::where('article_id', $article->getKey())->count();
+        $article->unlocks_count = ArticleUnlock::where('article_id', (string) $article->getKey())->where('state', UnlockLedger::GRANTED)->count();
 
         return view('admin.articles.show', compact('article'));
     }

@@ -136,7 +136,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function articleUnlocks()
     {
-        return $this->hasMany(ArticleUnlock::class);
+        return $this->hasMany(ArticleUnlock::class, 'user_id', '_id');
     }
 
     public function reports()

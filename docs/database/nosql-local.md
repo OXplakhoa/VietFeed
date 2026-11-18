@@ -1131,3 +1131,171 @@ aggregations with O(collection) work.
 
 The automated checks use MongoDB `vietfeed_test`, Redis DB15 with a live
 `getDbNum()` check, Cassandra `vietfeed_test`, and SQLite `:memory:`.
+
+## Gate 9.5 slice 3b — Reading Pass on Redis counters and durable history
+
+Tiers, limits and copy are unchanged: admin unlimited and unrecorded; Pro
+unlimited and recorded; verified 15 per rolling 5 hours; unverified account 8
+and guest session 5 per Vietnam day. Re-opening an unlocked article never
+consumes. Three stores, one job each:
+
+| Store | Holds | Role |
+|---|---|---|
+| MongoDB `article_unlocks` | One document per (subject, article) | Durable ledger: "already unlocked", rebuild source, transfer, cleanup |
+| Redis `reading-pass:v1:*` | One sorted set per subject | Atomic quota decision (Lua), rebuildable projection with TTL |
+| Cassandra `unlocks_by_user_month`, `unlocks_by_session_day` | Immutable unlock rows | History by user and UTC month (guest rows by session and UTC day, 30-day TTL) |
+
+### Ledger documents
+
+`_id` UUIDv7 string, `subject` (`u:<user_id>` or `s:<sha256(session id)>`),
+`user_id` (string or null), `session_hash` (string or null), `article_id`,
+`state` (`pending` or `granted`), BSON `unlocked_at`, `tier`, `origin`
+(`unlock`, `transfer`, `import`, `seed`), optional `fallback: true`, optional
+`legacy_sql_id`. Raw session ids are never stored. Indexes (migration
+`2026_11_18_220001`): unique `{subject, article_id}`, `{subject, unlocked_at}`,
+partial `{subject, fallback}`, `{state, unlocked_at}`, `{user_id}`,
+`{article_id}`. Admin counts (dashboard, user list, article page) count
+`state: granted` only.
+
+### Redis keys and Lua
+
+- `reading-pass:v1:gen` — generation token. Changing it invalidates every window.
+- `reading-pass:v1:<subject>:w` — sorted set. `g:<article>` granted,
+  `p:<article>` a reservation a rebuild found still pending, scored by unlock
+  time in ms; sentinel `~ready:<gen>` at score -1. Members older than 25 h are
+  trimmed on each decision; `EXPIRE` 26 h on each grant or rebuild.
+- `reading-pass:v1:<subject>:lock` — rebuild/transfer lock (owner token, 10 s).
+
+`DECIDE` runs in one Lua call: no sentinel for the current generation → `-1`
+(rebuild); `g:<article>` present → already unlocked; another `p:` older than
+60 s → `-2` (resolved from MongoDB, then decided again); otherwise count
+`[window start, +inf]` and either deny or `ZADD` the grant. The window start
+is passed in (now − 5 h, or 00:00 Vietnam time), so one set serves every tier.
+Concurrent requests are serialized by Redis and can never exceed the limit.
+
+A request first reserves its unlock in MongoDB (`pending`), then decides in
+Redis, then marks the document `granted` (or deletes it on denial). A rebuild
+takes the subject lock, drops the window, reads the ledger (granted within
+25 h → `g:`, pending younger than 60 s → `p:`), and publishes the set only if
+it still owns the lock and the generation is unchanged. An in-flight grant
+whose window was evicted is therefore still counted. An abandoned reservation
+is counted for at most 60 s.
+
+**Redis unavailable:** fail-open on the ledger. The reservation is decided by
+a MongoDB count of the same window: granted documents plus fresh reservations,
+excluding itself. Every request reserves before it counts, so of two
+simultaneous fallback requests at least one sees the other: a pure fallback
+decision never over-grants (simultaneous requests can at worst both be
+refused). A fallback grant is marked `fallback: true`. The next decision for
+that subject rebuilds its window first and clears the flags; if that forced
+rebuild cannot run (lock busy, Redis failing), the decision uses the MongoDB
+count instead of the stale window. The only over-grant is the mixed case:
+while one process grants through the fallback, another still reaching Redis
+can decide on a window that does not yet contain that grant — at most one
+extra unlock per in-flight fallback grant. Navbar, profile and admin allowance
+read MongoDB while the window or the generation key is missing or Redis is
+down.
+
+A missing `reading-pass:v1:gen` key (evicted or flushed) means "not built":
+no window is trusted, and the next rebuild creates a fresh generation with
+`SET NX`.
+
+**Same-article race:** a second request for an article whose reservation is
+held by a concurrent request re-checks until that reservation is granted
+(→ already unlocked, nothing consumed) or released (→ decides normally),
+bounded by the rebuild lock wait (1 s) + one Redis timeout (2 s when the
+`nosql` connection sets none) + 0.5 s. If the winner still has not settled,
+the article is shown without a second record when the window has room
+without the winner's reservation, and locked otherwise.
+
+**Guest transfer** (login, register, Google): under the user's lock the user
+window is dropped, granted guest documents are copied to the user (a
+duplicate article is dropped), guest documents are deleted, both windows are
+dropped. The windows are dropped whenever Redis is reachable, even if another
+holder had the lock; without the lock (or with Redis down) the moved documents
+also get `fallback: true`.
+
+**Cleanup:** `unlocks:cleanup` (daily 02:15) deletes guest documents older
+than 30 days and reservations older than one hour. Redis windows expire by
+TTL; guest Cassandra rows by TTL.
+
+### History stream and commands
+
+Granted documents publish `UNLOCKED` or `UNLOCK_TRANSFERRED` to
+`reading-pass:events:v1` (group `reading-pass-history-v1`, DLQ
+`reading-pass:dead:history:v1`). The event id is the ledger `_id`, so
+`reemit` republishes identical events and replays overwrite the same rows.
+The scheduler consumes batches of 100 every five seconds.
+
+```bash
+php artisan reading-pass schema                      # create Cassandra tables
+php artisan reading-pass consume --consumer=local --limit=100
+php artisan reading-pass inspect
+php artisan reading-pass replay --id=<dead-letter-stream-id>
+php artisan reading-pass reemit [--user=<user-id>]
+php artisan reading-pass history --user=<user-id> --month=2026-11
+php artisan reading-pass rebuild                     # new generation; windows rebuild lazily
+php artisan unlocks:import-sql [--emit] [--force]    # legacy SQL copy, once
+```
+
+`unlocks:import-sql` copies SQL `article_unlocks` in id order by natural key
+(subject, article), keeps `unlocked_at` and `legacy_sql_id`, never overwrites
+a ledger document, skips rows with neither user nor session, and refuses a
+second run without `--force`. It ends with a new generation. The SQL table is
+left in place and unused. `DemoEngagementSeeder` writes ledger documents
+without events: run `reading-pass reemit` after seeding for history.
+
+### Cutover order
+
+1. Deploy, `php artisan migrate --force` (MongoDB indexes), `php artisan reading-pass schema`.
+2. Fresh development path: seed, then `reading-pass reemit`. Legacy path: take
+   a read-only SQL backup, pause traffic, `php artisan unlocks:import-sql --emit`, review the totals.
+3. Resume traffic and the scheduler; `reading-pass inspect` shows the stream drained.
+
+### Native inspection
+
+```javascript
+db.article_unlocks.getIndexes()
+db.article_unlocks.find({subject: "u:<user-id>"}).sort({unlocked_at: -1}).limit(20)
+db.article_unlocks.countDocuments({state: "granted", unlocked_at: {$gte: ISODate("2026-11-17T17:00:00Z")}})
+db.article_unlocks.find({fallback: true})
+```
+
+```text
+GET <prefix>reading-pass:v1:gen
+ZRANGE <prefix>reading-pass:v1:u:<user-id>:w 0 -1 WITHSCORES
+XPENDING <prefix>reading-pass:events:v1 reading-pass-history-v1
+```
+
+```sql
+SELECT unlocked_at, unlock_id, article_id, tier, origin, backfill
+FROM vietfeed.unlocks_by_user_month
+WHERE user_id = '<user-id>' AND year_month = '2026-11';
+```
+
+Known limitations:
+
+- A crash after Redis grants but before the document becomes `granted`
+  returns that slot after 60 s if the window is later rebuilt (the user must
+  unlock the article again); never an extra unlock.
+- Rebuild LOAD re-checks the lock owner and generation, so an evicted rebuild
+  lock cannot publish a stale window. The residual is the transfer lock: if it
+  expires or is evicted mid-transfer, a rebuild may load a partial ledger, and
+  decisions use it until the transfer's final window drop (milliseconds).
+- Mixed Redis/fallback operation: at most one extra unlock per in-flight
+  fallback grant (see above).
+- A same-article loser that outlives the settle bound may read the article
+  while the winner is later denied (only if another article took the last
+  slot in between); no second record is written.
+- A winner that crashed after reserving leaves a pending reservation for up to
+  60 s; reopening that article in this window waits for the settle bound and may
+  show it without recording or consuming (bounded, needs a crash). The `nosql`
+  Redis connection has no read timeout, so a hung Redis can stretch the bound;
+  tune `nosql.reading_pass_settle_ms` or set a read timeout in production.
+- After a transfer that met a foreign rebuild lock, `allowance()` (navbar,
+  profile, admin) can under-count the moved unlocks until the user's next unlock
+  decision, which always rebuilds first (decisions stay correct).
+- A guest request granted after the transfer started stays under the old guest
+  subject (legacy behaviour); the session id is regenerated at login.
+- The admin user list makes one quota read per listed user (legacy: one SQL
+  count per user).

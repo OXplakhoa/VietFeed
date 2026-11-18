@@ -8,6 +8,7 @@ use App\Models\ArticleUnlock;
 use App\Models\Bookmark;
 use App\Models\Comment;
 use App\Models\User;
+use App\ReadingPass\UnlockLedger;
 use App\Services\ReadingPassService;
 use App\Support\MongoCounts;
 use Illuminate\Http\Request;
@@ -37,8 +38,10 @@ class UserController extends Controller
         $counts = [
             'comments' => MongoCounts::group(Comment::class, 'user_id', $pageIds),
             'bookmarks' => MongoCounts::group(Bookmark::class, 'user_id', $pageIds),
-            'article_unlocks' => ArticleUnlock::whereIn('user_id', $pageIds)->select('user_id')
-                ->selectRaw('COUNT(*) as n')->groupBy('user_id')->pluck('n', 'user_id'),
+            'article_unlocks' => collect(ArticleUnlock::raw(fn ($collection) => $collection->aggregate([
+                ['$match' => ['user_id' => ['$in' => $pageIds], 'state' => UnlockLedger::GRANTED]],
+                ['$group' => ['_id' => '$user_id', 'n' => ['$sum' => 1]]],
+            ])))->pluck('n', 'id'),
         ];
         foreach ($counts as $name => $byUser) {
             foreach ($users as $user) {
