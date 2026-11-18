@@ -2,8 +2,12 @@
 
 namespace Tests;
 
+use App\ReadingPass\ReadingPassHistory;
+use App\ReadingPass\ReadingPassQuota;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Str;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -33,10 +37,16 @@ abstract class TestCase extends BaseTestCase
     protected function tearDown(): void
     {
         $this->assertSame('vietfeed_test', DB::connection('mongodb')->getDatabaseName());
-        // Gate 9b and 9.5: moderation documents, comments, bookmarks and boosts also live on MongoDB.
-        foreach (['categories', 'sources', 'users', 'articles', 'stories', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases', 'comments', 'reports_duplicates', 'bookmarks', 'boosts'] as $collection) {
+        // Gate 9b and 9.5: moderation documents, comments, bookmarks, boosts and unlocks also live on MongoDB.
+        foreach (['categories', 'sources', 'users', 'articles', 'stories', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases', 'comments', 'reports_duplicates', 'bookmarks', 'boosts', 'article_unlocks'] as $collection) {
             DB::connection('mongodb')->table($collection)->delete();
         }
+        // Gate 9.5 slice 3b: Reading Pass windows and history stream live in Redis DB15. A new generation
+        // invalidates every window (fixed guest session ids recur across tests and suite runs).
+        $redis = Redis::connection('nosql')->client();
+        $this->assertSame(15, $redis->getDbNum());
+        $redis->set(ReadingPassQuota::GEN, (string) Str::uuid7());
+        $redis->del([ReadingPassHistory::STREAM, ReadingPassHistory::DLQ, ReadingPassHistory::ERRORS]);
 
         parent::tearDown();
     }

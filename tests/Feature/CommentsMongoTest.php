@@ -455,7 +455,9 @@ class CommentsMongoTest extends TestCase
             'type' => 'warning', 'reason' => 'x', 'hide_comment' => 1])->assertSessionHas('success');
         $this->actingAs($admin)->delete(route('admin.comments.destroy', $comment))->assertSessionHas('success');
 
-        $this->assertNotEmpty($sql, 'the listener sees SQL traffic (sessions etc.)');
+        // Gate 9.5 slice 3b: these pages no longer issue SQL (Reading Pass left `article_unlocks`), so probe the listener explicitly.
+        DB::select('select 1');
+        $this->assertNotEmpty($sql, 'the listener sees SQL traffic');
         $this->assertSame([], array_values(array_filter($sql, fn ($s) => preg_match('/\bcomments\b/i', $s))));
     }
 

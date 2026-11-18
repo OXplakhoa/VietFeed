@@ -12,6 +12,7 @@ use App\Models\Category;
 use App\Models\Comment;
 use App\Models\Source;
 use App\Models\User;
+use App\ReadingPass\UnlockLedger;
 use App\Support\MongoCounts;
 
 class DashboardController extends Controller
@@ -32,8 +33,8 @@ class DashboardController extends Controller
             'sources' => Source::where('is_active', true)->count(),
             'bookmarks' => $bookmarkCounts->sum(),
             'boosts' => $boostCounts->sum(),
-            'unlocks_today' => ArticleUnlock::where('unlocked_at', '>=', now('Asia/Ho_Chi_Minh')->startOfDay())->count(),
-            'unlocks_5h' => ArticleUnlock::where('unlocked_at', '>=', now()->subHours(5))->count(),
+            'unlocks_today' => ArticleUnlock::where('state', UnlockLedger::GRANTED)->where('unlocked_at', '>=', now('Asia/Ho_Chi_Minh')->startOfDay())->count(),
+            'unlocks_5h' => ArticleUnlock::where('state', UnlockLedger::GRANTED)->where('unlocked_at', '>=', now()->subHours(5))->count(),
             'pro_users' => User::whereIn('_id', app(BillingGateway::class)->proUserIds())->count(),
         ];
 

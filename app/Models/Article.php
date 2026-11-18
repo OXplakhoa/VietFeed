@@ -71,7 +71,7 @@ class Article extends Model
 
     public function unlocks()
     {
-        return $this->hasMany(ArticleUnlock::class);
+        return $this->hasMany(ArticleUnlock::class, 'article_id', '_id');
     }
 
     protected function sourceName(): Attribute

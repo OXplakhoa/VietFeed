@@ -11,3 +11,4 @@ Artisan::command('inspire', function () {
 Schedule::command('feeds:fetch')->everyThirtyMinutes();
 Schedule::command('unlocks:cleanup')->dailyAt('02:15');
 Schedule::command('interactions consume --consumer=scheduler --limit=100')->everyFiveSeconds()->withoutOverlapping(1);
+Schedule::command('reading-pass consume --consumer=scheduler --limit=100')->everyFiveSeconds()->withoutOverlapping(1);
