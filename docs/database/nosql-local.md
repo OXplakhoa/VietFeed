@@ -1,8 +1,11 @@
 # Local NoSQL stack (Gate 1 / GitHub #1)
 
 Single-node MongoDB + Cassandra + Neo4j + Redis via `docker-compose.yml`,
-capped for M1/8GB. MySQL stays on the host (session/cache/queue are `database`
-driver). All services bind **127.0.0.1** with default ports:
+capped for M1/8GB. Since Gate 9.5 slice 5 there is **no SQL database**: the app
+boots, tests and demos on these four stores only (see "Gate 9.5 slice 5 — SQL runtime
+removed" at the end; earlier sections that mention SQL, MySQL, SQLite or `*:import-sql`
+commands describe the history up to tag `pre-sql-removal`). All services bind
+**127.0.0.1** with default ports:
 
 | Service   | Port(s)       | Ceiling (cpu/mem) | Creds (env, dev-default)              |
 |-----------|---------------|-------------------|---------------------------------------|
@@ -17,7 +20,6 @@ driver). All services bind **127.0.0.1** with default ports:
 docker compose config                                            # validate
 docker compose up -d && ./scripts/nosql-health.sh --wait 120    # start + health (READY <= 120s)
 docker compose ps && docker stats --no-stream                    # inspect
-./scripts/smoke-mysql-path.sh                                    # app session/cache/queue smoke
 docker compose down                                              # stop (keeps volumes)
 docker compose down -v && docker compose up -d && ./scripts/nosql-health.sh --wait 120  # reset
 ```
@@ -70,8 +72,9 @@ Set each password from your shell env / `.env`, never commit real values.
 - **`*_user_id` columns are strings** (bookmarks/comments/boosts/unlocks/reports/sanctions
   migrations): Mongo `_id`s don't fit BIGINT and the users FK is dropped (cascade →
   app-level, later slice). `category_user` pivot SQL kept (unwritten); favorites read
-  from embedded `favorite_category_ids`. Dev MySQL needs `migrate:fresh` to pick up
-  the column changes.
+  from embedded `favorite_category_ids`. (Historical: dev MySQL then needed `migrate:fresh`
+  for the column changes. Since Gate 9.5 slice 5 **never** run `migrate:fresh` — it would
+  drop the whole MongoDB database; see the slice 5 section.)
 - **`*_article_id` columns are strings** (bookmarks/comments/boosts/unlocks migrations):
   Article `_id`s are UUIDv7 strings; articles-FKs dropped (same cascade note).
 - **Boot proof (T3): slice runs on Mongo users/articles/stories; still SQL:** sessions +
@@ -95,9 +98,8 @@ Set each password from your shell env / `.env`, never commit real values.
    criterion. Mitigation: bound to 127.0.0.1, dev-only. Revisit if threat model changes.
 2. **PHP image pin**: no PHP container in this slice (app runs on host PHP 8.4.23,
    satisfies `composer.json` `^8.3`). If a PHP container is added later, pin `php:8.3-*`.
-3. **Host MySQL**: `scripts/smoke-mysql-path.sh` uses the configured DB when reachable;
-   with host MySQL down it verifies the same code paths on temp sqlite and labels the
-   mysql leg SKIP. Re-run on a host with MySQL for the full-path PASS.
+3. **Host MySQL** (obsolete since Gate 9.5 slice 5): the former `scripts/smoke-mysql-path.sh`
+   SQL session/cache/queue smoke was deleted with the SQL runtime (it remains at tag `pre-sql-removal`).
 4. **ext-mongodb ^2.4 required for CI/prod** (`mongodb/laravel-mongodb ^5.7` stack).
    Exception: this host's Herd PHP pins ext-mongodb 2.3.3 — install with
    `composer require "mongodb/laravel-mongodb:^5.7" --ignore-platform-req=ext-mongodb`
@@ -258,8 +260,8 @@ lock here would not prove either workflow. The present consumer lease/recovery
 proof is not a fetch lock.
 
 All tests extending `Tests\TestCase`, including `tests/Integration/*`, require
-**no `bootstrap/cache/config.php`**, Mongo database **`vietfeed_test`**, default SQL
-connection **`sqlite`** with database **`:memory:`**. `phpunit.xml` supplies those
+**no `bootstrap/cache/config.php`**, Mongo database **`vietfeed_test`**, and (Gate 9.5
+slice 5) **`mongodb` as the default and only database connection**. `phpunit.xml` supplies those
 values; conflicting exported environment variables must be unset or set to the
 same test values. The guard runs before migrations and retains its refusal on
 misconfiguration. Teardown verifies the live Mongo database and deletes test
@@ -292,7 +294,7 @@ GATE15_DLQ_PROOF=1 vendor/bin/phpunit tests/Feature/RedisStreamsTest.php --filte
 
 The second command invokes `interactions inspect` on the guarded live DB15,
 prints the terminal DLQ, then tests replay and cleans DB15. The suite asserts
-Mongo `vietfeed_test` and SQLite `:memory:` before RefreshDatabase migrations.
+Mongo `vietfeed_test` (and that no SQL connection exists) before the Mongo migrations run.
 This is isolated test evidence, not a development database flush procedure.
 
 ## Gate 6 PR-A / #19 — canonical RSS → Story projections
@@ -547,7 +549,7 @@ Only that run's Neo4j UUIDs and Cassandra partition were cleaned afterward.
 For a reproducible isolated CLI run, supply all of these process-local overrides:
 
 ```bash
-export APP_ENV=testing DB_CONNECTION=sqlite DB_DATABASE=:memory: DB_URL=''
+export APP_ENV=testing
 export MONGO_DB=vietfeed_test CASSANDRA_KEYSPACE=vietfeed_test
 export REDIS_DB=15 REDIS_CACHE_DB=15 REDIS_NOSQL_DB=15 REDIS_URL=''
 export CACHE_STORE=array SESSION_DRIVER=array QUEUE_CONNECTION=sync
@@ -557,7 +559,7 @@ export STORY_RETRY_MS=1
 ```
 
 The command refuses a testing invocation unless there is no config cache, Mongo
-is `vietfeed_test`, SQLite is `:memory:`, Cassandra is `vietfeed_test`, and the live
+is `vietfeed_test`, `mongodb` is the only database connection, Cassandra is `vietfeed_test`, and the live
 NoSQL Redis client reports DB15. New Cassandra operations independently recheck
 the test keyspace before access. Do not use these exports in a shell running the
 development app; a separate shell/process avoids changing its configuration.
@@ -780,6 +782,9 @@ The real Test Mode walkthrough is deliberately reserved for control/reviewer.
 
 ## Gate 9b — moderation on MongoDB, Redis review queue, Cassandra audit
 
+> **Gate 9.5 slice 5:** the SQL import commands, SQL tables and SQLite test rows named in this
+> section were removed; they exist only at tag `pre-sql-removal` (see the slice 5 section at the end).
+
 Reports, sanctions and per-comment case documents are canonical on MongoDB; the SQL
 `reports`/`sanctions` tables stay in place but unused (dropped in Gate 9.5) and are
 read only by `php artisan moderation:import-sql`. Comments moved to MongoDB in Gate 9.5
@@ -880,6 +885,9 @@ Cassandra keyspace `vietfeed_test` (the test deletes its partitions) and SQLite 
 
 ## Gate 9.5 slice 1 — MongoDB configuration
 
+> **Gate 9.5 slice 5:** the SQL import commands, SQL tables and SQLite test rows named in this
+> section were removed; they exist only at tag `pre-sql-removal` (see the slice 5 section at the end).
+
 `Category` and `Source` use the `mongodb` connection and Laravel-generated UUIDv7
 string `_id` values. The SQL `categories` and `sources` tables remain for offline
 import only; public/admin pages, validation, interests, seeders and RSS workers
@@ -935,6 +943,9 @@ opportunity. See `.agent/tasks/sql-cutover-config/GATE-REPORT-9.5-1.md` for comm
 order and evidence. UUIDv5 preservation needs no graph identity remap/rebuild.
 
 ## Gate 9.5 slice 2 — comments on MongoDB
+
+> **Gate 9.5 slice 5:** the SQL import commands, SQL tables and SQLite test rows named in this
+> section were removed; they exist only at tag `pre-sql-removal` (see the slice 5 section at the end).
 
 `Comment` (roots, replies and the moderation hide fields) uses the `mongodb` connection
 with a UUIDv7 string `_id`. The SQL `comments` table stays in place, unused, until the
@@ -1009,6 +1020,9 @@ Tests: `CommentsMongoTest` (Mongo `vietfeed_test`, Redis DB15 guard, Cassandra k
 `vietfeed_test`, SQLite `:memory:` for legacy rows only).
 
 ## Gate 9.5 slice 3a — bookmarks, boosts, and activity
+
+> **Gate 9.5 slice 5:** the SQL import commands, SQL tables and SQLite test rows named in this
+> section were removed; they exist only at tag `pre-sql-removal` (see the slice 5 section at the end).
 
 MongoDB collections `bookmarks` and `boosts` hold active memberships. Each
 document has a UUIDv7 string `_id`, string `user_id` and `article_id`, BSON
@@ -1133,6 +1147,9 @@ The automated checks use MongoDB `vietfeed_test`, Redis DB15 with a live
 `getDbNum()` check, Cassandra `vietfeed_test`, and SQLite `:memory:`.
 
 ## Gate 9.5 slice 3b — Reading Pass on Redis counters and durable history
+
+> **Gate 9.5 slice 5:** the SQL import commands, SQL tables and SQLite test rows named in this
+> section were removed; they exist only at tag `pre-sql-removal` (see the slice 5 section at the end).
 
 Tiers, limits and copy are unchanged: admin unlimited and unrecorded; Pro
 unlimited and recorded; verified 15 per rolling 5 hours; unverified account 8
@@ -1302,6 +1319,9 @@ Known limitations:
 
 ## Gate 9.5 slice 4 — Source fetch history on Cassandra
 
+> **Gate 9.5 slice 5:** the SQL import commands, SQL tables and SQLite test rows named in this
+> section were removed; they exist only at tag `pre-sql-removal` (see the slice 5 section at the end).
+
 MongoDB still holds the Source configuration and current health summary. Cassandra
 holds fetch history in two tables with UTC `YYYY-MM-DD` buckets.
 
@@ -1383,3 +1403,104 @@ IDs and `replay --id=<dead-letter-stream-id>` to requeue them. MongoDB still has
 the current health summary. On page requests, the shared CQL driver may wait
 for a peer that accepts a connection and never responds. Ordinary connection
 failures and CQL errors surface as unavailable on the admin pages.
+
+## Gate 9.5 slice 5 — SQL runtime removed
+
+> **⛔ Never run `migrate:fresh`, `db:wipe`, `migrate:reset`, `migrate:refresh` or `migrate:rollback`
+> against a dev or demo database.** With MongoDB as the default connection, `db:wipe`/`migrate:fresh`
+> drop the entire Mongo database and a rollback drops the unique indexes that enforce data
+> invariants. The app refuses these commands outside the `testing` environment
+> (`App\Console\DestructiveCommandGuard`, Laravel's `DB::prohibitDestructiveCommands()`), printing a
+> pointer to the safe reset below. To start over, **switch to fresh names, never drop**.
+
+The application boots, tests and demos with **no SQL driver**: `mongodb` is the default and only
+database connection (`config/database.php` no longer defines sqlite/mysql/mariadb/pgsql/sqlsrv,
+and `AppServiceProvider` drops the framework's merged SQL defaults). `DB_CONNECTION`/`DB_*` are not
+read any more, so a stale `DB_CONNECTION=sqlite` in an old `.env` is ignored (remove it anyway).
+`pdo_sqlite`/`pdo_mysql` are not needed at runtime or in tests; `ext-pdo` is only a `suggest` of
+`laravel/framework`.
+
+| Former SQL piece | Now |
+|---|---|
+| `migrations` table | Mongo collection `migrations` (Laravel repository on the `mongodb` connection) |
+| 22 SQL migrations | deleted; only the Mongo index migrations remain (+ `2026_11_18_300001_create_mongodb_queue_indexes`) |
+| `failed_jobs` table | Mongo collection `failed_jobs` (`database-uuids` provider, unique `uuid`); `queue:failed`, `queue:retry`, `queue:forget`, `queue:flush` unchanged |
+| `job_batches` table | Mongo collection `job_batches` via laravel-mongodb `MongoBatchRepository` (no batches are used today) |
+| `password_reset_tokens` table | Redis, cache store `redis` (connection `cache`): hashed token per email, TTL 60 min, 60 s throttle; `AUTH_PASSWORD_RESET_STORE` overrides the store. `cache:clear`, a Redis flush or `allkeys-lru` eviction under memory pressure can remove a pending token: this fails closed (the link is reported invalid) and the user simply requests a new link |
+| `database` session/cache/queue fallbacks | `redis` defaults in config and `.env.example` |
+| `*:import-sql` commands, `/admin/processing` legacy SQL warnings | removed |
+
+**Legacy SQL data.** The six importers (`config:import-sql`, `moderation:import-sql`,
+`comments:import-sql`, `interactions:import-sql`, `unlocks:import-sql`, `sources:import-history-sql`)
+exist only at git tag **`pre-sql-removal`** (= `fbddbf7`). To migrate an old SQL database: check out
+that tag, point its `DB_CONNECTION` at the legacy database, run the cutover steps documented in the
+sections above (in slice order), verify the totals, then check out the current release and continue
+with the setup below. The Cassandra table `source_fetch_history_imports` (import marker) is no longer
+created; an existing one is harmless.
+
+**Existing development machine (first run after this slice).** The Mongo `migrations` collection is
+empty, so the first migrate reruns the Mongo index migrations once; they are idempotent (createIndex
+with an identical spec is a no-op; the billing backfill only fills missing values). Run it as
+`php artisan migrate --step` so every migration gets its own batch, and **do not roll back the
+index migrations** (rollback is refused outside tests anyway; their `down()` only drops indexes and
+tolerates missing ones).
+`database/database.sqlite` is no longer read and can be archived or deleted by the owner.
+
+### Setup / clean reset (Gate 10 runbook input)
+
+Fresh clone:
+
+```bash
+composer install
+cp .env.example .env                             # then fill local store credentials (never commit them)
+php artisan key:generate
+docker compose up -d && ./scripts/nosql-health.sh --wait 120
+npm install --ignore-scripts && npm run build
+```
+
+Then, with no `bootstrap/cache/config.php` (`php artisan config:clear`):
+
+```bash
+php artisan migrate --force                      # Mongo index migrations, recorded in Mongo `migrations`
+php artisan storylens schema                     # Cassandra Story timeline
+php artisan interactions schema                  # Cassandra interaction activity
+php artisan reading-pass schema                  # Cassandra Reading Pass history
+php artisan moderation:audit schema              # Cassandra moderation audit
+php artisan sources:history-manage bootstrap     # Cassandra source fetch history
+php artisan db:seed --force                      # categories, sources, users, demo engagement
+php artisan storylens ingest                     # optional: frozen StoryLens fixture
+```
+
+**Safe reset of a dev/demo machine (never drop):** pick fresh names in `.env` — `MONGO_DB=vietfeed_new`,
+`CASSANDRA_KEYSPACE=vietfeed_new`, an empty `REDIS_NOSQL_DB`, `REDIS_CACHE_DB` and `REDIS_DB` (queue/sessions/locks; or
+stop the workers and let the queue drain first) — check `redis-cli -n <db> dbsize` is 0 — run `php artisan config:clear`,
+then the commands above (and `php artisan feeds:fetch` for live RSS). The old data stays intact; switching the names back
+restores it. Neo4j is shared: old StoryLens nodes remain (UUID-scoped, harmless). Delete an old database only deliberately with
+the native tools after a backup, never from `artisan`.
+
+Proven from empty isolated stores (Mongo `vietfeed_test` dropped, Redis DB15 flushed, Cassandra keyspace
+`vietfeed_test` dropped), in a copy of the tree with **no `.env`, no `database/database.sqlite`,
+`DB_CONNECTION` unset and no PDO SQL driver loaded**, with process-local overrides only:
+
+```bash
+export APP_ENV=testing APP_KEY=base64:... MONGO_DB=vietfeed_test CASSANDRA_KEYSPACE=vietfeed_test
+export REDIS_DB=15 REDIS_CACHE_DB=15 REDIS_NOSQL_DB=15 REDIS_URL='' MAIL_MAILER=array
+# plus the store credentials/ports of the local compose stack (MONGO_*, REDIS_*, CASSANDRA_*)
+```
+
+then `php artisan serve` and a smoke of `/`, `/articles`, an article, `/search`, `/pricing`, a Story,
+`/login`, `/register`, `/forgot-password` (POST: token stored in Redis), admin login, `/admin/{dashboard,
+processing,sources,sources/health,categories,articles,users,reports,comments}`, `/profile`,
+`/profile/reading-pass` and `/bookmarks` — all 200 (details in
+`.agent/tasks/sql-cutover-removal/GATE-REPORT-9.5-5.md`). Never run these commands with the test
+overrides against dev stores, and never seed dev data from a test shell.
+
+### Tests
+
+`phpunit.xml` sets no SQL variables. `Tests\TestCase` asserts `vietfeed_test`, the `mongodb` default
+and that `mongodb` is the only configured connection; once per PHPUnit process it drops the
+`vietfeed_test` migration records and reruns the Mongo index migrations, then wipes the test
+collections; each test's teardown wipes them again (Redis DB15 and Cassandra `vietfeed_test`
+isolation are unchanged). **No-SQL guard:** every `QueryExecuted` on a non-Mongo connection and every
+resolved non-Mongo connection fails the test in teardown (`tests/Feature/NoSqlRuntimeTest.php` covers
+the guard itself, Mongo migrations, Redis reset tokens and Mongo failed jobs).

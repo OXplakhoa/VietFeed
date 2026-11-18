@@ -15,12 +15,11 @@ php artisan db:seed --class=ModerationDemoSeeder
 
 Gate 9b: báo cáo, biện pháp xử lý và vụ việc (mỗi bình luận một vụ) nằm trên MongoDB; hàng đợi duyệt ưu tiên trên Redis;
 lịch sử quyết định trên Cassandra (ghi bất đồng bộ qua Redis Stream). Để lịch sử hiện lên, chạy bộ xử lý trong một terminal:
-`php artisan moderation:audit consume --limit=100` (chạy lại sau mỗi bước, hoặc lặp bằng `watch`). Dữ liệu SQL cũ (nếu có)
-chuyển sang MongoDB bằng `php artisan moderation:import-sql` (chạy lại an toàn).
+`php artisan moderation:audit consume --limit=100` (chạy lại sau mỗi bước, hoặc lặp bằng `watch`).
 
-**Thứ tự chuyển đổi (cutover), chạy liền nhau:** `php artisan down` → `php artisan migrate --force` →
-`php artisan moderation:import-sql` → `php artisan moderation:rebuild-queue` → `php artisan up`. Trước khi import, các biện pháp
-xử lý cũ trong SQL **chưa có hiệu lực**; trang `/admin/processing` cảnh báo khi còn bản ghi SQL chưa được chuyển.
+Gate 9.5 slice 5: ứng dụng không còn SQL. Lệnh `moderation:import-sql` và cảnh báo "bản ghi SQL chưa được chuyển" trên
+`/admin/processing` đã bị gỡ; dữ liệu SQL cũ chỉ chuyển được bằng phiên bản tại tag `pre-sql-removal`
+(xem `docs/database/nosql-local.md`, mục Gate 9.5 slice 5). Khi khôi phục hàng đợi: `php artisan moderation:rebuild-queue`.
 Bộ xử lý lịch sử (`moderation:audit consume`) và `moderation:repair` hiện chạy thủ công (Gate 10 sẽ tự động hóa).
 
 Tất cả tài khoản dùng mật khẩu `password`:
