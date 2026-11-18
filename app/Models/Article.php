@@ -55,7 +55,8 @@ class Article extends Model
 
     public function comments()
     {
-        return $this->hasMany(Comment::class);
+        // Gate 9.5: Mongo → Mongo, keyed by the article's string id.
+        return $this->hasMany(Comment::class, 'article_id', '_id');
     }
 
     public function bookmarks()

@@ -52,9 +52,18 @@ class Report extends Model
     protected function casts(): array
     {
         return [
-            'comment_id' => 'integer',
             'decided_at' => 'datetime',
         ];
+    }
+
+    /** Gate 9.5: `comment_id` is the comment's UUIDv7 string (normalized on write, never cast to int). */
+    public function setAttribute($key, $value)
+    {
+        if ($key === 'comment_id' && $value !== null) {
+            $value = (string) $value;
+        }
+
+        return parent::setAttribute($key, $value);
     }
 
     // Related SQL/Mongo models keep their own connection.

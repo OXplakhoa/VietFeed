@@ -172,7 +172,10 @@ class ModerationEnforcementTest extends TestCase
     public function test_repair_migration_is_rerunnable_and_cleans_legacy_reviewed_rows(): void
     {
         $migration = require base_path('database/migrations/2026_11_17_100001_moderation_report_repair.php');
-        $comment = $this->comment($this->user(), $this->article(), 'Nội dung cũ trước khi có ảnh chụp');
+        // Gate 9.5: this migration backfills from the legacy SQL comments table (Comment is on MongoDB now).
+        $author = $this->user();
+        $comment = (object) ['id' => DB::table('comments')->insertGetId(['user_id' => (string) $author->id, 'article_id' => (string) $this->article()->id,
+            'body' => 'Nội dung cũ trước khi có ảnh chụp', 'created_at' => now(), 'updated_at' => now()])];
 
         $migration->down();
         $this->assertTrue(Schema::hasColumn('reports', 'reviewed_at'));
@@ -221,7 +224,7 @@ class ModerationEnforcementTest extends TestCase
         $migration->up();
         $this->assertSame('Nội dung cũ trước khi có ảnh chụp', DB::table('reports')->where('reporter_id', 'r1')->sole()->comment_body);
 
-        $comment->delete();
+        DB::table('comments')->where('id', $comment->id)->delete();
         $this->assertSame(3, DB::table('reports')->count()); // Gate 9b: legacy SQL table (Report is on MongoDB)
     }
 

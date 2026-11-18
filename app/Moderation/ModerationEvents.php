@@ -8,6 +8,10 @@ use Illuminate\Support\Str;
 /**
  * Canonical moderation audit event envelope (spec §10.5). Events are written into the Mongo case or
  * sanction document in the same atomic update as the state change, then published to the stream.
+ *
+ * Gate 9.5: `comment_id` is the comment's string id. Events recorded before the cutover (and by the 9b
+ * import) carry the legacy SQL integer; `comments:import-sql` rewrites those in MongoDB and keeps the
+ * integer as `legacy_comment_id` (Cassandra keeps it in the old `comment_id bigint` column, never rewritten).
  */
 final class ModerationEvents
 {
@@ -23,7 +27,7 @@ final class ModerationEvents
      *                                            `aggregate_version` is the version of the document that recorded the event; `case_version` is the
      *                                            case document's version (equal for case events, the case version at write time for case-linked
      *                                            sanction events, null for sanctions without a case).
-     * @param  array{report_id?: ?string, sanction_id?: ?string, comment_id?: ?int, round?: ?int, occurred_at?: string, event_id?: string, case_version?: ?int}  $refs
+     * @param  array{report_id?: ?string, sanction_id?: ?string, comment_id?: ?string, round?: ?int, occurred_at?: string, event_id?: string, case_version?: ?int}  $refs
      */
     public static function make(string $type, string $caseId, string $aggregateType, string $aggregateId, int $version, ?string $actorId, ?string $note = null, array $refs = []): array
     {
@@ -44,9 +48,23 @@ final class ModerationEvents
             'note' => self::note($note),
             'report_id' => $refs['report_id'] ?? null,
             'sanction_id' => $refs['sanction_id'] ?? null,
-            'comment_id' => isset($refs['comment_id']) ? (int) $refs['comment_id'] : null,
+            'comment_id' => self::commentRef($refs['comment_id'] ?? null),
             'round' => isset($refs['round']) ? (int) $refs['round'] : null,
         ];
+    }
+
+    /**
+     * The comment's string id. A legacy SQL integer (only the 9b `moderation:import-sql` and documents
+     * it wrote still carry one before `comments:import-sql` runs) is kept as an integer, never stringified,
+     * so the comment import remains the single place that converts it.
+     */
+    public static function commentRef(mixed $commentId): int|string|null
+    {
+        return match (true) {
+            $commentId === null || $commentId === '' => null,
+            is_int($commentId) => $commentId,
+            default => (string) $commentId,
+        };
     }
 
     public static function now(): string

@@ -130,7 +130,8 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function comments()
     {
-        return $this->hasMany(Comment::class);
+        // Gate 9.5: Mongo → Mongo, keyed by the user's string id.
+        return $this->hasMany(Comment::class, 'user_id', '_id');
     }
 
     public function articleUnlocks()

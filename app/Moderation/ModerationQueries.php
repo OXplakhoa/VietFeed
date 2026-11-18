@@ -16,7 +16,7 @@ use Illuminate\Support\Str;
 use MongoDB\BSON\Regex;
 
 /**
- * Read side of moderation. Gate 9b: reports, sanctions and cases on MongoDB, comments on SQL,
+ * Read side of moderation. Gate 9b: reports, sanctions and cases on MongoDB (Gate 9.5: comments too),
  * review queue/counters on Redis. Cross-store rule (Gate 7 C1): resolve ids in one query per
  * store and join in PHP, batched per page. Views receive Mongo models with relations pre-set
  * (no lazy loading) or plain row objects.
@@ -284,7 +284,7 @@ class ModerationQueries
             ['$match' => ['comment_id' => ['$in' => $commentIds]]],
             ['$group' => ['_id' => '$comment_id', 'reports_count' => ['$sum' => 1], 'pending_count' => ['$sum' => ['$cond' => [['$eq' => ['$status', 'pending']], 1, 0]]]]],
         ])->toArray())->keyBy('_id') : collect();
-        $live = $commentIds ? Comment::whereIn('id', $commentIds)->get(['id', 'is_hidden'])->keyBy('id') : collect();
+        $live = $commentIds ? Comment::whereIn('_id', array_map('strval', $commentIds))->get(['_id', 'is_hidden'])->keyBy(fn (Comment $c) => (string) $c->id) : collect();
         $users = $this->usersById($latest->pluck('comment_user_id')->merge($latest->pluck('reporter_id'))->all());
         $articles = $this->articlesById($latest->pluck('comment_article_id')->all());
 
@@ -293,7 +293,7 @@ class ModerationQueries
             $total = $totals[$report->comment_id];
 
             return (object) [
-                'comment_id' => (int) $report->comment_id,
+                'comment_id' => (string) $report->comment_id,
                 'latest_report' => $report,
                 'reports_count' => (int) $total['reports_count'],
                 'pending_count' => (int) $total['pending_count'],

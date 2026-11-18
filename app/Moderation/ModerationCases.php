@@ -48,7 +48,8 @@ final class ModerationCases
         return $this->collection()->findOne(['_id' => $caseId]);
     }
 
-    public function findByComment(int $commentId): ?array
+    /** String id; a legacy integer only from the 9b SQL import (see ModerationEvents::commentRef()). */
+    public function findByComment(int|string $commentId): ?array
     {
         return $this->collection()->findOne(['comment_id' => $commentId]);
     }
@@ -56,7 +57,7 @@ final class ModerationCases
     /** Upsert the case of the report's comment (unique on comment_id) and return its id. */
     public function ensureFor(Report $report): string
     {
-        $commentId = (int) $report->comment_id;
+        $commentId = ModerationEvents::commentRef($report->comment_id);
         $now = new UTCDateTime(now());
         for ($attempt = 0; $attempt < 2; $attempt++) {
             try {
@@ -94,7 +95,7 @@ final class ModerationCases
         $severity = Report::severityOf($report->reason);
         $reportedAt = new UTCDateTime($report->created_at ?? now());
         $event = ModerationEvents::make('REPORTED', $caseId, 'case', $caseId, 0, (string) $report->reporter_id, null, [
-            'report_id' => (string) $report->id, 'comment_id' => (int) $report->comment_id,
+            'report_id' => (string) $report->id, 'comment_id' => $report->comment_id,
             'occurred_at' => ModerationEvents::time($report->created_at ?? now()),
         ]);
         $literal = ModerationEvents::literal($event);
@@ -141,7 +142,7 @@ final class ModerationCases
             }
             $version = (int) $case['version'];
             $event = ModerationEvents::make('REPORTED', $caseId, 'case', $caseId, $version + 1, (string) $report->reporter_id, null, [
-                'report_id' => (string) $report->id, 'comment_id' => (int) $report->comment_id, 'round' => 0,
+                'report_id' => (string) $report->id, 'comment_id' => $report->comment_id, 'round' => 0,
                 'occurred_at' => ModerationEvents::time($report->created_at ?? now()),
             ]);
             $after = $this->collection()->findOneAndUpdate(
@@ -211,7 +212,7 @@ final class ModerationCases
         $events = [];
         if ($claim === null) {
             $event = ModerationEvents::make($status === 'false_report' ? 'CASE_FALSE_REPORT' : 'CASE_DISMISSED', $caseId, 'case', $caseId,
-                $version + 1, $adminId, $note, ['comment_id' => (int) $case['comment_id'], 'round' => (int) $case['round']]);
+                $version + 1, $adminId, $note, ['comment_id' => $case['comment_id'], 'round' => (int) $case['round']]);
             $update['$push']['events'] = $event;
             $events[] = $event['event_id'];
         }

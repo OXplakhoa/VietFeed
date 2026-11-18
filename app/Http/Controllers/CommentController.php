@@ -32,11 +32,11 @@ class CommentController extends Controller
 
         $request->validate([
             'body' => 'required|string|max:2000',
-            'parent_id' => 'nullable|exists:comments,id',
+            'parent_id' => 'nullable|string|exists:mongodb.comments,_id',
         ]);
 
         $article->comments()->create([
-            'user_id' => Auth::id(),
+            'user_id' => (string) Auth::id(),
             'parent_id' => $request->parent_id,
             'body' => $request->body,
         ]);
@@ -46,7 +46,7 @@ class CommentController extends Controller
 
     public function update(Request $request, Comment $comment)
     {
-        abort_if($comment->user_id !== Auth::id(), 403);
+        abort_if($comment->user_id !== (string) Auth::id(), 403);
 
         if (! Auth::user()->canComment()) {
             return back()->with('error', 'Tài khoản đang bị hạn chế nên bạn không thể chỉnh sửa bình luận.');
@@ -67,7 +67,7 @@ class CommentController extends Controller
         /** @var User $user */
         $user = Auth::user();
 
-        abort_if($comment->user_id !== Auth::id() && ! $user->isAdmin(), 403);
+        abort_if($comment->user_id !== (string) Auth::id() && ! $user->isAdmin(), 403);
 
         $comment->delete();
 
