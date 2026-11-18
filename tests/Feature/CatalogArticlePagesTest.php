@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Billing\BillingGateway;
 use App\Content\CategoryList;
 use App\Content\ContentCatalog;
-use App\Http\Controllers\Admin\ArticleController;
 use App\Models\Article;
 use App\Models\ArticleUnlock;
 use App\Models\Bookmark;
@@ -186,7 +185,7 @@ class CatalogArticlePagesTest extends TestCase
         foreach (['published_at', 'boosts', 'bookmarks'] as $sort) {
             $this->assertSame($measurements[5][$sort], $measurements[25][$sort], $sort);
             // Gate 9.5: Category/Source eager reads and configuration lists now use MongoDB.
-            $this->assertSame([2 + ($sort === 'published_at' ? 0 : 1), 7], $measurements[25][$sort], $sort);
+            $this->assertSame([0, 9], $measurements[25][$sort], $sort);
         }
     }
 
@@ -229,16 +228,11 @@ class CatalogArticlePagesTest extends TestCase
         }
     }
 
-    public function test_count_ranking_merges_three_small_chunks(): void
+    public function test_count_ranking_groups_each_mongo_collection_once(): void
     {
-        $this->app->instance(ArticleController::class, new class extends ArticleController
-        {
-            protected int $countChunkSize = 2;
-        });
         Article::query()->delete();
         $ids = [];
-        // Published order forms chunks [0,1], [2,3], [4,5]. The global winner
-        // is in the final chunk; ties and missing counts span chunk boundaries.
+        // The global winner is late in published order. The fixture also has ties and missing counts.
         foreach ([1, 0, 2, 1, 3, 0] as $i => $count) {
             $article = Article::create([
                 'title' => "Chunk $i", 'slug' => "chunk-$i", 'original_url' => "https://chunk.test/$i",
@@ -253,20 +247,24 @@ class CatalogArticlePagesTest extends TestCase
         }
         $expected = [$ids[4], $ids[2], $ids[0], $ids[3], $ids[1], $ids[5]];
         $sql = DB::connection();
+        $mongo = DB::connection('mongodb');
         foreach (['boosts', 'bookmarks'] as $sort) {
             $sql->enableQueryLog();
+            $mongo->enableQueryLog();
             $sql->flushQueryLog();
+            $mongo->flushQueryLog();
             try {
                 $items = $this->get('/admin/articles?sort='.$sort)->assertOk()->viewData('articles');
                 $this->assertSame($expected, $items->getCollection()->map->getKey()->all());
                 $this->assertSame([3, 2, 1, 1, 0, 0], $items->pluck($sort.'_count')->all());
-                $rankingQueries = collect($sql->getQueryLog())->filter(fn ($entry) => str_contains($entry['query'], 'order by "n" desc'));
-                $this->assertCount(3, $rankingQueries);
-                foreach ($rankingQueries as $entry) {
-                    $this->assertCount(2, $entry['bindings']);
+                $this->assertSame([], $sql->getQueryLog());
+                foreach (['bookmarks', 'boosts'] as $collection) {
+                    $aggregates = collect($mongo->getQueryLog())->filter(fn ($query) => str_contains($query['query'], $collection) && str_contains($query['query'], 'aggregate'));
+                    $this->assertCount(1, $aggregates);
                 }
             } finally {
                 $sql->disableQueryLog();
+                $mongo->disableQueryLog();
             }
         }
     }

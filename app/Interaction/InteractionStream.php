@@ -3,6 +3,8 @@
 namespace App\Interaction;
 
 use App\Processing\StreamConsumer;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 final class InteractionStream extends StreamConsumer
 {
@@ -19,11 +21,35 @@ final class InteractionStream extends StreamConsumer
         parent::__construct(self::STREAM, self::GROUP, self::DLQ, self::ERRORS, $retryMilliseconds, $pendingPageSize);
     }
 
+    public function publishMembership(InteractionEvent $event): bool
+    {
+        try {
+            $this->publish($event->data);
+
+            return true;
+        } catch (Throwable $e) {
+            Log::warning('Interaction publish failed', ['exception_type' => $e::class]);
+
+            return false;
+        }
+    }
+
     public function consume(string $consumer, int $limit = 1, ?callable $handler = null): int
     {
-        return parent::consume($consumer, $limit, function (array $raw) use ($handler): void {
+        $activity = null;
+
+        return parent::consume($consumer, $limit, function (array $raw) use ($handler, &$activity): void {
             $event = InteractionEvent::fromArray($raw);
-            $handler ? $handler($event) : app(Trending::class)->apply($event);
+            if ($handler) {
+                $handler($event);
+
+                return;
+            }
+
+            if ($event->isMembership()) {
+                ($activity ??= app(InteractionActivity::class))->apply($event);
+            }
+            app(Trending::class)->apply($event);
         });
     }
 }

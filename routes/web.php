@@ -54,8 +54,8 @@ Route::get('/api/ticker', [TickerController::class, 'index'])->name('api.ticker'
 
 // ── Auth-only (controller handles its own verified check for friendlier UX) ──
 Route::middleware('auth')->group(function () {
-    Route::post('/bookmarks/toggle', [BookmarkController::class, 'toggle'])->name('bookmarks.toggle');
-    Route::post('/boosts/toggle', [BoostController::class, 'toggle'])->name('boosts.toggle');
+    Route::post('/bookmarks/toggle', [BookmarkController::class, 'toggle'])->middleware('throttle:interaction-toggles')->name('bookmarks.toggle');
+    Route::post('/boosts/toggle', [BoostController::class, 'toggle'])->middleware('throttle:interaction-toggles')->name('boosts.toggle');
     // Reports: auth only, so unverified users get an explanatory message instead of a redirect.
     Route::post('/comments/{comment}/report', [ReportController::class, 'store'])->name('reports.store');
 

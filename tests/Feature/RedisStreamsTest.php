@@ -57,14 +57,14 @@ class RedisStreamsTest extends TestCase
         $event['event_id'] = (string) Str::uuid7();
         $trending->apply(InteractionEvent::fromArray($event));
         $trending->apply(InteractionEvent::fromArray($this->event()));
-        $this->assertSame(['article-a' => 6.0], $trending->top(10));
+        $this->assertSame(['article-a' => 6.0], $trending->top(10, synthetic: true));
         $event['aggregate_version'] = 3;
         $event['event_id'] = (string) Str::uuid7();
         $trending->apply(InteractionEvent::fromArray($event));
         $event['aggregate_version'] = 2;
         $event['event_id'] = (string) Str::uuid7();
         $trending->apply(InteractionEvent::fromArray($event));
-        $this->assertSame(['article-a' => 11.0], $trending->top(10));
+        $this->assertSame(['article-a' => 11.0], $trending->top(10, synthetic: true));
     }
 
     public function test_poison_retries_with_backoff_then_ends_in_one_dead_letter(): void
@@ -97,7 +97,7 @@ class RedisStreamsTest extends TestCase
         $this->assertSame(1, $stream->lengths()['pending']);
         Redis::connection('nosql')->client()->xClaim($stream::STREAM, $stream::GROUP, 'interrupted', 0, [$delivery['id']], ['IDLE' => 100000, 'JUSTID']);
         $this->assertSame(1, $stream->consume('recovery'));
-        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top());
+        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top(synthetic: true));
         $this->assertSame(['stream' => 0, 'pending' => 0, 'dead_letters' => 0], $stream->lengths());
     }
 
@@ -105,22 +105,22 @@ class RedisStreamsTest extends TestCase
     {
         $source = app(InteractionReplaySource::class);
         $trending = app(Trending::class);
-        $this->assertSame(5, $trending->rebuild($source));
-        $this->assertSame(['article-a' => 7.0, 'article-b' => 6.0], $trending->top());
-        $this->assertSame(5, $trending->rebuild($source));
-        $this->assertSame(['article-a' => 7.0, 'article-b' => 6.0], $trending->top());
+        $this->assertSame(5, $trending->rebuild($source, synthetic: true));
+        $this->assertSame(['article-a' => 7.0, 'article-b' => 6.0], $trending->top(synthetic: true));
+        $this->assertSame(5, $trending->rebuild($source, synthetic: true));
+        $this->assertSame(['article-a' => 7.0, 'article-b' => 6.0], $trending->top(synthetic: true));
         // One Redis key is the complete projection eviction unit.
-        Redis::connection('nosql')->del(Trending::KEY);
-        $this->assertSame([], $trending->top());
-        $trending->rebuild($source);
-        $this->assertSame(['article-a' => 7.0, 'article-b' => 6.0], $trending->top());
+        Redis::connection('nosql')->del(Trending::DEMO_KEY);
+        $this->assertSame([], $trending->top(synthetic: true));
+        $trending->rebuild($source, synthetic: true);
+        $this->assertSame(['article-a' => 7.0, 'article-b' => 6.0], $trending->top(synthetic: true));
     }
 
     public function test_inspection_and_rebuild_commands_are_readable(): void
     {
         $this->artisan('interactions', ['action' => 'rebuild', '--synthetic' => true])
             ->expectsOutputToContain('Rebuilt 5 synthetic events')->assertExitCode(0);
-        $this->artisan('interactions', ['action' => 'top'])->expectsOutputToContain('article-a')->assertExitCode(0);
+        $this->artisan('interactions', ['action' => 'top', '--synthetic' => true])->expectsOutputToContain('article-a')->assertExitCode(0);
         $this->artisan('interactions', ['action' => 'inspect'])->expectsOutputToContain('"pending": 0')->assertExitCode(0);
     }
 
@@ -149,14 +149,14 @@ class RedisStreamsTest extends TestCase
         Cache::put('gate15', 'cached', 60);
         $this->assertSame('cached', Cache::get('gate15'));
         $trending = app(Trending::class);
-        $trending->rebuild(app(InteractionReplaySource::class));
-        $top = $trending->top();
+        $trending->rebuild(app(InteractionReplaySource::class), synthetic: true);
+        $top = $trending->top(synthetic: true);
         $stream = new InteractionStream;
         $stream->publish($this->event());
         $this->assertSame(1, $stream->lengths()['stream']);
         $this->flushTestDatabase(Redis::connection('nosql'));
         $this->assertSame($before, $counts());
-        $this->assertSame([], $trending->top());
+        $this->assertSame([], $trending->top(synthetic: true));
         $this->assertSame([], Redis::connection('default')->keys('*'.$sessionId.'*'));
         $this->assertNull(Cache::get('gate15'));
         $this->assertSame(0, $stream->lengths()['stream']);
@@ -169,8 +169,8 @@ class RedisStreamsTest extends TestCase
         $sync($this->post('/login', $credentials)->assertRedirect('/dashboard'));
         $this->assertAuthenticated();
         $this->get('/dashboard')->assertRedirect('/');
-        $trending->rebuild(app(InteractionReplaySource::class));
-        $this->assertSame($top, $trending->top());
+        $trending->rebuild(app(InteractionReplaySource::class), synthetic: true);
+        $this->assertSame($top, $trending->top(synthetic: true));
         $this->assertSame($before, $counts());
     }
 
@@ -185,9 +185,9 @@ class RedisStreamsTest extends TestCase
         $this->assertSame(1, $redis->rawCommand('XLEN', $prefix.$stream::STREAM));
         $this->assertSame(0, $redis->rawCommand('XLEN', $stream::STREAM));
         $this->assertSame(1, $stream->consume('prefix-proof'));
-        $this->assertSame('5', (string) $redis->rawCommand('ZSCORE', $prefix.Trending::KEY, 'article:article-a'));
-        $this->assertFalse($redis->rawCommand('ZSCORE', Trending::KEY, 'article:article-a'));
-        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top());
+        $this->assertSame('5', (string) $redis->rawCommand('ZSCORE', $prefix.Trending::DEMO_KEY, 'article:article-a'));
+        $this->assertFalse($redis->rawCommand('ZSCORE', Trending::DEMO_KEY, 'article:article-a'));
+        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top(synthetic: true));
     }
 
     private function agePending(InteractionStream $stream): void
@@ -305,10 +305,10 @@ class RedisStreamsTest extends TestCase
         $id = array_key_first($stream->deadLetters());
         $this->artisan('interactions', ['action' => 'replay', '--id' => $id])->expectsOutputToContain('Requeued')->assertExitCode(0);
         $this->assertSame(1, $stream->consume('replay'));
-        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top());
+        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top(synthetic: true));
         $stream->publish($event);
         $stream->consume('duplicate');
-        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top());
+        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top(synthetic: true));
         $this->assertSame(['stream' => 0, 'pending' => 0, 'dead_letters' => 0], $stream->lengths());
     }
 
@@ -335,14 +335,14 @@ class RedisStreamsTest extends TestCase
         $stream->consume('outage', handler: function () {
             throw new \RuntimeException('Temporary outage');
         });
-        $this->assertSame([], app(Trending::class)->top());
+        $this->assertSame([], app(Trending::class)->top(synthetic: true));
         $this->agePending($stream);
         $stream->consume('recovered');
-        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top());
+        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top(synthetic: true));
         Redis::connection('nosql')->del($stream::STREAM);
         $stream->publish($event);
         $this->assertSame(1, $stream->consume('new-group'));
-        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top());
+        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top(synthetic: true));
         $this->assertSame(0, $stream->lengths()['pending']);
     }
 
@@ -357,7 +357,7 @@ class RedisStreamsTest extends TestCase
                 $this->assertNotEmpty($e->getMessage());
             }
         }
-        $this->assertSame([], app(Trending::class)->top());
+        $this->assertSame([], app(Trending::class)->top(synthetic: true));
     }
 
     public function test_failed_rebuild_preserves_previous_ranking_and_empty_rebuild_clears_it(): void
@@ -373,12 +373,12 @@ class RedisStreamsTest extends TestCase
             }
         };
         try {
-            $trending->rebuild($source);
+            $trending->rebuild($source, synthetic: true);
             $this->fail('Failed replay should propagate');
         } catch (\RuntimeException $e) {
             $this->assertSame('Replay unavailable', $e->getMessage());
         }
-        $this->assertSame(['article-a' => 5.0], $trending->top());
+        $this->assertSame(['article-a' => 5.0], $trending->top(synthetic: true));
         $empty = new class implements InteractionReplaySource
         {
             public function events(): iterable
@@ -386,8 +386,37 @@ class RedisStreamsTest extends TestCase
                 return [];
             }
         };
-        $this->assertSame(0, $trending->rebuild($empty));
-        $this->assertSame([], $trending->top());
+        $this->assertSame(0, $trending->rebuild($empty, synthetic: true));
+        $this->assertSame([], $trending->top(synthetic: true));
+    }
+
+    public function test_evicted_staging_ranking_cannot_replace_the_current_projection(): void
+    {
+        $trending = app(Trending::class);
+        $event = InteractionEvent::fromArray($this->event('boost'));
+        $trending->apply($event);
+        $source = new class($event) implements InteractionReplaySource
+        {
+            public function __construct(private InteractionEvent $event) {}
+
+            public function events(): iterable
+            {
+                yield $this->event;
+                $redis = Redis::connection('nosql');
+                $staging = $redis->keys(Trending::DEMO_KEY.':rebuild:*');
+                // KEYS returns prefixed names, so strip the prefix for typed DEL.
+                $prefix = $redis->client()->getOption(\Redis::OPT_PREFIX);
+                $redis->del(substr($staging[0], strlen($prefix)));
+            }
+        };
+
+        try {
+            $trending->rebuild($source, synthetic: true);
+            $this->fail('Evicted staging must fail promotion');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('Trending rebuild staging key lost', $e->getMessage());
+        }
+        $this->assertSame(['article-a' => 5.0], $trending->top(synthetic: true));
     }
 
     public function test_installed_phpredis_eval_error_contract(): void
@@ -409,7 +438,7 @@ class RedisStreamsTest extends TestCase
     public function test_real_projection_error_stays_pending_then_reaches_dlq(): void
     {
         $stream = new InteractionStream;
-        Redis::connection('nosql')->set(Trending::KEY, 'wrong-type');
+        Redis::connection('nosql')->set(Trending::DEMO_KEY, 'wrong-type');
         $stream->publish($this->event());
         $this->assertSame(1, $stream->consume('error'));
         $this->assertSame(['stream' => 1, 'pending' => 1, 'dead_letters' => 0], $stream->lengths());
@@ -455,7 +484,7 @@ class RedisStreamsTest extends TestCase
     {
         $trending = app(Trending::class);
         $trending->apply(InteractionEvent::fromArray($this->event('boost')));
-        Artisan::call('interactions', ['action' => 'top']);
+        Artisan::call('interactions', ['action' => 'top', '--synthetic' => true]);
         $manager = Redis::getFacadeRoot();
         $connection = $manager->connection('nosql');
         // Inject a false command reply at the database boundary, with other calls real.
@@ -468,7 +497,9 @@ class RedisStreamsTest extends TestCase
 
             public function command($method, array $parameters = [])
             {
-                return $method === $this->failure ? false : parent::command($method, $parameters);
+                $operation = $method === 'eval' && str_contains($parameters[0], "redis.call('RENAME'") ? 'rename' : $method;
+
+                return $operation === $this->failure ? false : parent::command($method, $parameters);
             }
         };
         Redis::shouldReceive('connection')->with('nosql')->andReturn($proxy);
@@ -486,8 +517,8 @@ class RedisStreamsTest extends TestCase
         } finally {
             Redis::swap($manager);
         }
-        $this->assertSame($command === 'del' ? ['article-a' => 7.0, 'article-b' => 6.0] : ['article-a' => 5.0], $trending->top());
-        $this->assertSame([], $connection->keys(Trending::KEY.':rebuild:*'));
+        $this->assertSame($command === 'del' ? ['article-a' => 7.0, 'article-b' => 6.0] : ['article-a' => 5.0], $trending->top(synthetic: true));
+        $this->assertSame([], $connection->keys(Trending::DEMO_KEY.':rebuild:*'));
     }
 
     public function test_ack_cleanup_error_does_not_lose_pending_input(): void
@@ -554,11 +585,11 @@ class RedisStreamsTest extends TestCase
         $stream->consume('upper');
         $stream->publish($event);
         $stream->consume('lower');
-        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top());
+        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top(synthetic: true));
         $upper['event_id'] = (string) Str::uuid7();
         $stream->publish($upper);
         $stream->consume('same-version');
-        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top());
+        $this->assertSame(['article-a' => 5.0], app(Trending::class)->top(synthetic: true));
         $canonical = InteractionEvent::fromArray(array_replace($upper, ['event_id' => strtoupper($event['event_id'])]));
         $this->assertSame($event['event_id'], $canonical->data['event_id']);
         $this->assertSame($event['aggregate_id'], $canonical->data['aggregate_id']);

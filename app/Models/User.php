@@ -120,12 +120,12 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function bookmarks()
     {
-        return $this->hasMany(Bookmark::class);
+        return $this->hasMany(Bookmark::class, 'user_id', '_id');
     }
 
     public function boosts()
     {
-        return $this->hasMany(Boost::class);
+        return $this->hasMany(Boost::class, 'user_id', '_id');
     }
 
     public function comments()

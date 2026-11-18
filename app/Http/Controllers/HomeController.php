@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Content\ArticleCounts;
+use App\Interaction\Trending;
 use App\Models\Article;
 use App\Models\Bookmark;
 use App\Models\Boost;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\Blade;
 
 class HomeController extends Controller
 {
-    public function index()
+    public function index(Trending $ranking)
     {
         // Gate 3: articles live on Mongo — SQL score subqueries/joins can't run, so the
         // same formula (bookmarks×5 + comments×2 + prestige×4 − age_hours×0.5) is scored
@@ -31,7 +32,7 @@ class HomeController extends Controller
             ->whereIn('category_id', $activeCategoryIds)
             ->whereNotNull('image_url')
             ->get();
-        $bmCounts = Bookmark::select('article_id')->selectRaw('COUNT(*) as n')->groupBy('article_id')->pluck('n', 'article_id');
+        $bmCounts = MongoCounts::group(Bookmark::class, 'article_id');
         // Gate 9.5: comments live on Mongo — one native $group per request.
         $cmCounts = MongoCounts::group(Comment::class, 'article_id');
         $now = now();
@@ -97,15 +98,16 @@ class HomeController extends Controller
 
         $breakingArticles = $breakingArticles->merge($diverseBreaking);
 
-        $boostCounts = Boost::select('article_id')->selectRaw('COUNT(*) as n')->groupBy('article_id')->pluck('n', 'article_id');
+        $boostCounts = MongoCounts::group(Boost::class, 'article_id');
         $withBoosts = fn ($articles) => $articles->each(fn ($article) => $article->boosts_count = (int) ($boostCounts[$article->getKey()] ?? 0));
         $orderBoosts = fn ($articles) => $articles->sortBy([['boosts_count', 'desc'], ['published_at', 'desc']])->values();
 
-        $communityBoosted = $orderBoosts($withBoosts(Article::with(['source', 'category'])
+        $recentBoostCandidates = $withBoosts(Article::with(['source', 'category'])
             ->whereIn('source_id', $activeSourceIds)
             ->whereIn('category_id', $activeCategoryIds)
             ->where('published_at', '>=', now()->subHours(72))
-            ->get()))->take(6)->values();
+            ->get());
+        $communityBoosted = $orderBoosts($recentBoostCandidates)->take(6);
 
         if ($communityBoosted->count() < 6) {
             $communityBoosted = $communityBoosted->concat(
@@ -144,11 +146,12 @@ class HomeController extends Controller
             ->latest('published_at')
             ->paginate(12);
 
-        $trending = $orderBoosts($withBoosts(Article::with(['source', 'category'])
-            ->whereIn('source_id', $activeSourceIds)
-            ->whereIn('category_id', $activeCategoryIds)
-            ->where('published_at', '>=', now()->subHours(72))
-            ->get()))->take(5)->values();
+        $scores = $ranking->forHome();
+        $trending = $recentBoostCandidates->sortBy([
+            fn (Article $a, Article $b) => ($scores[$b->getKey()] ?? 5 * $b->boosts_count)
+                <=> ($scores[$a->getKey()] ?? 5 * $a->boosts_count),
+            ['published_at', 'desc'],
+        ])->take(5)->values();
 
         if ($trending->count() < 5) {
             $trending = $trending->concat(
@@ -187,7 +190,7 @@ class HomeController extends Controller
     {
         $page = max(1, (int) $request->get('page', 2));
 
-        // Resolve Mongo configuration and attach SQL interaction counts per page.
+        // Resolve Mongo configuration and attach MongoDB interaction counts per page.
         $query = Article::with(['source', 'category'])
             ->whereIn('category_id', Category::active()->pluck('id'))
             ->whereIn('source_id', Source::active()->pluck('id'));

@@ -22,13 +22,16 @@ class DashboardController extends Controller
         $healthCounts = collect(['healthy', 'warning', 'failed', 'stale', 'critical', 'disabled', 'never_fetched'])
             ->mapWithKeys(fn ($status) => [$status => $allSources->where('health_status', $status)->count()]);
 
+        $bookmarkCounts = MongoCounts::group(Bookmark::class, 'article_id');
+        $boostCounts = MongoCounts::group(Boost::class, 'article_id');
+
         $stats = [
             'articles' => Article::count(),
             'users' => User::count(),
             'comments' => Comment::count(),
             'sources' => Source::where('is_active', true)->count(),
-            'bookmarks' => Bookmark::count(),
-            'boosts' => Boost::count(),
+            'bookmarks' => $bookmarkCounts->sum(),
+            'boosts' => $boostCounts->sum(),
             'unlocks_today' => ArticleUnlock::where('unlocked_at', '>=', now('Asia/Ho_Chi_Minh')->startOfDay())->count(),
             'unlocks_5h' => ArticleUnlock::where('unlocked_at', '>=', now()->subHours(5))->count(),
             'pro_users' => User::whereIn('_id', app(BillingGateway::class)->proUserIds())->count(),
@@ -63,15 +66,13 @@ class DashboardController extends Controller
         $perSource = Source::get()
             ->each(fn ($source) => $source->articles_count = (int) ($articlesBySource[$source->id] ?? 0))
             ->sortByDesc('articles_count')->take(10)->values();
-        $bookmarksByArticle = Bookmark::select('article_id')->selectRaw('COUNT(*) as n')
-            ->groupBy('article_id')->orderByDesc('n')->take(10)->pluck('n', 'article_id');
+        $bookmarksByArticle = $bookmarkCounts->sortDesc()->take(10);
         $mostBookmarked = Article::whereIn('_id', $bookmarksByArticle->keys())->get()
             ->each(fn ($article) => $article->bookmarks_count = (int) $bookmarksByArticle[$article->getKey()])
             ->sortByDesc('bookmarks_count')->values();
         // pluck('id'): the package maps storage _id to the id attribute on read.
         $recentIds = Article::where('published_at', '>=', now()->subHours(72))->pluck('id');
-        $boostsByArticle = Boost::select('article_id')->selectRaw('COUNT(*) as n')
-            ->whereIn('article_id', $recentIds)->groupBy('article_id')->orderByDesc('n')->take(10)->pluck('n', 'article_id');
+        $boostsByArticle = $boostCounts->only($recentIds->all())->sortDesc()->take(10);
         $mostBoosted = Article::whereIn('_id', $boostsByArticle->keys())->get()
             ->each(fn ($article) => $article->boosts_count = (int) $boostsByArticle[$article->getKey()])
             ->sortBy([['boosts_count', 'desc'], ['published_at', 'desc']])->values();

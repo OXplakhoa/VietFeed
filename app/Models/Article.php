@@ -61,12 +61,12 @@ class Article extends Model
 
     public function bookmarks()
     {
-        return $this->hasMany(Bookmark::class);
+        return $this->hasMany(Bookmark::class, 'article_id', '_id');
     }
 
     public function boosts()
     {
-        return $this->hasMany(Boost::class);
+        return $this->hasMany(Boost::class, 'article_id', '_id');
     }
 
     public function unlocks()
