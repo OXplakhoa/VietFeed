@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use MongoDB\Driver\Exception\CommandException;
 
 // Gate 9.5 slice 3b: Reading Pass ledger indexes (idempotent: createIndex with the same spec is a no-op).
 return new class extends Migration
@@ -25,9 +26,22 @@ return new class extends Migration
 
     public function down(): void
     {
-        $collection = DB::connection('mongodb')->getCollection('article_unlocks');
         foreach (array_keys(self::INDEXES) as $name) {
-            $collection->dropIndex($name);
+            $this->dropIndex('article_unlocks', $name);
+        }
+    }
+
+    /** REVIEW-1 m1: a rollback tolerates an index (or collection) that is already gone. */
+    private function dropIndex(string $collection, ?string $index): void
+    {
+        try {
+            $index === null
+                ? DB::connection('mongodb')->getCollection($collection)->dropIndexes()
+                : DB::connection('mongodb')->getCollection($collection)->dropIndex($index);
+        } catch (CommandException $e) {
+            if (! in_array($e->getCode(), [26, 27], true)) { // NamespaceNotFound, IndexNotFound
+                throw $e;
+            }
         }
     }
 };

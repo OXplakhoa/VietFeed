@@ -6,7 +6,6 @@ use App\Jobs\FetchSourceFeedJob;
 use App\Models\Category;
 use App\Models\Source;
 use App\Services\TickerService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Redis\RedisManager;
 use Illuminate\Support\Facades\Artisan;
@@ -31,7 +30,6 @@ use Tests\TestCase;
 class RedisQueueTest extends TestCase
 {
     use GuardsRedisTestDatabase;
-    use RefreshDatabase;
     use SourceHistoryFixtures;
 
     private const FEED_XML = '<?xml version="1.0" encoding="UTF-8"?>
@@ -72,7 +70,6 @@ class RedisQueueTest extends TestCase
     protected function tearDown(): void
     {
         try {
-            DB::table('jobs')->delete();
             $this->flushTestDatabase(Redis::connection('default'));
             $this->flushTestDatabase(Redis::connection('cache'));
         } finally {
@@ -135,7 +132,7 @@ class RedisQueueTest extends TestCase
         $this->assertSame('success', $log->status);
         $this->assertSame(2, (int) $log->items_found);
         $this->assertSame(0, Queue::size());
-        $this->assertSame(0, DB::table('failed_jobs')->count());
+        $this->assertSame([], app('queue.failer')->all()); // Gate 9.5 slice 5: failed jobs live in MongoDB
     }
 
     public function test_ticker_prewarms_redis_cache_keys(): void

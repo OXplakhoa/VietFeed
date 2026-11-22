@@ -5,10 +5,8 @@ namespace Tests\Feature;
 use App\Billing\BillingGateway;
 use App\Billing\StripeClient;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use MongoDB\BSON\UTCDateTime;
 use MongoDB\Driver\Exception\BulkWriteException;
 use Tests\Doubles\FakeStripeClient;
@@ -16,8 +14,6 @@ use Tests\TestCase;
 
 class StripeBillingTest extends TestCase
 {
-    use RefreshDatabase;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -374,8 +370,8 @@ class StripeBillingTest extends TestCase
     public function test_webhook_and_entitlement_have_no_sql_or_redis_dependency(): void
     {
         $user = User::factory()->create();
-        $this->assertFalse(Schema::hasTable('subscriptions'));
-        $this->assertFalse(Schema::hasTable('subscription'.'_items'));
+        // Gate 9.5 slice 5: there is no SQL connection at all (the former SQL billing tables cannot exist).
+        $this->assertSame(['mongodb'], array_keys(config('database.connections')));
         app(StripeClient::class)->subscription = $this->event()['data']['object'];
         $default = config('database.default');
         config(['database.default' => 'nonexistent', 'session.driver' => 'database', 'cache.default' => 'redis']);
@@ -393,13 +389,13 @@ class StripeBillingTest extends TestCase
         $event = $this->event();
         $worker = <<<'WORKER'
         require getcwd().'/vendor/autoload.php';
-        foreach (['APP_ENV'=>'testing','DB_CONNECTION'=>'sqlite','DB_DATABASE'=>':memory:','MONGO_DB'=>'vietfeed_test','DB_URL'=>'','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','TELESCOPE_ENABLED'=>'false','NIGHTWATCH_ENABLED'=>'false'] as $key=>$value) {
+        foreach (['APP_ENV'=>'testing','MONGO_DB'=>'vietfeed_test','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','TELESCOPE_ENABLED'=>'false','NIGHTWATCH_ENABLED'=>'false'] as $key=>$value) {
             putenv($key.'='.$value); $_ENV[$key]=$value; $_SERVER[$key]=$value;
         }
         if (file_exists(getcwd().'/bootstrap/cache/config.php')) { exit(10); }
         $app = require getcwd().'/bootstrap/app.php';
         $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-        if (config('database.connections.mongodb.database') !== 'vietfeed_test' || config('database.default') !== 'sqlite' || config('database.connections.sqlite.database') !== ':memory:') { exit(11); }
+        if (config('database.connections.mongodb.database') !== 'vietfeed_test' || config('database.default') !== 'mongodb' || array_keys(config('database.connections')) !== ['mongodb']) { exit(11); }
         foreach (['nosql','default','cache'] as $name) { config(['database.redis.'.$name.'.url'=>null,'database.redis.'.$name.'.database'=>15]); }
         config(['services.stripe.webhook_secret'=>'whsec_gate7_only']);
         // Bind the fake explicitly; no worker is allowed to use Stripe networking.

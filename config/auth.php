@@ -95,7 +95,10 @@ return [
     'passwords' => [
         'users' => [
             'provider' => 'users',
-            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            // Gate 9.5 slice 5: reset tokens live in Redis (cache store `redis`, Redis connection `cache`) with a
+            // TTL of `expire` minutes; the hashed token is keyed by email and `throttle` limits new links per user.
+            'driver' => 'cache',
+            'store' => env('AUTH_PASSWORD_RESET_STORE', 'redis'),
             'expire' => 60,
             'throttle' => 60,
         ],

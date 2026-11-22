@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => env('QUEUE_CONNECTION', 'database'),
+    'default' => env('QUEUE_CONNECTION', 'redis'),
 
     /*
     |--------------------------------------------------------------------------
@@ -33,15 +33,6 @@ return [
 
         'sync' => [
             'driver' => 'sync',
-        ],
-
-        'database' => [
-            'driver' => 'database',
-            'connection' => env('DB_QUEUE_CONNECTION'),
-            'table' => env('DB_QUEUE_TABLE', 'jobs'),
-            'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
-            'after_commit' => false,
         ],
 
         'beanstalkd' => [
@@ -84,7 +75,7 @@ return [
         'failover' => [
             'driver' => 'failover',
             'connections' => [
-                'database',
+                'redis',
                 'deferred',
             ],
         ],
@@ -102,9 +93,11 @@ return [
     |
     */
 
+    // Gate 9.5 slice 5: batches (unused by the app) are MongoDB-backed via laravel-mongodb's MongoBatchRepository.
     'batching' => [
-        'database' => env('DB_CONNECTION', 'sqlite'),
-        'table' => 'job_batches',
+        'driver' => 'mongodb',
+        'database' => 'mongodb',
+        'collection' => 'job_batches',
     ],
 
     /*
@@ -122,7 +115,8 @@ return [
 
     'failed' => [
         'driver' => env('QUEUE_FAILED_DRIVER', 'database-uuids'),
-        'database' => env('DB_CONNECTION', 'sqlite'),
+        // Gate 9.5 slice 5: failed jobs are MongoDB documents (collection failed_jobs, unique uuid index).
+        'database' => 'mongodb',
         'table' => 'failed_jobs',
     ],
 

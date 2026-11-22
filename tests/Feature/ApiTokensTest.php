@@ -17,7 +17,6 @@ use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Redis\Connections\PhpRedisConnection;
 use Illuminate\Support\Facades\Cache;
@@ -40,7 +39,7 @@ use Tests\TestCase;
 
 class ApiTokensTest extends TestCase
 {
-    use GuardsRedisTestDatabase, RefreshDatabase;
+    use GuardsRedisTestDatabase;
 
     protected function setUp(): void
     {
@@ -541,16 +540,16 @@ class ApiTokensTest extends TestCase
     {
         $pair = $this->login();
         // Independent PHP processes/connections; credentials travel only through pipes.
-        // Each worker boots the actual HTTP kernel with a fresh isolated SQLite schema.
+        // Each worker boots the actual HTTP kernel on the isolated Mongo/Redis test stores (no SQL connection).
         $worker = <<<'PHP'
         require getcwd().'/vendor/autoload.php';
-        foreach (['APP_ENV'=>'testing','DB_CONNECTION'=>'sqlite','DB_DATABASE'=>':memory:','MONGO_DB'=>'vietfeed_test','DB_URL'=>'','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','TELESCOPE_ENABLED'=>'false','NIGHTWATCH_ENABLED'=>'false'] as $key=>$value) {
+        foreach (['APP_ENV'=>'testing','MONGO_DB'=>'vietfeed_test','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','TELESCOPE_ENABLED'=>'false','NIGHTWATCH_ENABLED'=>'false'] as $key=>$value) {
             putenv($key.'='.$value); $_ENV[$key]=$value; $_SERVER[$key]=$value;
         }
         if (file_exists(getcwd().'/bootstrap/cache/config.php')) { exit(10); }
         $app = require getcwd().'/bootstrap/app.php';
         $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-        if (config('database.connections.mongodb.database') !== 'vietfeed_test' || config('database.default') !== 'sqlite' || config('database.connections.sqlite.database') !== ':memory:') { exit(11); }
+        if (config('database.connections.mongodb.database') !== 'vietfeed_test' || config('database.default') !== 'mongodb' || array_keys(config('database.connections')) !== ['mongodb']) { exit(11); }
         foreach (['nosql','default','cache'] as $name) { config(['database.redis.'.$name.'.url'=>null,'database.redis.'.$name.'.database'=>15]); }
         foreach (['nosql','default','cache'] as $name) { if (\Illuminate\Support\Facades\Redis::connection($name)->client()->getDbNum() !== 15) { exit(12); } }
         \Illuminate\Support\Facades\Artisan::call('migrate', ['--force'=>true]);

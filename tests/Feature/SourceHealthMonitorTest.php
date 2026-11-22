@@ -6,7 +6,6 @@ use App\Jobs\FetchSourceFeedJob;
 use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -16,7 +15,6 @@ use Tests\TestCase;
 
 class SourceHealthMonitorTest extends TestCase
 {
-    use RefreshDatabase;
     use SourceHistoryFixtures;
 
     public function test_admin_can_open_source_health_page(): void

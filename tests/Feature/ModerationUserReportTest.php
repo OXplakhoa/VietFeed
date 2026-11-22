@@ -3,14 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Report;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\ModerationFixtures;
 use Tests\TestCase;
 
 /** Gate 9a, user side: rules 1-4. */
 class ModerationUserReportTest extends TestCase
 {
-    use ModerationFixtures, RefreshDatabase;
+    use ModerationFixtures;
 
     // Rule 1 (D1)
     public function test_article_page_renders_comments_with_author_name_and_report_control(): void

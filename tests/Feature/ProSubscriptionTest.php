@@ -9,7 +9,6 @@ use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
 use App\Services\ReadingPassService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use MongoDB\Driver\Monitoring\CommandFailedEvent;
 use MongoDB\Driver\Monitoring\CommandStartedEvent;
@@ -20,8 +19,6 @@ use Tests\TestCase;
 
 class ProSubscriptionTest extends TestCase
 {
-    use RefreshDatabase;
-
     protected function setUp(): void
     {
         parent::setUp();

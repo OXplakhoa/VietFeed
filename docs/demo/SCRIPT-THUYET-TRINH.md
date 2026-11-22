@@ -159,12 +159,11 @@
 
 > Em xin demo việc **đổi tên database và dựng lại từ đầu**.
 >
-> `[mở MySQL Workbench HOẶC terminal]`
-> **B1 — Tạo DB mới:**
-> ```sql
-> CREATE DATABASE vietfeed_v2 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-> ```
-> **B2 —** `[mở .env]` Sửa `DB_DATABASE=vietfeed_v2`.
+> `[mở terminal]`
+> **B1 — Chọn tên mới, KHÔNG xóa DB cũ:** MongoDB và Cassandra tự tạo database/keyspace khi ghi lần đầu, nên không cần lệnh `CREATE DATABASE`. Kiểm tra ba DB Redis định dùng còn trống: `redis-cli -n 3 dbsize`, `redis-cli -n 4 dbsize`, `redis-cli -n 5 dbsize` → `0`.
+>
+> **B2 —** `[mở .env]` Sửa `MONGO_DB=vietfeed_v2`, `CASSANDRA_KEYSPACE=vietfeed_v2`, `REDIS_NOSQL_DB=3`, `REDIS_CACHE_DB=4` (cache trống, không giữ menu chuyên mục của DB cũ), `REDIS_DB=5` (hàng đợi/phiên/khóa — hoặc dừng worker và chờ hàng đợi chạy hết trước khi đổi).
+> 🎤 Dữ liệu cũ (`vietfeed`) vẫn còn nguyên — muốn quay lại chỉ cần trả `.env` về tên cũ. Neo4j dùng chung nên các node StoryLens cũ vẫn còn (theo UUID, vô hại).
 >
 > **B3 — Xóa cache config** (bước hay quên):
 > ```bash
@@ -172,11 +171,15 @@
 > ```
 > 🎤 Không có bước này Laravel vẫn nhớ tên DB cũ trong cache.
 >
-> **B4 — Tạo bảng + đổ dữ liệu mẫu:**
+> **B4 — Tạo collection/index, schema Cassandra + đổ dữ liệu mẫu:**
 > ```bash
-> php artisan migrate:fresh --seed
+> php artisan migrate --force
+> php artisan storylens schema && php artisan interactions schema && php artisan reading-pass schema
+> php artisan moderation:audit schema && php artisan sources:history-manage bootstrap
+> php artisan db:seed --force
 > ```
-> 🎤 Chỉ một cờ `--seed` là có **đủ data**, vì nó chạy class `DatabaseSeeder`, bên trong gọi **4 seeder con theo đúng thứ tự phụ thuộc** — Category trước (vì Source cần `category_id`), rồi Source, User, dữ liệu demo.
+> 🎤 `migrate` tạo index MongoDB và ghi lịch sử migration ngay trong MongoDB (collection `migrations`). Các lệnh `schema` tạo bảng Cassandra. `db:seed` chạy class `DatabaseSeeder`, bên trong gọi **4 seeder con theo đúng thứ tự phụ thuộc** — Category trước (vì Source cần `category_id`), rồi Source, User, dữ liệu demo.
+> ⛔ Không dùng `migrate:fresh` / `db:wipe` / `migrate:reset` / `migrate:rollback`: với MongoDB chúng xóa cả database hoặc index, nên ứng dụng **từ chối** chạy các lệnh này ngoài môi trường test.
 >
 > **B5 — Kéo tin RSS thật:**
 > ```bash
