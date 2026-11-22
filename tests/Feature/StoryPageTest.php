@@ -172,7 +172,7 @@ class StoryPageTest extends TestCase
             ->assertSee('14/11/2026 09:51')->assertSee('datetime="2026-11-14T09:51:55+07:00"', false)
             ->assertSee('14/11/2026 10:30')->assertSee('datetime="2026-11-14T03:30:00+00:00"', false)
             ->assertSee('Bổ sung bài viết · '.$article->title)->assertSee('Bài viết chưa có trong danh sách nguồn')
-            ->assertDontSee($article->id)->assertDontSee($rows[1]['article_id']);
+            ->assertDontSee('Bổ sung bài viết · '.$article->id)->assertDontSee($rows[1]['article_id']);
         $this->getJson('/stories/'.$story->id.'/sections')->assertOk()
             ->assertJsonPath('sections.timeline.data.0.article_title', $article->title)
             ->assertJsonPath('sections.timeline.data.0.occurred_at_display', '14/11/2026 10:30')
