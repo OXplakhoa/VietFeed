@@ -80,6 +80,26 @@ Added by owner decision 2026-11-17, because no earlier gate moves the remaining 
   keeps the full suite green and is reviewed independently.
 - Seed configuration, Sources and Categories into MongoDB; stale local SQL records are not migrated (spec §13 item 2).
 
+## Gate 9.6 — StoryLens AI brief with human review
+
+Spec §12.1 item 9 and §12.2 items 3–5; added by owner decision 2026-11-22.
+
+- AI brief generated asynchronously behind a provider seam (Gemini primary; OpenAI-compatible and fake drivers), with timeout,
+  structured validation, evidence IDs and a deterministic extractive fallback; the Story page never waits for AI.
+- Current brief state on the MongoDB Story document, output versions in MongoDB `story_briefs`.
+- Public pages show an AI brief only after human acceptance and only for the current Story version; partial or unsupported
+  output is never published.
+- Admin review (accept/reject/retry) and a minimal evaluation command; cluster merge/split stays a follow-up.
+
+## Gate 9.7 — RBAC and account lifecycle
+
+Spec §7 stories 18–21, 24, 25; added by owner decision 2026-11-22.
+
+- Fixed admin permissions (content, moderation, operations, Story review, user management) granted and revoked by a Super Admin;
+  the final Super Admin cannot be deleted or demoted; permission checks never depend on Redis cache.
+- Account deletion revokes access immediately, keeps a 30-day recovery period, then purges, including Stripe cancellation and
+  Neo4j/Cassandra/Redis cleanup.
+
 ## Gate 10 — Evaluation and final demo readiness
 
 - Frozen real-RSS dataset and deterministic synthetic workload are versioned.
