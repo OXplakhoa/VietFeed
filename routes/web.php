@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\ProcessingController;
 use App\Http\Controllers\Admin\ReportController as AdminReport;
 use App\Http\Controllers\Admin\SanctionController as AdminSanction;
 use App\Http\Controllers\Admin\SourceController as AdminSource;
+use App\Http\Controllers\Admin\StoryBriefController;
 use App\Http\Controllers\Admin\UserController as AdminUser;
 use App\Http\Controllers\ArticleController;
 use App\Http\Controllers\BillingController;
@@ -108,6 +109,13 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/dashboard', [AdminDashboard::class, 'index'])->name('dashboard');
     Route::get('/processing', [ProcessingController::class, 'index'])->name('processing.index');
     Route::post('/processing/retry', [ProcessingController::class, 'retry'])->name('processing.retry');
+    Route::middleware('can:review-story-brief')->prefix('stories')->name('stories.')->group(function () {
+        Route::get('/', [StoryBriefController::class, 'index'])->name('index');
+        Route::get('/{story}', [StoryBriefController::class, 'show'])->whereUuid('story')->name('show');
+        Route::post('/{story}/accept', [StoryBriefController::class, 'accept'])->whereUuid('story')->name('accept');
+        Route::post('/{story}/reject', [StoryBriefController::class, 'reject'])->whereUuid('story')->name('reject');
+        Route::post('/{story}/retry', [StoryBriefController::class, 'retry'])->whereUuid('story')->name('retry');
+    });
 
     // Bulk-destroy must be before resource routes so 'bulk-destroy' isn't mistaken for an article ID
     Route::post('articles/bulk-destroy', [AdminArticle::class, 'bulkDestroy'])->name('articles.bulk-destroy');

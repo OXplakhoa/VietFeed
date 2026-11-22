@@ -1504,3 +1504,113 @@ collections; each test's teardown wipes them again (Redis DB15 and Cassandra `vi
 isolation are unchanged). **No-SQL guard:** every `QueryExecuted` on a non-Mongo connection and every
 resolved non-Mongo connection fails the test in teardown (`tests/Feature/NoSqlRuntimeTest.php` covers
 the guard itself, Mongo migrations, Redis reset tokens and Mongo failed jobs).
+
+## Gate 9.6 — StoryLens briefs and editorial review
+
+The Story's MongoDB `brief` subdocument tracks the current generation state
+(`none`, `queued`, `generating`, `ready`, `failed`), Story version, candidate
+and publication IDs, and a safe error category when applicable. `ready` means
+generation passed validation. Editorial approval is recorded separately.
+The Redis queue carries the Story ID, version, request ID and provider attempt
+number. Each job takes a MongoDB server-time lease and makes at most one provider
+request. A worker
+failure records `worker_failed` for its active request. The review screens show
+an expired generation lease as failed and allow retry after a worker crash.
+A Story version change invalidates publication immediately and fences off any older worker.
+
+MongoDB `story_briefs` holds UUIDv7 output versions, provider and prompt version,
+the evidence IDs sent, cited points, review decisions and provider attempt metadata. A generation that
+fails validation records its category and reason with an empty points list.
+The first generation of a version with available excerpts records one extractive
+snapshot. Public HTML and section JSON calculate the extractive brief from current
+evidence when needed, including before any worker runs. With one article, the
+extract uses distinct sentences or adds the headline when only one sentence is
+available. It shows one point when there is only one distinct snippet. An empty
+Story shows an empty state.
+
+The Story pointer and review decision use a single conditional Story write.
+The next brief write or admin detail request replays an interrupted history update.
+The public read and the admin index use the same publication check, including
+the accepted output's version, editorial status, and current cited articles.
+They use the extractive brief while the accepted history entry is unavailable.
+If reading or shaping brief data fails, the public brief reports `unavailable`
+and the canonical articles and extractive brief remain visible.
+Apply the new Mongo index migration using the normal setup procedure for the
+intended demo or deployment store.
+
+### Commands and review
+
+```bash
+php artisan storylens brief --story=<story-uuid>
+php artisan storylens brief --all --sync
+php artisan storylens brief-eval
+php artisan storylens brief-eval --limit=20 --json
+php artisan storylens brief-eval --story=<story-uuid> --json
+```
+
+`--all` selects the 50 newest Stories. An ingest call queues one job per affected
+Story at its final version. Ingest and asynchronous `--all` stagger Stories in
+each batch with `AI_DISPATCH_SPACING_SECONDS`. The first job is eligible immediately
+and the default offsets are 0, 6, 12 seconds and so on. Concurrent batches are
+scheduled independently and provider quotas can still return 429. The worker
+records that attempt without retrying. HTTP 5xx, network errors, and provider
+timeouts get one delayed retry. Each attempt is recorded in `story_briefs` and
+the retry stops if the Story version or request changes. The queued retry releases
+the lease until the second job is ready. With `--sync`, the same retry runs in
+the process after its shorter delay. HTTP 402, 429, other 4xx responses and
+invalid output end the request without an automatic retry.
+A Story page always renders from persisted data. Open
+`/admin/stories`, select a Story, check each candidate point against its cited
+articles, and choose **Duyệt** or **Từ chối**. **Tạo lại** enqueues a new attempt.
+Use it after an expired lease, queue outage, provider quota failure or provider
+configuration change. The brief and its source links appear above the article list
+on the public Story page. JSON consumers get the same brief at
+`/stories/<story-uuid>/sections`.
+
+If you override the Redis queue retry interval, keep it above the brief job
+timeout (`AI_TIMEOUT_SECONDS` plus 10 seconds).
+
+Evaluation selects the 50 newest Stories by default (`--limit=1..100`) and reports points and distinct
+cited/sent evidence IDs for the latest recorded AI attempt at the current Story
+version. The invalid-output rate uses
+all recorded AI attempts for the Story. HTTP, network and timeout failures count
+as attempts. Only `invalid_output` contributes to the numerator. Disabled runs
+are excluded. The accepted and rejected totals count
+human decisions across versions, including accepted outputs later superseded.
+
+### Provider configuration
+
+| Variable | Default and purpose |
+| --- | --- |
+| `AI_PROVIDER` | `none`; select `gemini`, `openai` or the offline `fake` driver |
+| `GEMINI_API_KEY` | Empty; Gemini API key |
+| `GEMINI_MODEL` | `gemini-flash-lite-latest` is a moving alias. Set this environment variable to select a specific model. |
+| `GEMINI_THINKING_LEVEL` | Empty uses the model default. Set `minimal`, `low`, `medium`, or `high` where supported. The Gemini request budget is 16,384 output tokens to accommodate thinking and the structured answer. |
+| `OPENAI_COMPAT_BASE_URL` | Empty. Use an HTTPS base URL through the version prefix, such as `https://openrouter.ai/api/v1`. HTTP is allowed on `localhost`, `127.0.0.1` and `[::1]`. |
+| `OPENAI_COMPAT_API_KEY` | Empty; endpoint API key |
+| `OPENAI_COMPAT_MODEL` | Empty; choose a Chat Completions model that supports JSON mode |
+| `AI_TIMEOUT_SECONDS` / `AI_CONNECT_TIMEOUT_SECONDS` | 10 / 3 seconds; connect timeout is capped by the overall timeout |
+| `AI_MAX_EVIDENCE` | 8 articles per prompt, configurable from 1 to 30 |
+| `AI_DISPATCH_SPACING_SECONDS` | 6 seconds between distinct Stories in an asynchronous ingest or CLI bulk batch. Set `0` for immediate dispatch. |
+| `AI_RETRY_DELAY_SECONDS` | 30 seconds before the one queued retry for a transient provider failure. |
+| `AI_SYNC_RETRY_DELAY_SECONDS` | 3 seconds before the one in-process retry with `--sync`. |
+| `AI_BRIEF_REQUIRE_REVIEW` | `true`; `false` permits auto-publication of validated output with a separate label |
+
+Use `AI_PROVIDER=fake` for a repeatable frozen-fixture demo. Hosted models
+receive Story titles and article metadata and excerpts. Free model availability,
+billing requirements and data handling can vary by provider, account and model.
+Use public article data and check the applicable retention and training terms
+before enabling a hosted provider.
+
+- Gemini free-tier data may be used to improve Google products. Check the
+  model, region and billing terms for the project.
+  [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)
+- OpenRouter has rate-limited free Chat Completions model variants. The selected
+  upstream provider's policy also applies.
+  [Free models](https://openrouter.ai/collections/free-models), [data collection](https://openrouter.ai/docs/guides/privacy/data-collection)
+- Groq provides an OpenAI-compatible endpoint with rate limits. Review its
+  current retention settings and choose a model with JSON support.
+  [Groq rate limits](https://console.groq.com/docs/rate-limits), [Groq data handling](https://console.groq.com/docs/your-data)
+- OpenCode Zen (Console) lists free models and their endpoint types. Choose a
+  model using Chat Completions and check its free-model data terms.
+  [OpenCode Console models and privacy](https://opencode.ai/docs/console/models/)

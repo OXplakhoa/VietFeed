@@ -8,6 +8,7 @@
             ['route' => 'admin.sources.index',   'pattern' => 'admin.sources.index',  'icon' => 'bi-rss',          'label' => 'Nguồn tin'],
             ['route' => 'admin.sources.health',  'pattern' => 'admin.sources.health', 'icon' => 'bi-heart-pulse',  'label' => 'Health'],
             ['route' => 'admin.processing.index', 'pattern' => 'admin.processing.*', 'icon' => 'bi-hourglass-split', 'label' => 'Xử lý Story'],
+            ['route' => 'admin.stories.index',    'pattern' => 'admin.stories.*',     'icon' => 'bi-card-text', 'label' => 'Duyệt tóm tắt Story'],
             ['route' => 'admin.categories.index','pattern' => 'admin.categories.*',    'icon' => 'bi-tag',          'label' => 'Chủ đề'],
             ['route' => 'admin.articles.index',  'pattern' => 'admin.articles.*',      'icon' => 'bi-newspaper',    'label' => 'Bài viết'],
             ['route' => 'admin.comments.index',  'pattern' => 'admin.comments.*',      'icon' => 'bi-chat-dots',    'label' => 'Bình luận'],
@@ -15,6 +16,7 @@
         ];
         @endphp
         @foreach($navItems as $item)
+            @continue($item['route'] === 'admin.stories.index' && Gate::denies('review-story-brief'))
             @php $active = request()->routeIs($item['pattern']); @endphp
             <a href="{{ route($item['route']) }}"
                class="btn btn-sm {{ $active ? '' : '' }}"

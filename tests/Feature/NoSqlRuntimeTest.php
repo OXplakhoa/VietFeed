@@ -61,7 +61,8 @@ class NoSqlRuntimeTest extends TestCase
     public function test_migrations_are_recorded_in_the_mongodb_migrations_collection(): void
     {
         $files = collect(glob(database_path('migrations/*.php')))->map(fn ($path) => basename($path, '.php'))->sort()->values()->all();
-        $this->assertCount(9, $files);
+        $this->assertCount(10, $files);
+        $this->assertContains('2026_11_22_000001_create_mongodb_story_brief_indexes', $files);
         $this->assertSame([], array_values(array_filter($files, fn ($name) => ! str_contains($name, '_mongodb_'))), 'only Mongo migrations remain');
         $this->assertSame($files, DB::connection('mongodb')->table('migrations')->orderBy('migration')->pluck('migration')->all());
 

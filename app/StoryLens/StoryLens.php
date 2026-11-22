@@ -2,8 +2,9 @@
 
 namespace App\StoryLens;
 
-use App\Models\Article;
 use App\Models\Story;
+use App\StoryLens\Brief\BriefEvidence;
+use App\StoryLens\Brief\Briefs;
 use App\StoryProcessing\StoryGraph;
 use App\StoryProcessing\StoryPipeline;
 use App\StoryProcessing\StoryTimeline;
@@ -11,6 +12,8 @@ use Carbon\CarbonImmutable;
 
 final class StoryLens
 {
+    public function __construct(private Briefs $briefs) {}
+
     /** Safe presentation contract; operational error details never cross HTTP. */
     public function readForPage(string $id): array
     {
@@ -63,11 +66,7 @@ final class StoryLens
     public function read(string $id): array
     {
         $story = Story::findOrFail($id);
-        $evidence = Article::whereIn('_id', ($story->article_ids ?? []))->get()->map(fn (Article $article) => [
-            'id' => $article->id, 'title' => $article->title, 'original_url' => $article->original_url,
-            'published_at' => $article->published_at->toIso8601String(), 'excerpt' => $article->description,
-            'source' => $article->source_snapshot, 'category' => $article->category_snapshot,
-        ])->all();
+        $evidence = BriefEvidence::read($story);
 
         $sections = StoryPipeline::sections($story);
         foreach (['timeline', 'graph'] as $section) {
@@ -86,6 +85,6 @@ final class StoryLens
             }
         }
 
-        return ['story' => ['id' => $story->id, 'title' => $story->title, 'version' => $story->version ?? 0, 'article_count' => $story->article_count ?? count($evidence), 'source_count' => $story->source_count ?? 0], 'evidence' => $evidence, 'sections' => $sections];
+        return ['story' => ['id' => $story->id, 'title' => $story->title, 'version' => $story->version ?? 0, 'article_count' => $story->article_count ?? count($evidence), 'source_count' => $story->source_count ?? 0], 'evidence' => $evidence, 'sections' => $sections, 'brief' => $this->briefs->present($story, $evidence)];
     }
 }
