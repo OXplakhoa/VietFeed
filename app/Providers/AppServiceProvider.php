@@ -8,8 +8,14 @@ use App\Console\DestructiveCommandGuard;
 use App\Content\CategoryList;
 use App\Interaction\InteractionReplaySource;
 use App\Interaction\SyntheticInteractionReplaySource;
+use App\Models\User;
 use App\Moderation\SanctionSnapshot;
 use App\Services\TickerService;
+use App\StoryLens\Brief\BriefModel;
+use App\StoryLens\Brief\Models\DisabledBriefModel;
+use App\StoryLens\Brief\Models\FakeBriefModel;
+use App\StoryLens\Brief\Models\GeminiBriefModel;
+use App\StoryLens\Brief\Models\OpenAiBriefModel;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Http\Events\RequestHandled;
@@ -18,6 +24,7 @@ use Illuminate\Pagination\Paginator;
 use Illuminate\Routing\Events\Routing;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -36,6 +43,23 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(StripeClient::class, StripeSdkClient::class);
         $this->app->bind(InteractionReplaySource::class, SyntheticInteractionReplaySource::class);
         $this->app->singleton(SanctionSnapshot::class);
+        $this->app->bind(BriefModel::class, function (): BriefModel {
+            $timeout = (int) config('ai.timeout_seconds');
+            $connectTimeout = (int) config('ai.connect_timeout_seconds');
+
+            return match (config('ai.provider')) {
+                'gemini' => new GeminiBriefModel(
+                    (string) config('ai.gemini.key'),
+                    (string) config('ai.gemini.model'),
+                    $timeout,
+                    $connectTimeout,
+                    (string) config('ai.gemini.thinking_level'),
+                ),
+                'openai' => new OpenAiBriefModel((string) config('ai.openai.base_url'), (string) config('ai.openai.key'), (string) config('ai.openai.model'), $timeout, $connectTimeout),
+                'fake' => new FakeBriefModel,
+                default => new DisabledBriefModel,
+            };
+        });
 
         $this->app->afterResolving(RateLimiter::class, function (RateLimiter $limiter): void {
             $limiter->for('interaction-toggles', fn (Request $request) => Limit::perMinute(30)
@@ -50,6 +74,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // Gate 9.5 slice 5 (REVIEW-1 MAJOR-1): refuse database-dropping commands outside `testing`.
         DestructiveCommandGuard::apply($this->app);
+        Gate::define('review-story-brief', fn (User $user) => $user->isAdmin());
 
         // Tailwind is the framework default; switch to Bootstrap 5 because
         // our UI is Bootstrap, and the Tailwind view would render
