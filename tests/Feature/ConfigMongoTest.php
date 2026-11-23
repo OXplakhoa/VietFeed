@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Authorization\Permissions;
 use App\Content\CategoryList;
 use App\Content\ContentCatalog;
 use App\Jobs\FetchSourceFeedJob;
@@ -42,7 +43,7 @@ class ConfigMongoTest extends TestCase
 
     public function test_admin_crud_validation_counts_and_string_relationships(): void
     {
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::CONTENT, Permissions::OPERATIONS]]));
         $this->post('/admin/categories', ['name' => 'Topic', 'slug' => 'topic'])->assertRedirect()->assertSessionHasNoErrors();
         $category = Category::firstOrFail();
         $this->assertTrue(Str::isUuid($category->id, 7));
@@ -167,7 +168,7 @@ class ConfigMongoTest extends TestCase
     {
         $category = $this->category();
         $source = $this->source($category);
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::CONTENT, Permissions::OPERATIONS]]));
         $measurements = [];
         foreach ([2, 8] as $size) {
             foreach (range($size === 2 ? 1 : 3, $size) as $i) {
@@ -242,7 +243,7 @@ class ConfigMongoTest extends TestCase
 
     public function test_real_admin_checkbox_payloads_store_bools_on_create_and_update(): void
     {
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::CONTENT]]));
         foreach ([true, false] as $checked) {
             // PHP parses duplicate browser form keys using the final value.
             parse_str('is_active=0'.($checked ? '&is_active=1' : ''), $checkbox);
@@ -291,7 +292,7 @@ class ConfigMongoTest extends TestCase
     public function test_health_limits_cassandra_history_per_source_and_globally(): void
     {
         $history = $this->bootSourceHistory();
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::CONTENT, Permissions::OPERATIONS]]));
         $category = $this->category();
         $expected = [];
         $at = now()->utc()->startOfDay()->addHours(2);

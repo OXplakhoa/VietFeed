@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Authorization\UserAuthorization;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Comment;
@@ -29,9 +30,10 @@ class ModerationDemoSeeder extends Seeder
 
     public const ARTICLE_SLUG = 'bai-viet-demo-kiem-duyet';
 
-    public function run(): void
+    public function run(UserAuthorization $authorization): void
     {
-        $this->account(self::ADMIN, 'Quản trị kiểm duyệt', 'admin');
+        $admin = $this->account(self::ADMIN, 'Quản trị kiểm duyệt');
+        $authorization->provisionModerationDemoAdmin($admin);
         $author = $this->account(self::AUTHOR, 'Người bình luận demo');
         $reporter = $this->account(self::REPORTER, 'Người báo cáo một');
         $reporterTwo = $this->account(self::REPORTER_TWO, 'Người báo cáo hai');
@@ -61,14 +63,13 @@ class ModerationDemoSeeder extends Seeder
             ]);
         }
 
-        unset($admin);
     }
 
-    private function account(string $email, string $name, string $role = 'user'): User
+    private function account(string $email, string $name): User
     {
-        return User::updateOrCreate(['email' => $email], [
+        return User::firstOrCreate(['email' => $email], [
             'name' => $name, 'password' => Hash::make('password'),
-            'role' => $role, 'email_verified_at' => now(),
+            'email_verified_at' => now(),
         ]);
     }
 }

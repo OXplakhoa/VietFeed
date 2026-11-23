@@ -1467,6 +1467,7 @@ php artisan interactions schema                  # Cassandra interaction activit
 php artisan reading-pass schema                  # Cassandra Reading Pass history
 php artisan moderation:audit schema              # Cassandra moderation audit
 php artisan sources:history-manage bootstrap     # Cassandra source fetch history
+php artisan rbac:audit schema                    # Cassandra authorization audit
 php artisan db:seed --force                      # categories, sources, users, demo engagement
 php artisan storylens ingest                     # optional: frozen StoryLens fixture
 ```
@@ -1614,3 +1615,177 @@ before enabling a hosted provider.
 - OpenCode Zen (Console) lists free models and their endpoint types. Choose a
   model using Chat Completions and check its free-model data terms.
   [OpenCode Console models and privacy](https://opencode.ai/docs/console/models/)
+
+## Gate 9.7a — Staff authorization
+
+MongoDB keeps the current role and permission grants on `users`. Web session
+authentication loads the user from MongoDB, so a change applies on the next
+request. The session can stay signed in after a demotion or revocation.
+
+| Role | Access |
+|---|---|
+| `user` | Reader account and self-service profile |
+| `admin` | Admin dashboard and explicitly granted permissions |
+| `super_admin` | Every fixed permission, staff account management, role and permission changes, and authorization audit |
+
+| Permission | Admin area |
+|---|---|
+| `content.manage` | Articles, categories, and source configuration, including source toggles |
+| `comments.manage` | Comment management and the staff override for deleting another author's comment |
+| `moderation.manage` | Reports, sanctions, revocation, and appeal decisions |
+| `operations.manage` | Story processing and retries, source health, RSS tests, and fetch retries |
+| `stories.review` | Story brief review and regeneration |
+| `users.manage` | User list and ordinary user account edits and deletion |
+
+The MongoDB `users.role` field stores one role. An Admin's `users.permissions`
+array contains grants from the fixed catalog. Older documents with a missing
+array have no explicit grants until bootstrap. Super Admin permissions are
+implicit. Any reduction in role or permissions increments `users.api_token_epoch`
+in the same MongoDB write and triggers API token family cleanup. A web email change
+also clears `email_verified_at` and increments the epoch atomically. This applies
+to both the Admin form and profile self-edit. Active Blade sessions use the
+new state on the next request.
+
+The singleton `authorization_control` document with ID `super-admins` holds
+`user_ids` and `bootstrap_user_id`. A Super Admin can demote or delete their own
+account when another guaranteed Super Admin remains. The check applies both
+to administrative deletion and profile self-deletion. A promotion commits the
+role before registering the account. A removal first atomically pulls the ID
+only when the document contains at least two registered accounts.
+`users.authorization_version` fences stale writes. Only a Super Admin can
+issue or uphold a temporary or permanent ban against an Admin. A Super Admin
+target must be demoted first. Approval of an appeal and revocation can lift a
+ban through the existing moderation permission. A user cannot be promoted to
+Super Admin while a ban is active. A pending ban marker fences staff promotions
+until its sanction write completes. Protected account edits, privilege changes,
+and bans generate an audit event when refused.
+
+### Cutover and verification after merge
+
+Control should pause application writes and workers, take a backup of the
+MongoDB user and authorization control documents, and run the following
+against the intended development or deployment stores. Use the email of a
+known active account for initial bootstrap.
+
+```bash
+php artisan migrate --force
+php artisan rbac:audit schema
+php artisan rbac:bootstrap --super-admin=admin@vietfeed.com
+php artisan rbac:audit --user=<mongo-user-id>
+```
+
+The first successful bootstrap promotes the selected user and grants the full
+catalog to existing Admins to preserve their access. The command refuses an
+unknown email. It prints promotion and grant counts. A rerun with the same
+account produces zero changes and preserves later permission revocations. The
+guard atomically sets a candidate marker before writes. Completion sets
+only the bootstrap marker on a nonempty guard. It cannot restore an ID
+pulled by a concurrent demotion. The legacy grant skips accounts already
+versioned by authorization work. Rerun a partial bootstrap with the same
+account. If a promotion committed before its membership registered, first
+inspect `rbac:repair --guard`.
+
+To choose another email after an abandoned first bootstrap, confirm the
+previous bootstrap process has stopped. A blocked bootstrap prints the
+recorded candidate ID. Clear that exact marker, then retry with the new email.
+
+```bash
+php artisan rbac:bootstrap --clear-candidate=<recorded-mongo-user-id>
+php artisan rbac:bootstrap --super-admin=<replacement-email>
+```
+
+The clear requires an incomplete bootstrap and no active guard repair.
+It preserves committed roles and guard membership. Review the previous
+candidate's role if the earlier attempt reached promotion.
+
+Fresh local installs provision the audit schema
+before seeding. `UserSeeder` bootstraps the demo account
+`admin@vietfeed.com` on a fresh install. Use seeding only for fresh demo stores. The optional `ModerationDemoSeeder`
+provisions the moderation walkthrough account with the permissions its demo
+uses. Subsequent runs preserve later authorization decisions.
+
+Sign in as the Super Admin and check the role and permissions in user edit
+and the audit page at `/admin/authorization/audit`. Confirm the Admin accounts
+have their expected grants before resuming workers and write traffic.
+
+### Audit and recovery
+
+| Cassandra table | Partition | Clustering | Access |
+|---|---|---|---|
+| `authorization_audit_by_user` | `target_id` | `occurred_at DESC, event_id DESC` | Last 50 events for a user ID |
+| `authorization_audit_by_day` | UTC `day` | `occurred_at DESC, event_id DESC` | Last 50 events across the latest 30 UTC day buckets |
+
+Events use UUIDv7 IDs and capture actor ID, target ID, prior and resulting
+authorization state, timestamp, and reason. Bootstrap events use
+`rbac:bootstrap` as the actor. The recent projection expires each UTC bucket
+30 days after the start of that day. The per-user table keeps its history.
+
+Role and permission writes stage their event in
+`users.authorization_audit_pending` atomically. Before a physical delete,
+pending events move to the independent `authorization_audit_pending` collection.
+A staff deletion first writes the event and removes staff access in the same
+user write. MongoDB tracks refused invariant attempts in the independent
+collection. Cassandra failures leave events in the outbox and surface an
+unavailable state on reads. Audit order follows the application clock. The
+scheduler retries every minute with a five-minute overlap lock. It stages
+embedded events through the indexed MongoDB queue and stops the batch on a
+Cassandra projection failure. Pending events keep their attempt counts.
+Invalid events consume their own attempt budget, and the batch continues.
+The fifth failed validation or encoding attempt moves the event to dead-letter
+state. Retry checks a 35-second monotonic budget before staging and projection
+work. The CLI uses a 45-second alarm when PHP PCNTL is available so a stalled
+socket cannot hold the schedule lock. Both Cassandra projections reuse the
+original event keys, so replay is idempotent. Retry storage is in MongoDB
+because Redis can evict keys under `allkeys-lru`.
+
+```bash
+php artisan rbac:audit retry
+php artisan rbac:audit dead --user=<mongo-user-id> --limit=50 --page=1
+php artisan rbac:audit replay --event=<event-id>
+php artisan rbac:audit replay --all --limit=100
+php artisan rbac:audit --user=super-admins
+```
+
+Omit `--user` to inspect dead letters across targets. Listing shows the
+newest events first and defaults to 50 per page. Once the underlying error
+is resolved, replay can requeue one event or a batch of the oldest dead
+letters. `--all` defaults to 100 per run, and `--limit` accepts 1–500 for
+both commands. Repeat bulk replay until it reports zero requeued events.
+The command resets attempts only for matching dead-letter entries and
+leaves pending deliveries alone. Guard repair events use the
+`super-admins` audit target.
+
+### Operator repair
+
+```bash
+php artisan rbac:repair --guard
+php artisan rbac:repair --guard --force
+php artisan rbac:repair --user=<mongo-user-id>
+php artisan rbac:repair --user=<mongo-user-id> --force
+```
+
+Both modes preview by default. Guard repair blocks new membership reservations
+while it runs. It advances the promotion generation and fences old user
+writes before restoring a missing member. It requires at least one active
+Super Admin and persists the audit event in the same guard update.
+
+An interrupted repair can leave `authorization_control/super-admins.repair_token`
+set. While it is set, promotions to Super Admin and Super Admin removals are
+blocked. Confirm the previous repair process has stopped. Once
+`repair_started_at` is older than 60 minutes, put the application in
+maintenance mode and drain authorization writers. Run
+`php artisan rbac:repair --guard` to review membership, then run
+`php artisan rbac:repair --guard --force` to take over the stale token and
+reconcile the guard. Verify the result before resuming writes.
+
+User repair clears only markers older than 60 minutes. It uses an explicit
+timestamp for new markers and the operation UUIDv7 timestamp for older
+markers. Clearing a deletion marker leaves the account in its current
+demoted role and fences any unfinished delete that held the previous
+authorization version. A committed ban remains in force after its marker
+is cleared. For an uncommitted ban, put the application in maintenance mode
+and drain in-flight requests and sanction writers before applying the
+repair. The command requires maintenance mode for that case because a worker
+paused between reservation and insertion can still write to the sanctions
+collection. Clearing markers and recording their audit event use one
+conditional user update.

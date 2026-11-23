@@ -281,7 +281,9 @@ class StoryProjectionsTest extends TestCase
         foreach (['timeline', 'graph'] as $section) {
             $pipeline->consume($section, 'before-outage', 100);
         }
-        $before = Story::all()->toArray();
+        // Gate 9.6 embeds `brief.updated_at` as a Carbon instance; compare the serialized documents, not object identity.
+        $snapshot = fn () => json_decode(json_encode(Story::all()->toArray(), JSON_THROW_ON_ERROR), true);
+        $before = $snapshot();
         $lengths = $pipeline->stream('graph')->lengths();
         $port = config('nosql.neo4j.bolt_port');
         config(['nosql.neo4j.bolt_port' => 1]);
@@ -294,7 +296,7 @@ class StoryProjectionsTest extends TestCase
         } finally {
             config(['nosql.neo4j.bolt_port' => $port]);
         }
-        $this->assertSame($before, Story::all()->toArray());
+        $this->assertSame($before, $snapshot());
         $this->assertSame($lengths, $pipeline->stream('graph')->lengths());
     }
 

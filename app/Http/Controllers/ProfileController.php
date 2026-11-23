@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Authorization\UserAuthorization;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Services\ReadingPassService;
 use Illuminate\Http\RedirectResponse;
@@ -26,15 +27,9 @@ class ProfileController extends Controller
     /**
      * Update the user's profile information.
      */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
+    public function update(ProfileUpdateRequest $request, UserAuthorization $authorization): RedirectResponse
     {
-        $request->user()->fill($request->validated());
-
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
-        }
-
-        $request->user()->save();
+        $authorization->updateProfile($request->user(), $request->validated());
 
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }
@@ -62,7 +57,7 @@ class ProfileController extends Controller
     /**
      * Delete the user's account.
      */
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request, UserAuthorization $authorization): RedirectResponse
     {
         $request->validateWithBag('userDeletion', [
             'password' => ['required', 'current_password'],
@@ -70,9 +65,8 @@ class ProfileController extends Controller
 
         $user = $request->user();
 
+        $authorization->delete($user, $user, selfService: true);
         Auth::logout();
-
-        $user->delete();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

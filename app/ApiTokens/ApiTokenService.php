@@ -52,10 +52,15 @@ class ApiTokenService
         $this->execute('revoke_family', [$family]);
     }
 
-    public function revokeAllForUser(string $userId): void
+    public function revokeAllForUser(string $userId, ?callable $writeWithEpochIncrement = null): void
     {
         User::normalizeApiTokenEpoch($userId);
-        User::where('_id', $userId)->increment('api_token_epoch');
+        if ($writeWithEpochIncrement === null) {
+            User::where('_id', $userId)->increment('api_token_epoch');
+        } else {
+            // RBAC commits the epoch increment in the same user write as the privilege change.
+            $writeWithEpochIncrement();
+        }
         $this->cleanupForUser($userId);
     }
 

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Authorization\Permissions;
+use App\Authorization\UserAuthorization;
 use App\Billing\BillingGateway;
 use App\Http\Controllers\Controller;
 use App\Models\ArticleUnlock;
@@ -13,6 +15,7 @@ use App\Services\ReadingPassService;
 use App\Support\MongoCounts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -55,17 +58,25 @@ class UserController extends Controller
         return view('admin.users.index', compact('users'));
     }
 
-    public function edit(User $user)
+    public function edit(Request $request, User $user, UserAuthorization $authorization)
     {
+        $authorization->authorizeManagement($request->user(), $user);
+
         return view('admin.users.edit', compact('user'));
     }
 
-    public function update(Request $request, User $user)
+    public function update(Request $request, User $user, UserAuthorization $authorization)
     {
-        $request->validate([
+        $changesAuthorization = $request->hasAny(['role', 'permissions']);
+        $authorization->authorizeManagement($request->user(), $user, $changesAuthorization);
+
+        $role = $request->input('role', $user->role);
+        $data = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:mongodb.users,email,'.$user->getKey().',_id',
-            'role' => 'required|in:user,admin',
+            'email' => ['required', 'email', Rule::unique('mongodb.users', 'email')->ignore($user->getKey(), '_id')],
+            'role' => ['sometimes', 'required', Rule::in(Permissions::ROLES)],
+            'permissions' => ['sometimes', 'array', 'list', 'max:'.count(Permissions::ALL), Rule::prohibitedIf($role !== Permissions::ADMIN)],
+            'permissions.*' => ['required', 'string', 'distinct', Rule::in(Permissions::ALL)],
         ], [
             'name.required' => 'Tên là bắt buộc.',
             'email.required' => 'Email là bắt buộc.',
@@ -74,19 +85,29 @@ class UserController extends Controller
             'role.in' => 'Vai trò không hợp lệ.',
         ]);
 
-        $user->update($request->only(['name', 'email', 'role']));
+        $authorization->edit($request->user(), $user, ['name' => $data['name'], 'email' => $data['email']],
+            $changesAuthorization ? $role : null, $data['permissions'] ?? []);
 
-        return redirect()->route('admin.users.index')
-            ->with('success', 'Đã cập nhật thông tin người dùng.');
-    }
-
-    public function destroy(User $user)
-    {
-        if ($user->is(Auth::user())) {
-            return back()->with('error', 'Không thể xóa tài khoản đang đăng nhập.');
+        $destination = 'admin.users.index';
+        if ($user->is($request->user()) && $user->isSuperAdmin() && $role !== Permissions::SUPER_ADMIN) {
+            $destination = $role === Permissions::ADMIN ? 'admin.dashboard' : 'home';
         }
 
-        $user->delete();
+        return redirect()->route($destination)->with('success', 'Đã cập nhật thông tin người dùng.');
+    }
+
+    public function destroy(Request $request, User $user, UserAuthorization $authorization)
+    {
+        $self = $user->is($request->user());
+        $authorization->delete($request->user(), $user);
+
+        if ($self) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()->route('home');
+        }
 
         return back()->with('success', 'Đã xóa người dùng.');
     }

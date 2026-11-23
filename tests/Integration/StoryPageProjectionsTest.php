@@ -2,6 +2,7 @@
 
 namespace Tests\Integration;
 
+use App\Authorization\Permissions;
 use App\Content\ContentCatalog;
 use App\Models\Article;
 use App\Models\Story;
@@ -77,8 +78,11 @@ class StoryPageProjectionsTest extends TestCase
         $rawTime = app(StoryTimeline::class)->events($story->id)[0]['occurred_at'];
         $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\+0000$/', $rawTime);
         $isoTime = substr($rawTime, 0, 10).'T'.substr($rawTime, 11, 8).'+00:00';
-        $this->get('/stories/'.$story->id)->assertOk()->assertSee('datetime="'.$isoTime.'"', false)->assertSee('data-state="ready"', false)
-            ->assertSee($article->source_snapshot['name'])->assertSee('Bổ sung bài viết · '.$article->title)->assertDontSee($article->id);
+        $page = $this->get('/stories/'.$story->id)->assertOk()->assertSee('datetime="'.$isoTime.'"', false)->assertSee('data-state="ready"', false)
+            ->assertSee($article->source_snapshot['name'])->assertSee('Bổ sung bài viết · '.$article->title);
+        // Gate 9.6 citation anchors (`id="article-<uuid>"`, `href="#article-<uuid>"`) are the only allowed place for the Article id.
+        $this->assertStringContainsString('id="article-'.$article->id.'"', $page->getContent());
+        $this->assertStringNotContainsString($article->id, preg_replace('/(id="article-|href="#article-)[0-9a-f-]{36}"/', '', $page->getContent()));
         $this->getJson('/stories/'.$story->id.'/sections')->assertOk()
             ->assertJsonPath('sections.timeline.state', 'ready')->assertJsonCount(1, 'sections.timeline.data')
             ->assertJsonPath('sections.timeline.data.0.event_id', $story->events[0]['event_id'])
@@ -131,7 +135,7 @@ class StoryPageProjectionsTest extends TestCase
                 ->assertJsonPath('sections.timeline.state', 'ready')->assertJsonPath('sections.graph.state', 'failed');
             $dead = array_key_first($pipeline->stream('graph')->deadLetters());
             $this->assertNotNull($dead);
-            $this->actingAs(User::factory()->create(['role' => 'admin']));
+            $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]));
             $this->get('/admin/processing')->assertOk()->assertSee($dead)->assertSee('failed')->assertSee($story->id);
             $this->post('/admin/processing/retry', ['section' => 'graph', 'id' => $dead])->assertRedirect('/admin/processing')->assertSessionHas('success');
             // Requeue has not run a projection, and repeat submission has no effect.

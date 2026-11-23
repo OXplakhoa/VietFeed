@@ -34,22 +34,44 @@
                             @error('email') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label" style="font-size:.85rem;color:var(--text-muted);font-weight:500">Vai trò <span style="color:var(--accent)">*</span></label>
-                            <select name="role" class="form-select @error('role') is-invalid @enderror"
-                                    style="background:var(--surface-alt);border-color:var(--border);color:var(--text)"
-                                    {{ $user->is(auth()->user()) ? 'disabled' : '' }}>
-                                <option value="user"  {{ old('role', $user->role) === 'user'  ? 'selected' : '' }}>User — Người dùng thường</option>
-                                <option value="admin" {{ old('role', $user->role) === 'admin' ? 'selected' : '' }}>Admin — Quản trị viên</option>
-                            </select>
-                            @if($user->is(auth()->user()))
-                            <div style="font-size:.75rem;color:var(--text-muted);margin-top:.3rem">
-                                <i class="bi bi-info-circle me-1"></i>Không thể thay đổi vai trò của tài khoản đang đăng nhập.
+                        @can('super-admin')
+                            <input type="hidden" name="permissions_form" value="1">
+                            <div class="mb-3">
+                                <label class="form-label" for="user-role">Vai trò</label>
+                                <select id="user-role" name="role" class="form-select @error('role') is-invalid @enderror"
+                                        style="background:var(--surface-alt);border-color:var(--border);color:var(--text)">
+                                    <option value="user" @selected(old('role', $user->role) === 'user')>User — Người dùng thường</option>
+                                    <option value="admin" @selected(old('role', $user->role) === 'admin')>Admin — Quản trị viên</option>
+                                    <option value="super_admin" @selected(old('role', $user->role) === 'super_admin')>Super Admin</option>
+                                </select>
+                                @error('role') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
-                            <input type="hidden" name="role" value="{{ $user->role }}">
+
+                            <fieldset class="mb-3" id="admin-permissions">
+                                <legend class="fs-6">Quyền của Admin</legend>
+                                @foreach(\App\Authorization\Permissions::ALL as $permission)
+                                    <label class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="permissions[]" value="{{ $permission }}"
+                                               @checked(in_array($permission, (array) old('permissions', old('permissions_form') ? [] : $user->permissions), true))>
+                                        {{ $permission }}
+                                    </label>
+                                @endforeach
+                            </fieldset>
+                            @error('permissions') <p class="text-danger">{{ $message }}</p> @enderror
+                            @if($errors->has('permissions.*'))
+                                <p class="text-danger">{{ $errors->first('permissions.*') }}</p>
                             @endif
-                            @error('role') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                        </div>
+
+                            <script>
+                                const roleSelect = document.getElementById('user-role');
+                                const permissions = document.getElementById('admin-permissions');
+                                function updatePermissions() {
+                                    permissions.disabled = roleSelect.value !== 'admin';
+                                }
+                                roleSelect.addEventListener('change', updatePermissions);
+                                updatePermissions();
+                            </script>
+                        @endcan
 
                         <div class="p-2 mb-3" style="background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;font-size:.8rem;color:var(--text-muted)">
                             <i class="bi bi-shield-lock me-1"></i>Mật khẩu không thể thay đổi tại đây vì lý do bảo mật.
@@ -64,6 +86,7 @@
                     </form>
                 </div>
 
+                @can(\App\Authorization\Permissions::MODERATION)
                 {{-- Sanction without a case --}}
                 <div class="mt-3 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="sidebar-title mb-2">Áp dụng biện pháp xử lý</div>
@@ -88,6 +111,8 @@
                         </button>
                     </form>
                 </div>
+
+                @endcan
 
                 {{-- Billing observation --}}
                 <div class="mt-3 p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
@@ -124,7 +149,7 @@
                     @endforeach
                 </div>
 
-                @if(!$user->is(auth()->user()))
+                @can(\App\Authorization\Permissions::MANAGE_USER, $user)
                 <div class="mt-3 p-3" style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:12px">
                     <div style="font-size:.85rem;font-weight:500;color:#ef4444;margin-bottom:.5rem">Vùng nguy hiểm</div>
                     <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
@@ -135,7 +160,7 @@
                         </button>
                     </form>
                 </div>
-                @endif
+                @endcan
             </div>
         </div>
     </div>

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Authorization\Permissions;
 use App\Billing\BillingGateway;
 use App\Billing\StripeClient;
 use App\Models\Article;
@@ -126,7 +127,7 @@ class ProSubscriptionTest extends TestCase
 
     public function test_admin_filter_dashboard_and_page_entitlements_use_mongo(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::USERS]]);
         $pro = User::factory()->create(['name' => 'Gate Seven Pro']);
         $free = User::factory()->create(['name' => 'Gate Seven Free']);
         foreach (['sub_one', 'sub_two'] as $id) {
@@ -147,7 +148,7 @@ class ProSubscriptionTest extends TestCase
 
     public function test_admin_page_batches_subscription_reads(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::USERS]]);
         User::factory()->count(19)->create();
         $subscriber = new class implements CommandSubscriber
         {

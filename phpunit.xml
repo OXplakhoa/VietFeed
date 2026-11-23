@@ -24,6 +24,7 @@
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
         <env name="MONGO_DB" value="vietfeed_test"/>
+        <env name="CASSANDRA_KEYSPACE" value="vietfeed_test" force="true"/>
         <env name="AI_PROVIDER" value="none" force="true"/>
         <env name="GEMINI_API_KEY" value="" force="true"/>
         <env name="OPENAI_COMPAT_API_KEY" value="" force="true"/>

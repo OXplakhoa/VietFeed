@@ -2,6 +2,7 @@
 
 namespace Tests\Concerns;
 
+use App\Authorization\Permissions;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Comment;
@@ -36,7 +37,7 @@ trait ModerationFixtures
 
     protected function admin(): User
     {
-        return $this->user(['role' => 'admin']);
+        return $this->user(['role' => 'admin', 'permissions' => [Permissions::MODERATION, Permissions::COMMENTS, Permissions::CONTENT, Permissions::USERS, Permissions::OPERATIONS]]);
     }
 
     protected function article(string $slug = 'bai-viet-kiem-duyet'): Article

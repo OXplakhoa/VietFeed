@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Authorization\Permissions;
 use App\Models\Article;
 use App\Models\Bookmark;
 use App\Models\Category;
@@ -28,7 +29,7 @@ class AdminArticleDefectsTest extends TestCase
             'title' => 'Ordinary RSS headline', 'slug' => 'ordinary-rss', 'original_url' => 'https://ordinary.test/article',
             'source_id' => $source->id, 'category_id' => $category->id, 'published_at' => now(),
         ]);
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::CONTENT]]));
     }
 
     public function test_index_accepts_an_ordinary_article(): void

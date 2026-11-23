@@ -2,13 +2,13 @@
 
 namespace App\Providers;
 
+use App\Authorization\Permissions;
 use App\Billing\StripeClient;
 use App\Billing\StripeSdkClient;
 use App\Console\DestructiveCommandGuard;
 use App\Content\CategoryList;
 use App\Interaction\InteractionReplaySource;
 use App\Interaction\SyntheticInteractionReplaySource;
-use App\Models\User;
 use App\Moderation\SanctionSnapshot;
 use App\Services\TickerService;
 use App\StoryLens\Brief\BriefModel;
@@ -24,7 +24,6 @@ use Illuminate\Pagination\Paginator;
 use Illuminate\Routing\Events\Routing;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -74,7 +73,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // Gate 9.5 slice 5 (REVIEW-1 MAJOR-1): refuse database-dropping commands outside `testing`.
         DestructiveCommandGuard::apply($this->app);
-        Gate::define('review-story-brief', fn (User $user) => $user->isAdmin());
+        Permissions::register();
 
         // Tailwind is the framework default; switch to Bootstrap 5 because
         // our UI is Bootstrap, and the Tailwind view would render

@@ -48,6 +48,7 @@
                             <div style="font-size:.8rem;color:var(--text-secondary)">{{ $c->body }}</div>
                             <div style="font-size:.7rem;color:var(--text-secondary)">{{ $c->created_at->diffForHumans() }}</div>
                         </div>
+                        @can(\App\Authorization\Permissions::COMMENTS)
                         <form action="{{ route('admin.comments.destroy', $c) }}" method="POST"
                               onsubmit="vfConfirmForm(event, this, 'Bình luận này sẽ bị xóa vĩnh viễn.')">
                             @csrf @method('DELETE')
@@ -55,6 +56,7 @@
                                 <i class="bi bi-trash"></i>
                             </button>
                         </form>
+                        @endcan
                     </div>
                     @empty
                     <p style="color:var(--text-muted);font-size:.85rem">Chưa có bình luận.</p>

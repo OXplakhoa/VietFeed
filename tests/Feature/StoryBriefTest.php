@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Authorization\Permissions;
 use App\Content\ContentCatalog;
 use App\Jobs\GenerateStoryBrief;
 use App\Models\Article;
@@ -217,7 +218,7 @@ class StoryBriefTest extends TestCase
         foreach (['accept', 'reject', 'retry'] as $action) {
             $this->post($uri.'/'.$action)->assertForbidden();
         }
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::STORIES]]));
         $this->get('/admin/stories')->assertOk()->assertSee($story->title)->assertSee('queued');
         $this->get($uri)->assertOk()->assertSee('Tạo lại');
         $this->app->bind(PreventRequestForgery::class, fn ($app) => new class($app, $app['encrypter']) extends PreventRequestForgery
@@ -243,7 +244,7 @@ class StoryBriefTest extends TestCase
         $this->assertSame('candidate', $this->storedBrief($first)['status']);
         $url = '/stories/'.$story->id.'/sections';
         $this->getJson($url)->assertJsonPath('brief.kind', 'extractive');
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::STORIES]]);
         $this->actingAs($admin);
         $base = '/admin/stories/'.$story->id;
         $this->get($base)->assertOk()->assertSee('Đã qua kiểm tra cấu trúc và ID nguồn.')
@@ -292,7 +293,7 @@ class StoryBriefTest extends TestCase
         $story = $this->ingest();
         $this->runJob($story);
         $published = $story->fresh()->brief['candidate_id'];
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::STORIES]]));
         $base = '/admin/stories/'.$story->id;
         $this->post($base.'/accept', $this->reviewInput($story, $published))->assertSessionHas('success');
         $this->post($base.'/retry')->assertSessionHas('success');
@@ -381,7 +382,7 @@ class StoryBriefTest extends TestCase
     {
         $story = $this->ingest(1);
         $this->assertNotNull(app(BriefStore::class)->claim($story->id, 1));
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::STORIES]]));
         $base = '/admin/stories/'.$story->id;
         $this->get($base)->assertOk()->assertSee('Trạng thái generating');
         DB::connection('mongodb')->getCollection('stories')->updateOne(['_id' => $story->id], ['$set' => ['brief.lease_until' => new UTCDateTime(0)]]);
@@ -396,7 +397,7 @@ class StoryBriefTest extends TestCase
         $story = $this->ingest(1);
         $this->runJob($story);
         $candidate = $story->fresh()->brief['candidate_id'];
-        $editor = User::factory()->create(['role' => 'admin']);
+        $editor = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::STORIES]]);
         $this->actingAs($editor);
         // Stop at the boundary between the Story decision and the history write.
         DB::connection('mongodb')->getCollection('stories')->updateOne(['_id' => $story->id], ['$set' => [
@@ -426,7 +427,7 @@ class StoryBriefTest extends TestCase
         $store = $this->partialMock(BriefStore::class);
         $store->shouldReceive('acceptedOutputs')->once()->with([$briefId])->passthru();
         $store->shouldNotReceive('output');
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::STORIES]]));
         $this->get('/admin/stories')->assertOk()->assertViewHas('stories', function ($stories) use ($story, $other) {
             $byId = $stories->keyBy('id');
 
@@ -439,7 +440,7 @@ class StoryBriefTest extends TestCase
         $story = $this->ingest();
         config(['ai.require_review' => false]);
         $this->runJob($story);
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::STORIES]]));
         $public = '/stories/'.$story->id.'/sections';
         $this->getJson($public)->assertJsonPath('brief.kind', 'ai');
         $this->get('/admin/stories')->assertOk()->assertSee('>AI<', false);

@@ -66,7 +66,9 @@
                             <div style="font-size:.75rem;color:var(--text-secondary)">{{ $u->email }}</div>
                         </td>
                         <td style="vertical-align:middle">
-                            @if($u->isAdmin())
+                            @if($u->isSuperAdmin())
+                            <span class="badge text-bg-danger">Super Admin</span>
+                            @elseif($u->isAdmin())
                             <span style="font-size:.75rem;background:rgba(230,57,70,.12);color:var(--accent);border:1px solid rgba(230,57,70,.3);border-radius:6px;padding:.2rem .55rem;font-weight:500">Admin</span>
                             @else
                             <span style="font-size:.75rem;background:rgba(96,165,250,.1);color:#60a5fa;border:1px solid rgba(96,165,250,.25);border-radius:6px;padding:.2rem .55rem;font-weight:500">User</span>
@@ -105,11 +107,11 @@
                             {{ $u->created_at->format('d/m/Y') }}
                         </td>
                         <td class="pe-3 text-end" style="vertical-align:middle;white-space:nowrap">
+                            @can(\App\Authorization\Permissions::MANAGE_USER, $u)
                             <a href="{{ route('admin.users.edit', $u) }}"
                                style="color:#60a5fa;font-size:.8rem;text-decoration:none;margin-right:.75rem">
                                 <i class="bi bi-pencil me-1"></i>Sửa
                             </a>
-                            @if(!$u->is(auth()->user()))
                             <form action="{{ route('admin.users.destroy', $u) }}" method="POST" class="d-inline"
                                   onsubmit="vfConfirmForm(event, this, 'Người dùng {{ $u->name }} sẽ bị xóa vĩnh viễn.')">
                                 @csrf @method('DELETE')
@@ -117,7 +119,7 @@
                                     <i class="bi bi-trash me-1"></i>Xóa
                                 </button>
                             </form>
-                            @endif
+                            @endcan
                         </td>
                     </tr>
                     @empty

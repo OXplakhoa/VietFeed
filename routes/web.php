@@ -1,6 +1,8 @@
 <?php
 
+use App\Authorization\AdminRoutes;
 use App\Http\Controllers\Admin\ArticleController as AdminArticle;
+use App\Http\Controllers\Admin\AuthorizationAuditController;
 use App\Http\Controllers\Admin\CategoryController as AdminCategory;
 use App\Http\Controllers\Admin\CommentController as AdminComment;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboard;
@@ -106,37 +108,38 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 // ── Admin routes ───────────────────────────────────────────────
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
-    Route::get('/dashboard', [AdminDashboard::class, 'index'])->name('dashboard');
-    Route::get('/processing', [ProcessingController::class, 'index'])->name('processing.index');
-    Route::post('/processing/retry', [ProcessingController::class, 'retry'])->name('processing.retry');
-    Route::middleware('can:review-story-brief')->prefix('stories')->name('stories.')->group(function () {
-        Route::get('/', [StoryBriefController::class, 'index'])->name('index');
-        Route::get('/{story}', [StoryBriefController::class, 'show'])->whereUuid('story')->name('show');
-        Route::post('/{story}/accept', [StoryBriefController::class, 'accept'])->whereUuid('story')->name('accept');
-        Route::post('/{story}/reject', [StoryBriefController::class, 'reject'])->whereUuid('story')->name('reject');
-        Route::post('/{story}/retry', [StoryBriefController::class, 'retry'])->whereUuid('story')->name('retry');
+    Route::get('/dashboard', [AdminDashboard::class, 'index'])->middleware(AdminRoutes::middleware('dashboard'))->name('dashboard');
+    Route::get('/processing', [ProcessingController::class, 'index'])->middleware(AdminRoutes::middleware('processing.index'))->name('processing.index');
+    Route::post('/processing/retry', [ProcessingController::class, 'retry'])->middleware(AdminRoutes::middleware('processing.retry'))->name('processing.retry');
+
+    Route::prefix('stories')->name('stories.')->group(function () {
+        Route::get('/', [StoryBriefController::class, 'index'])->middleware(AdminRoutes::middleware('stories.index'))->name('index');
+        Route::get('/{story}', [StoryBriefController::class, 'show'])->whereUuid('story')->middleware(AdminRoutes::middleware('stories.show'))->name('show');
+        Route::post('/{story}/accept', [StoryBriefController::class, 'accept'])->whereUuid('story')->middleware(AdminRoutes::middleware('stories.accept'))->name('accept');
+        Route::post('/{story}/reject', [StoryBriefController::class, 'reject'])->whereUuid('story')->middleware(AdminRoutes::middleware('stories.reject'))->name('reject');
+        Route::post('/{story}/retry', [StoryBriefController::class, 'retry'])->whereUuid('story')->middleware(AdminRoutes::middleware('stories.retry'))->name('retry');
     });
 
-    // Bulk-destroy must be before resource routes so 'bulk-destroy' isn't mistaken for an article ID
-    Route::post('articles/bulk-destroy', [AdminArticle::class, 'bulkDestroy'])->name('articles.bulk-destroy');
+    // Register static routes before dynamic resource bindings.
+    Route::post('articles/bulk-destroy', [AdminArticle::class, 'bulkDestroy'])->middleware(AdminRoutes::middleware('articles.bulk-destroy'))->name('articles.bulk-destroy');
+    Route::get('sources/health', [AdminSource::class, 'health'])->middleware(AdminRoutes::middleware('sources.health'))->name('sources.health');
+    Route::post('sources/{source}/test', [AdminSource::class, 'test'])->middleware(AdminRoutes::middleware('sources.test'))->name('sources.test');
+    Route::post('sources/{source}/retry', [AdminSource::class, 'retry'])->middleware(AdminRoutes::middleware('sources.retry'))->name('sources.retry');
+    Route::patch('sources/{source}/toggle-active', [AdminSource::class, 'toggleActive'])->middleware(AdminRoutes::middleware('sources.toggle-active'))->name('sources.toggle-active');
+    Route::patch('categories/{category}/toggle-active', [AdminCategory::class, 'toggleActive'])->middleware(AdminRoutes::middleware('categories.toggle-active'))->name('categories.toggle-active');
 
-    Route::get('sources/health', [AdminSource::class, 'health'])->name('sources.health');
-    Route::post('sources/{source}/test', [AdminSource::class, 'test'])->name('sources.test');
-    Route::post('sources/{source}/retry', [AdminSource::class, 'retry'])->name('sources.retry');
-    Route::patch('sources/{source}/toggle-active', [AdminSource::class, 'toggleActive'])->name('sources.toggle-active');
+    AdminRoutes::resource('sources', AdminSource::class, ['index', 'create', 'store', 'show', 'edit', 'update', 'destroy']);
+    AdminRoutes::resource('categories', AdminCategory::class, ['index', 'create', 'store', 'show', 'edit', 'update', 'destroy']);
+    AdminRoutes::resource('articles', AdminArticle::class, ['index', 'show', 'edit', 'update', 'destroy']);
+    AdminRoutes::resource('comments', AdminComment::class, ['index', 'destroy']);
+    AdminRoutes::resource('users', AdminUser::class, ['index', 'edit', 'update', 'destroy']);
 
-    Route::resource('sources', AdminSource::class);
-    Route::patch('categories/{category}/toggle-active', [AdminCategory::class, 'toggleActive'])->name('categories.toggle-active');
-    Route::resource('categories', AdminCategory::class);
-    Route::resource('articles', AdminArticle::class)->except(['create', 'store']);
-    Route::resource('comments', AdminComment::class)->only(['index', 'destroy']);
-    Route::resource('users', AdminUser::class)->only(['index', 'edit', 'update', 'destroy']);
+    // Cases are dismissed and sanctions revoked.
+    AdminRoutes::resource('reports', AdminReport::class, ['index', 'show', 'update']);
+    Route::post('sanctions/{sanction}/revoke', [AdminSanction::class, 'revoke'])->middleware(AdminRoutes::middleware('sanctions.revoke'))->name('sanctions.revoke');
+    AdminRoutes::resource('sanctions', AdminSanction::class, ['index', 'store', 'show', 'update']);
 
-    // Moderation
-    // No hard deletes: cases are dismissed, sanctions are revoked (Gate 9a).
-    Route::resource('reports', AdminReport::class)->only(['index', 'show', 'update']);
-    Route::post('sanctions/{sanction}/revoke', [AdminSanction::class, 'revoke'])->name('sanctions.revoke');
-    Route::resource('sanctions', AdminSanction::class)->only(['index', 'store', 'show', 'update']);
+    Route::get('authorization/audit', AuthorizationAuditController::class)->middleware(AdminRoutes::middleware('authorization.audit'))->name('authorization.audit');
 });
 
 require __DIR__.'/auth.php';

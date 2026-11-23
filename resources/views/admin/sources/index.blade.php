@@ -9,9 +9,11 @@
                 <i class="bi bi-rss me-2" style="color:var(--accent)"></i>Nguồn tin
             </h3>
             <div class="d-flex gap-2">
+                @can(\App\Authorization\Permissions::OPERATIONS)
                 <a href="{{ route('admin.sources.health') }}" class="btn btn-sm" style="background:var(--surface-alt);color:var(--text);border:1px solid var(--border);border-radius:8px;text-decoration:none;padding:.45rem 1rem">
                     <i class="bi bi-heart-pulse me-1"></i>Health Monitor
                 </a>
+                @endcan
                 <a href="{{ route('admin.sources.create') }}" class="btn-accent" style="text-decoration:none;padding:.45rem 1rem;border-radius:8px;font-size:.875rem">
                     <i class="bi bi-plus-lg me-1"></i>Thêm nguồn
                 </a>
@@ -113,9 +115,11 @@
                                style="color:#60a5fa;font-size:.8rem;text-decoration:none;margin-right:.75rem">
                                 <i class="bi bi-pencil me-1"></i>Sửa
                             </a>
+                            @can(\App\Authorization\Permissions::OPERATIONS)
                             <a href="{{ route('admin.sources.health') }}" style="color:var(--accent);font-size:.8rem;text-decoration:none;margin-right:.75rem">
                                 <i class="bi bi-heart-pulse me-1"></i>Health
                             </a>
+                            @endcan
                             <form action="{{ route('admin.sources.toggle-active', $src) }}" method="POST" class="d-inline"
                                   onsubmit="vfConfirmForm(
                                       event,

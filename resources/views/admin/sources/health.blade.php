@@ -24,10 +24,12 @@
                 </h3>
                 <div style="font-size:.85rem;color:var(--text-muted)">Theo dõi tình trạng RSS, retry thủ công, test feed, xem log gần đây.</div>
             </div>
+            @can(\App\Authorization\Permissions::CONTENT)
             <a href="{{ route('admin.sources.index') }}" class="btn btn-sm"
                style="background:var(--surface-alt);color:var(--text);border:1px solid var(--border)">
                 <i class="bi bi-rss me-1"></i>Quản lý nguồn tin
             </a>
+            @endcan
         </div>
 
         @if(session('test_result'))
@@ -132,7 +134,13 @@
                         @php [$label, $bg, $color] = $badgeMap[$source->health_status] ?? [$source->health_status, 'rgba(107,114,128,.12)', '#6b7280']; @endphp
                         <tr style="border-color:var(--border)">
                             <td class="ps-3 py-3">
-                                <div style="font-weight:600"><a href="{{ route('admin.sources.show', $source) }}" style="color:var(--text);text-decoration:none">{{ $source->name }}</a></div>
+                                <div style="font-weight:600">
+                                    @can(\App\Authorization\Permissions::CONTENT)
+                                        <a href="{{ route('admin.sources.show', $source) }}" style="color:var(--text);text-decoration:none">{{ $source->name }}</a>
+                                    @else
+                                        {{ $source->name }}
+                                    @endcan
+                                </div>
                                 <div style="font-size:.75rem;color:var(--text-muted)">{{ $source->category->name ?? '—' }} · {{ number_format($source->articles_count) }} bài</div>
                             </td>
                             <td style="vertical-align:middle"><span style="font-size:.75rem;background:{{ $bg }};color:{{ $color }};border:1px solid {{ $color }}33;border-radius:999px;padding:.3rem .7rem;font-weight:600">{{ $label }}</span></td>
@@ -160,6 +168,7 @@
                                 <div class="d-flex flex-column gap-1 align-items-end">
                                     <form action="{{ route('admin.sources.test', $source) }}" method="POST">@csrf<button class="btn btn-sm" style="background:var(--surface-alt);color:var(--text);border:1px solid var(--border)">Test RSS</button></form>
                                     <form action="{{ route('admin.sources.retry', $source) }}" method="POST">@csrf<button class="btn btn-sm" style="background:var(--accent);color:#fff;border:none">Retry fetch</button></form>
+                                    @can(\App\Authorization\Permissions::CONTENT)
                                     <form action="{{ route('admin.sources.toggle-active', $source) }}" method="POST"
                                           onsubmit="vfConfirmForm(
                                               event,
@@ -172,6 +181,7 @@
                                         @csrf @method('PATCH')
                                         <button class="btn btn-sm" style="background:none;color:{{ $source->is_active ? '#f59e0b' : '#22c55e' }};border:1px solid var(--border)">{{ $source->is_active ? 'Tắt nguồn' : 'Mở nguồn' }}</button>
                                     </form>
+                                    @endcan
                                 </div>
                             </td>
                         </tr>

@@ -12,11 +12,12 @@
             ['route' => 'admin.categories.index','pattern' => 'admin.categories.*',    'icon' => 'bi-tag',          'label' => 'Chủ đề'],
             ['route' => 'admin.articles.index',  'pattern' => 'admin.articles.*',      'icon' => 'bi-newspaper',    'label' => 'Bài viết'],
             ['route' => 'admin.comments.index',  'pattern' => 'admin.comments.*',      'icon' => 'bi-chat-dots',    'label' => 'Bình luận'],
+            ['route' => 'admin.authorization.audit', 'pattern' => 'admin.authorization.audit', 'icon' => 'bi-shield-lock', 'label' => 'Nhật ký phân quyền'],
             ['route' => 'admin.users.index',     'pattern' => 'admin.users.*',         'icon' => 'bi-people',       'label' => 'Người dùng'],
         ];
         @endphp
         @foreach($navItems as $item)
-            @continue($item['route'] === 'admin.stories.index' && Gate::denies('review-story-brief'))
+            @continue(! \App\Authorization\AdminRoutes::allows($item['route']))
             @php $active = request()->routeIs($item['pattern']); @endphp
             <a href="{{ route($item['route']) }}"
                class="btn btn-sm {{ $active ? '' : '' }}"

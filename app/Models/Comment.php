@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Authorization\Permissions;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use MongoDB\Laravel\Eloquent\Model;
 
@@ -116,10 +117,10 @@ class Comment extends Model
         return $query->where('is_hidden', false);
     }
 
-    /** Hidden comments stay visible to their author and to admins only. */
+    /** Hidden comments stay visible to their author and staff with comments.manage. */
     public function scopeVisibleTo($query, ?User $viewer)
     {
-        if ($viewer?->isAdmin()) {
+        if ($viewer?->hasPermission(Permissions::COMMENTS)) {
             return $query;
         }
 

@@ -14,3 +14,5 @@ Schedule::command('interactions consume --consumer=scheduler --limit=100')->ever
 Schedule::command('reading-pass consume --consumer=scheduler --limit=100')->everyFiveSeconds()->withoutOverlapping(1);
 // Run separately so CQL waits cannot block other sub-minute tasks. The consumer's alarm is shorter than this mutex.
 Schedule::command('sources:history-manage consume --consumer=scheduler --limit=100')->everyFiveSeconds()->withoutOverlapping(1)->runInBackground();
+
+Schedule::command('rbac:audit retry')->everyMinute()->withoutOverlapping(5)->runInBackground();
