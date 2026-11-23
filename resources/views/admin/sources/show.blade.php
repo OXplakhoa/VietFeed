@@ -26,8 +26,10 @@
             <h3 class="mb-0" style="font-family:'Playfair Display',serif;font-size:1.3rem">{{ $source->name }}</h3>
             <span style="font-size:.75rem;background:{{ $bg }};color:{{ $color }};border:1px solid {{ $color }}33;border-radius:999px;padding:.3rem .7rem;font-weight:600">{{ $label }}</span>
             <div class="ms-auto d-flex gap-2 flex-wrap">
+                @can(\App\Authorization\Permissions::OPERATIONS)
                 <form action="{{ route('admin.sources.test', $source) }}" method="POST">@csrf<button class="btn btn-sm" style="background:var(--surface-alt);color:var(--text);border:1px solid var(--border)">Test RSS</button></form>
                 <form action="{{ route('admin.sources.retry', $source) }}" method="POST">@csrf<button class="btn btn-sm" style="background:var(--accent);color:#fff;border:none">Retry fetch</button></form>
+                @endcan
                 <form action="{{ route('admin.sources.toggle-active', $source) }}" method="POST"
                       onsubmit="vfConfirmForm(
                           event,

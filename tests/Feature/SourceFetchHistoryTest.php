@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Authorization\Permissions;
 use App\Models\Category;
 use App\Models\Source;
 use App\Models\User;
@@ -81,7 +82,7 @@ class SourceFetchHistoryTest extends TestCase
     {
         $this->bootSourceHistory();
         $source = $this->source();
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS, Permissions::CONTENT]]));
         Http::preventStrayRequests();
         Http::fake([$source->feed_url => Http::response(self::FEED)]);
 
@@ -147,7 +148,7 @@ class SourceFetchHistoryTest extends TestCase
             ->doesntExpectOutputToContain($ids[3])->assertSuccessful();
         $this->artisan('sources:history', ['--source' => $source->id, '--days' => 0])->assertExitCode(2);
 
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS, Permissions::CONTENT]]));
         $health = $this->get(route('admin.sources.health'))->assertOk();
         $recentIds = array_slice($ids, 0, 3);
         $this->assertSame($recentIds, $health->viewData('recentLogs')->pluck('attempt_id')->all());

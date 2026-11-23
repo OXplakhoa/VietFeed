@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\ApiTokens\ApiTokenService;
 use App\ApiTokens\TokenException;
+use App\Authorization\Permissions;
 use App\Http\Middleware\ApiBearer;
 use App\Interaction\InteractionStream;
 use App\Models\Article;
@@ -176,7 +177,7 @@ class ApiTokensTest extends TestCase
         $user = User::factory()->create();
         $pairs = [$this->login($user), $this->login($user)];
         $pairs[] = $this->refreshToken($pairs[0]['refresh_token'])->assertOk()->json();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::USERS]]);
         $this->actingAs($admin)->delete('/admin/users/'.$user->id)->assertRedirect();
         $this->assertNull(User::find($user->id));
         foreach ($pairs as $pair) {
@@ -190,7 +191,7 @@ class ApiTokensTest extends TestCase
         $user = User::factory()->create();
         $pairs = [$this->login($user), $this->login($user)];
         $pairs[] = $this->refreshToken($pairs[0]['refresh_token'])->assertOk()->json();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
         $this->actingAs($admin)->post('/admin/sanctions', ['user_id' => $user->id, 'type' => 'permanent_ban', 'reason' => 'Test fixture'])
             ->assertSessionHasNoErrors()->assertRedirect(route('admin.sanctions.index'));
         foreach ($pairs as $pair) {
@@ -687,7 +688,7 @@ class ApiTokensTest extends TestCase
     {
         foreach (['temporary_ban', 'permanent_ban'] as $type) {
             $user = User::factory()->create();
-            $admin = User::factory()->create(['role' => 'admin']);
+            $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
             $tokens = new class extends ApiTokenService
             {
                 public function issue(User $snapshot): array
@@ -736,7 +737,7 @@ class ApiTokensTest extends TestCase
     public function test_appeal_denial_does_not_touch_mongo_when_epoch_updates_would_fail(): void
     {
         $user = User::factory()->create();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
         $ban = Sanction::create(['user_id' => $user->id, 'admin_id' => $admin->id, 'type' => 'temporary_ban',
             'reason' => 'Fixture', 'is_active' => true, 'expires_at' => now()->addDay()]);
         $this->assertSame(2, $user->fresh()->api_token_epoch);
@@ -759,7 +760,7 @@ class ApiTokensTest extends TestCase
     public function test_second_bump_failure_preserves_admin_success_and_blocks_racing_tokens_until_lift(): void
     {
         $user = User::factory()->create();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
         $tokens = new class extends ApiTokenService
         {
             public function issue(User $snapshot): array
@@ -813,7 +814,7 @@ class ApiTokensTest extends TestCase
     public function test_admin_lift_succeeds_and_logs_safely_when_mongo_epoch_bump_fails(): void
     {
         $user = User::factory()->create();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
         $ban = Sanction::create(['user_id' => $user->id, 'admin_id' => $admin->id, 'type' => 'permanent_ban',
             'reason' => 'Fixture', 'is_active' => true]);
         User::where('_id', $user->id)->update(['api_token_epoch' => 'private-mongo-diagnostic']);
@@ -835,7 +836,7 @@ class ApiTokensTest extends TestCase
 
     public function test_admin_deleting_an_effective_ban_invalidates_families_issued_while_banned(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
         foreach (['temporary_ban', 'permanent_ban'] as $type) {
             $user = User::factory()->create();
             $ban = Sanction::create(['user_id' => $user->id, 'admin_id' => $admin->id, 'type' => $type,
@@ -856,7 +857,7 @@ class ApiTokensTest extends TestCase
     public function test_admin_ban_delete_succeeds_and_cleans_redis_when_epoch_bump_fails(): void
     {
         $user = User::factory()->create();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
         $ban = Sanction::create(['user_id' => $user->id, 'admin_id' => $admin->id, 'type' => 'permanent_ban',
             'reason' => 'Fixture', 'is_active' => true]);
         $pair = app(ApiTokenService::class)->issue($user->fresh());
@@ -941,7 +942,7 @@ class ApiTokensTest extends TestCase
             $user = User::factory()->create();
             $pair = $this->login($user);
             $next = $this->refreshToken($pair['refresh_token'])->assertOk()->json();
-            $admin = User::factory()->create(['role' => 'admin']);
+            $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
             $manager = Redis::getFacadeRoot();
             $logs = new TestHandler;
             Log::getLogger()->pushHandler($logs);
@@ -1085,7 +1086,7 @@ class ApiTokensTest extends TestCase
     public function test_admin_ban_mongo_failure_aborts_before_sql_and_preserves_related_state_and_tokens(): void
     {
         $user = User::factory()->create();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
         $first = $this->login($user);
         $next = $this->refreshToken($first['refresh_token'])->assertOk()->json();
         $article = Article::create(['title' => 'Fixture', 'slug' => 'ban-failure', 'original_url' => 'https://example.test/ban']);
@@ -1122,7 +1123,7 @@ class ApiTokensTest extends TestCase
     public function test_admin_ban_sql_failure_only_revokes_existing_families(): void
     {
         $user = User::factory()->create();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
         $first = $this->login($user);
         $next = $this->refreshToken($first['refresh_token'])->assertOk()->json();
         $other = $this->login($user);
@@ -1240,7 +1241,7 @@ class ApiTokensTest extends TestCase
                     ->assertSessionHasNoErrors()->assertRedirect();
                 $this->assertTrue(Hash::check('changed-password', $user->fresh()->password));
             } elseif ($action === 'ban') {
-                $admin = User::factory()->create(['role' => 'admin']);
+                $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::MODERATION]]);
                 $this->actingAs($admin)->post('/admin/sanctions', ['user_id' => $user->id, 'type' => 'permanent_ban', 'reason' => 'Fixture'])
                     ->assertRedirect(route('admin.sanctions.index'))->assertSessionMissing('error')->assertSessionHas('success');
                 $sanction = $user->sanctions()->sole();

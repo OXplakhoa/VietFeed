@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Authorization\Permissions;
 use App\Jobs\FetchSourceFeedJob;
 use App\Models\Category;
 use App\Models\Source;
@@ -19,7 +20,7 @@ class SourceHealthMonitorTest extends TestCase
 
     public function test_admin_can_open_source_health_page(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]);
         $category = Category::create(['name' => 'Công nghệ', 'slug' => 'cong-nghe']);
         Source::create([
             'name' => 'Test Feed',
@@ -39,7 +40,7 @@ class SourceHealthMonitorTest extends TestCase
     public function test_rss_test_logs_diagnostics_without_updating_source_health(): void
     {
         $history = $this->bootSourceHistory();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]);
         $category = Category::create(['name' => 'Công nghệ', 'slug' => 'cong-nghe']);
         $source = Source::create([
             'name' => 'Test Feed',
@@ -82,7 +83,7 @@ class SourceHealthMonitorTest extends TestCase
         $history = $this->bootSourceHistory();
         Queue::fake();
 
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]);
         $category = Category::create(['name' => 'Công nghệ', 'slug' => 'cong-nghe']);
         $source = Source::create([
             'name' => 'Test Feed',
@@ -111,7 +112,7 @@ class SourceHealthMonitorTest extends TestCase
     public function test_failed_dispatch_does_not_publish_queued_history(): void
     {
         $history = $this->bootSourceHistory();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]);
         $category = Category::create(['name' => 'Công nghệ', 'slug' => 'cong-nghe']);
         $source = Source::create([
             'name' => 'Test Feed', 'url' => 'https://example.com',

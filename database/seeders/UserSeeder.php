@@ -4,21 +4,27 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Hash;
+use RuntimeException;
 
 class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        User::updateOrCreate(
+        User::firstOrCreate(
             ['email' => 'admin@vietfeed.com'],
             [
-                'name'              => 'VietFeed Admin',
-                'password'          => Hash::make('password'),
-                'role'              => 'admin',
+                'name' => 'VietFeed Admin',
+                'password' => Hash::make('password'),
                 'email_verified_at' => now(),
             ]
         );
+
+        $options = ['--super-admin' => 'admin@vietfeed.com'];
+        if (($this->command?->call('rbac:bootstrap', $options) ?? Artisan::call('rbac:bootstrap', $options)) !== 0) {
+            throw new RuntimeException('Unable to bootstrap the demo Super Admin.');
+        }
 
         $users = [
             ['name' => 'Nguyễn Văn An',  'email' => 'user1@vietfeed.com'],
@@ -27,12 +33,11 @@ class UserSeeder extends Seeder
         ];
 
         foreach ($users as $data) {
-            User::updateOrCreate(
+            User::firstOrCreate(
                 ['email' => $data['email']],
                 [
-                    'name'              => $data['name'],
-                    'password'          => Hash::make('password'),
-                    'role'              => 'user',
+                    'name' => $data['name'],
+                    'password' => Hash::make('password'),
                     'email_verified_at' => now(),
                 ]
             );

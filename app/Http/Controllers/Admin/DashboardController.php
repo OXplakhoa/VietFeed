@@ -79,7 +79,7 @@ class DashboardController extends Controller
             ->sortBy([['boosts_count', 'desc'], ['published_at', 'desc']])->values();
 
         $recentArticles = Article::with(['source', 'category'])->latest()->take(8)->get();
-        $recentComments = Comment::with(['user', 'article'])->latest()->take(6)->get();
+        $recentComments = Comment::with(['user', 'article'])->visibleTo(auth()->user())->latest()->take(6)->get();
         $sources = $allSources;
         $problemSources = $allSources
             ->filter(fn (Source $source) => in_array($source->health_status, ['warning', 'failed', 'stale', 'critical'], true))

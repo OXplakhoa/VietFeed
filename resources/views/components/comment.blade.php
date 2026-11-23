@@ -29,7 +29,7 @@
             <div class="comment-body" @if($comment->is_hidden) style="opacity:.7" @endif>{{ $comment->body }}</div>
             @if($comment->is_hidden)
             <div style="color:var(--text-muted);font-style:italic;font-size:.8rem;margin-top:.25rem">
-                @if(auth()->user()?->isAdmin())
+                @if(\Illuminate\Support\Facades\Gate::allows(\App\Authorization\Permissions::COMMENTS))
                     Bình luận này đang bị ẩn khỏi người dùng khác (chỉ tác giả và quản trị viên nhìn thấy).
                 @else
                     Bình luận của bạn đã bị ẩn do vi phạm quy định cộng đồng. Chỉ bạn và quản trị viên nhìn thấy.
@@ -47,7 +47,7 @@
                         <i class="bi bi-reply me-1"></i>Trả lời
                     </button>
                     @endif
-                    @if(auth()->id() === $comment->user_id || auth()->user()->isAdmin())
+                    @if(auth()->id() === $comment->user_id || \Illuminate\Support\Facades\Gate::allows(\App\Authorization\Permissions::COMMENTS))
                     <form action="{{ route('comments.destroy', $comment) }}" method="POST" class="m-0">
                         @csrf @method('DELETE')
                         <button type="submit"

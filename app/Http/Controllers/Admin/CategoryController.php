@@ -55,6 +55,11 @@ class CategoryController extends Controller
             ->with('success', 'Đã thêm chủ đề mới.');
     }
 
+    public function show(Category $category)
+    {
+        return redirect()->route('admin.categories.edit', $category);
+    }
+
     public function edit(Category $category)
     {
         $category->articles_count = $category->articles()->count();

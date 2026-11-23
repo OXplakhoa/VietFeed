@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Authorization\Permissions;
 use App\Models\Article;
 use App\Models\Comment;
 use App\Models\User;
@@ -67,7 +68,7 @@ class CommentController extends Controller
         /** @var User $user */
         $user = Auth::user();
 
-        abort_if($comment->user_id !== (string) Auth::id() && ! $user->isAdmin(), 403);
+        abort_if($comment->user_id !== (string) Auth::id() && ! $user->hasPermission(Permissions::COMMENTS), 403);
 
         $comment->delete();
 

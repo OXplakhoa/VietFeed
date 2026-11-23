@@ -42,18 +42,25 @@
         {{-- Stats Cards --}}
         <div class="row g-3 mb-4">
             @foreach([
-                ['label' => 'Bài viết',      'value' => number_format($stats['articles']),      'icon' => 'bi-newspaper', 'color' => '#60a5fa', 'href' => route('admin.articles.index')],
-                ['label' => 'Người dùng',    'value' => number_format($stats['users']),         'icon' => 'bi-people', 'color' => '#34d399', 'href' => route('admin.users.index')],
-                ['label' => 'Bình luận',     'value' => number_format($stats['comments']),      'icon' => 'bi-chat-dots', 'color' => '#fbbf24', 'href' => route('admin.comments.index')],
-                ['label' => 'Đã lưu',        'value' => number_format($stats['bookmarks']),     'icon' => 'bi-bookmark', 'color' => '#a78bfa', 'href' => route('admin.articles.index', ['sort' => 'bookmarks'])],
-                ['label' => 'Boost',         'value' => number_format($stats['boosts']),        'icon' => 'bi-lightning-charge-fill', 'color' => 'var(--accent)', 'href' => route('admin.articles.index', ['sort' => 'boosts'])],
-                ['label' => 'Mở bài hôm nay', 'value' => number_format($stats['unlocks_today']), 'icon' => 'bi-ticket-perforated', 'color' => '#38bdf8', 'href' => route('admin.articles.index')],
-                ['label' => 'Mở bài 5 giờ',  'value' => number_format($stats['unlocks_5h']),    'icon' => 'bi-hourglass-split', 'color' => '#f472b6', 'href' => route('admin.articles.index')],
-                ['label' => 'Pro users',     'value' => number_format($stats['pro_users']),     'icon' => 'bi-stars', 'color' => '#facc15', 'href' => route('admin.users.index', ['plan' => 'pro'])],
-                ['label' => 'Nguồn tin',     'value' => number_format($stats['sources']),       'icon' => 'bi-rss', 'color' => '#fb923c', 'href' => route('admin.sources.index')],
+                ['label' => 'Bài viết',      'value' => number_format($stats['articles']),      'icon' => 'bi-newspaper', 'color' => '#60a5fa', 'route' => 'admin.articles.index'],
+                ['label' => 'Người dùng',    'value' => number_format($stats['users']),         'icon' => 'bi-people', 'color' => '#34d399', 'route' => 'admin.users.index'],
+                ['label' => 'Bình luận',     'value' => number_format($stats['comments']),      'icon' => 'bi-chat-dots', 'color' => '#fbbf24', 'route' => 'admin.comments.index'],
+                ['label' => 'Đã lưu',        'value' => number_format($stats['bookmarks']),     'icon' => 'bi-bookmark', 'color' => '#a78bfa', 'route' => 'admin.articles.index', 'parameters' => ['sort' => 'bookmarks']],
+                ['label' => 'Boost',         'value' => number_format($stats['boosts']),        'icon' => 'bi-lightning-charge-fill', 'color' => 'var(--accent)', 'route' => 'admin.articles.index', 'parameters' => ['sort' => 'boosts']],
+                ['label' => 'Mở bài hôm nay', 'value' => number_format($stats['unlocks_today']), 'icon' => 'bi-ticket-perforated', 'color' => '#38bdf8', 'route' => 'admin.articles.index'],
+                ['label' => 'Mở bài 5 giờ',  'value' => number_format($stats['unlocks_5h']),    'icon' => 'bi-hourglass-split', 'color' => '#f472b6', 'route' => 'admin.articles.index'],
+                ['label' => 'Pro users',     'value' => number_format($stats['pro_users']),     'icon' => 'bi-stars', 'color' => '#facc15', 'route' => 'admin.users.index', 'parameters' => ['plan' => 'pro']],
+                ['label' => 'Nguồn tin',     'value' => number_format($stats['sources']),       'icon' => 'bi-rss', 'color' => '#fb923c', 'route' => 'admin.sources.index'],
             ] as $stat)
+            @php
+                $link = \App\Authorization\AdminRoutes::allows($stat['route']);
+            @endphp
             <div class="col-6 col-md-4 col-xl-3 col-xxl-2">
-                <a href="{{ $stat['href'] }}" class="d-block p-3 h-100 admin-stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;text-decoration:none;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease">
+                @if($link)
+                <a href="{{ route($stat['route'], $stat['parameters'] ?? []) }}" class="d-block p-3 h-100 admin-stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;text-decoration:none;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease">
+                @else
+                <div class="d-block p-3 h-100 admin-stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;text-decoration:none;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease">
+                @endif
                     <div class="d-flex align-items-center gap-3 h-100">
                         <div style="background:rgba(96,165,250,.08);border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                             <i class="bi {{ $stat['icon'] }}" style="font-size:1.3rem;color:{{ $stat['color'] }}"></i>
@@ -65,7 +72,7 @@
                             <div class="admin-stat-label" title="{{ $stat['label'] }}" style="font-size:.78rem;color:var(--text-muted)">{{ $stat['label'] }}</div>
                         </div>
                     </div>
-                </a>
+                @if($link)</a>@else</div>@endif
             </div>
             @endforeach
         </div>
@@ -80,18 +87,24 @@
                 ['label' => 'Critical', 'value' => $healthCounts['critical'], 'color' => '#a855f7'],
             ] as $stat)
             <div class="col-6 col-lg">
+                @can(\App\Authorization\Permissions::OPERATIONS)
                 <a href="{{ route('admin.sources.health') }}" class="d-block p-3 h-100 admin-stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;text-decoration:none;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease">
+                @else
+                <div class="d-block p-3 h-100 admin-stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;text-decoration:none;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease">
+                @endcan
                     <div style="font-size:.75rem;color:var(--text-muted)">{{ $stat['label'] }}</div>
                     <div style="font-size:1.5rem;font-weight:700;color:{{ $stat['color'] }}">{{ $stat['value'] }}</div>
-                </a>
+                @can(\App\Authorization\Permissions::OPERATIONS)</a>@else</div>@endcan
             </div>
             @endforeach
+            @can(\App\Authorization\Permissions::OPERATIONS)
             <div class="col-12 col-lg-2">
                 <a href="{{ route('admin.sources.health') }}" class="d-flex h-100 align-items-center justify-content-center text-decoration-none"
                    style="background:var(--surface);border:1px solid var(--border);border-radius:12px;color:var(--accent);font-weight:600">
                     Mở Health Monitor →
                 </a>
             </div>
+            @endcan
         </div>
 
         {{-- Charts Row 1: Articles / Users over time --}}
@@ -160,10 +173,14 @@
                     <div class="d-flex align-items-start gap-2 py-2" style="border-bottom:1px solid var(--border)">
                         <span style="font-weight:700;color:var(--accent);font-size:.85rem;flex-shrink:0;width:20px">{{ $i + 1 }}</span>
                         <div class="flex-fill" style="min-width:0">
+                            @can(\App\Authorization\Permissions::CONTENT)
                             <a href="{{ route('admin.articles.show', $a) }}"
                                style="font-size:.8rem;color:var(--text);text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
                                 {{ $a->title }}
                             </a>
+                            @else
+                                {{ $a->title }}
+                            @endcan
                             <div style="font-size:.7rem;color:var(--text-secondary);margin-top:.15rem">
                                 <i class="bi bi-lightning-charge-fill me-1" style="color:var(--accent)"></i>{{ $a->boosts_count }} Boost
                             </div>
@@ -180,7 +197,9 @@
                 <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="d-flex align-items-center justify-content-between mb-3">
                         <div class="sidebar-title mb-0">Bình luận mới nhất</div>
+                        @can(\App\Authorization\Permissions::COMMENTS)
                         <a href="{{ route('admin.comments.index') }}" style="font-size:.75rem;color:var(--accent);text-decoration:none">Xem tất cả →</a>
+                        @endcan
                     </div>
                     @forelse($recentComments as $c)
                     <div class="py-2" style="border-bottom:1px solid var(--border)">
@@ -192,6 +211,7 @@
                         <div style="font-size:.8rem;color:var(--text-secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
                             {{ $c->body }}
                         </div>
+                        @can(\App\Authorization\Permissions::COMMENTS)
                         <form action="{{ route('admin.comments.destroy', $c) }}" method="POST" class="mt-1"
                               onsubmit="vfConfirmForm(event, this, 'Bình luận này sẽ bị xóa vĩnh viễn.')">
                             @csrf @method('DELETE')
@@ -199,6 +219,7 @@
                                 <i class="bi bi-trash me-1"></i>Xóa
                             </button>
                         </form>
+                        @endcan
                     </div>
                     @empty
                     <p style="color:var(--text-muted);font-size:.85rem">Chưa có bình luận.</p>
@@ -211,7 +232,9 @@
                 <div class="p-3 h-100" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
                     <div class="d-flex align-items-center justify-content-between mb-3">
                         <div class="sidebar-title mb-0">Nguồn cần chú ý</div>
+                        @can(\App\Authorization\Permissions::OPERATIONS)
                         <a href="{{ route('admin.sources.health') }}" style="font-size:.75rem;color:var(--accent);text-decoration:none">Health Monitor →</a>
+                        @endcan
                     </div>
                     <div style="max-height:320px;overflow-y:auto">
                         @php
@@ -242,7 +265,9 @@
         <div class="p-3" style="background:var(--surface);border:1px solid var(--border);border-radius:12px">
             <div class="d-flex align-items-center justify-content-between mb-3">
                 <div class="sidebar-title mb-0">Bài viết mới nhất</div>
+                @can(\App\Authorization\Permissions::CONTENT)
                 <a href="{{ route('admin.articles.index') }}" style="font-size:.8rem;color:var(--accent);text-decoration:none">Quản lý bài viết →</a>
+                @endcan
             </div>
             <div class="table-responsive">
                 <table class="table table-sm mb-0" style="color:var(--text)">
@@ -258,10 +283,12 @@
                         <td style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap">{{ $a->source_name }} · {{ $a->category_name }}</td>
                         <td style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap">{{ $a->created_at->diffForHumans() }}</td>
                         <td style="white-space:nowrap">
+                            @can(\App\Authorization\Permissions::CONTENT)
                             <a href="{{ route('admin.articles.edit', $a) }}"
                                style="font-size:.75rem;color:var(--accent);text-decoration:none">
                                 <i class="bi bi-pencil"></i>
                             </a>
+                            @endcan
                         </td>
                     </tr>
                     @endforeach

@@ -2,6 +2,8 @@
 
 namespace Tests;
 
+use App\Authorization\AuthorizationAudit;
+use App\Authorization\SuperAdminGuard;
 use App\ReadingPass\ReadingPassHistory;
 use App\ReadingPass\ReadingPassQuota;
 use App\SourceHistory\SourceFetchHistory;
@@ -71,7 +73,7 @@ abstract class TestCase extends BaseTestCase
     private function wipeMongoCollections(): void
     {
         // Gate 9b and 9.5: moderation documents, comments, bookmarks, boosts and unlocks also live on MongoDB.
-        foreach (['categories', 'sources', 'users', 'articles', 'stories', 'story_briefs', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases', 'comments', 'reports_duplicates', 'bookmarks', 'boosts', 'article_unlocks', 'failed_jobs', 'job_batches'] as $collection) {
+        foreach (['categories', 'sources', 'users', 'articles', 'stories', 'story_briefs', 'subscriptions', 'processed_stripe_events', 'reports', 'sanctions', 'moderation_cases', 'comments', 'reports_duplicates', 'bookmarks', 'boosts', 'article_unlocks', 'failed_jobs', 'job_batches', SuperAdminGuard::COLLECTION, AuthorizationAudit::OUTBOX] as $collection) {
             DB::connection('mongodb')->table($collection)->delete();
         }
     }

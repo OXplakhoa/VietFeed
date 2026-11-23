@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Authorization\Permissions;
 use App\Billing\BillingGateway;
 use App\Content\CategoryList;
 use App\Content\ContentCatalog;
@@ -30,7 +31,7 @@ class CatalogArticlePagesTest extends TestCase
         $fixture = json_decode(file_get_contents(base_path('tests/Fixtures/storylens-rss-v1.json')), true);
         $fixture['items'] = [$fixture['items'][0]];
         app(ContentCatalog::class)->ingest($fixture);
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::CONTENT]]));
     }
 
     protected function tearDown(): void

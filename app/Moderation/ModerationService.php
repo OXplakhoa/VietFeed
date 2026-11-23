@@ -2,6 +2,7 @@
 
 namespace App\Moderation;
 
+use App\Authorization\UserAuthorization;
 use App\Models\Comment;
 use App\Models\Report;
 use App\Models\Sanction;
@@ -113,6 +114,14 @@ class ModerationService
         if ($reportId === null && $hideComment) {
             throw new ModerationException('Chỉ có thể ẩn bình luận khi xử lý từ một báo cáo.');
         }
+        $isBan = in_array($type, ['temporary_ban', 'permanent_ban'], true);
+        if ($isBan) {
+            app(UserAuthorization::class)->authorizeBan(
+                $admin->fresh() ?? throw new ModerationException('Không tìm thấy người thực hiện.'),
+                $target->fresh() ?? throw new ModerationException('Không tìm thấy tài khoản bị xử lý.'),
+                $type,
+            );
+        }
         $expiresAt = in_array($type, ['mute', 'temporary_ban'], true) ? now()->addDays($durationDays ?? 7) : null;
         $sanctionId = (string) Str::uuid7();
         $attributes = [
@@ -218,6 +227,16 @@ class ModerationService
             $current = Sanction::find($id) ?? throw new ModerationException('Không tìm thấy biện pháp xử lý.');
             if ($current->appeal_status !== 'pending') {
                 throw new ModerationException('Chỉ có thể quyết định các kháng cáo đang chờ duyệt.');
+            }
+            if ($decision === 'denied' && $current->isEffectiveBan($current->getAttributes())) {
+                $target = User::find($current->user_id);
+                if ($target !== null) {
+                    app(UserAuthorization::class)->authorizeBan(
+                        $admin->fresh() ?? throw new ModerationException('Không tìm thấy người thực hiện.'),
+                        $target,
+                        $current->type,
+                    );
+                }
             }
             $revoke = $decision === 'approved' && $current->revoked_at === null;
             $set = [
@@ -393,7 +412,20 @@ class ModerationService
             ]);
         $sanction = new Sanction($attributes);
         $sanction->forceFill(['_id' => $id, 'audit_case_id' => $auditCaseId, 'version' => 1, 'events' => [$event]]);
-        $sanction->save();
+        if (in_array($attributes['type'], ['temporary_ban', 'permanent_ban'], true)) {
+            $authorization = app(UserAuthorization::class);
+            $authorization->beginBan($admin, $attributes['user_id'], $id, $attributes['type']);
+            try {
+                $sanction->save();
+                $authorization->finishBan($attributes['user_id'], $id);
+            } catch (Throwable $error) {
+                // An interrupted write leaves the marker in place until control verifies the outcome.
+                Log::warning('Check authorization ban marker after interrupted sanction write', ['sanction_id' => $id]);
+                throw $error;
+            }
+        } else {
+            $sanction->save();
+        }
         $this->audit->publish([$event]);
 
         return $sanction;

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\ApiTokens\ApiTokenService;
+use App\Authorization\Permissions;
 use App\Billing\BillingGateway;
 use App\Moderation\ModerationQueries;
 use Database\Factories\UserFactory;
@@ -60,13 +61,12 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $primaryKey = '_id';
 
     // Replaces the SQL column default ('user') — Mongo has no schema defaults.
-    protected $attributes = ['role' => 'user', 'api_token_epoch' => 0];
+    protected $attributes = ['role' => Permissions::USER, 'permissions' => [], 'api_token_epoch' => 0];
 
     protected $fillable = [
         'name',
         'email',
         'password',
-        'role',
         'avatar',
         'google_id',
         'email_verified_at',
@@ -84,6 +84,7 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'favorite_category_ids' => 'array',
+            'permissions' => 'array',
             'password' => 'hashed',
             'api_token_epoch' => 'integer',
         ];
@@ -91,12 +92,23 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isAdmin(): bool
     {
-        return $this->role === 'admin';
+        return $this->role === Permissions::ADMIN || $this->isSuperAdmin();
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === Permissions::SUPER_ADMIN;
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        return in_array($permission, Permissions::ALL, true) && ($this->isSuperAdmin()
+            || ($this->role === Permissions::ADMIN && in_array($permission, $this->permissions ?? [], true)));
     }
 
     public function isUser(): bool
     {
-        return $this->role === 'user';
+        return $this->role === Permissions::USER;
     }
 
     public function isPro(): bool

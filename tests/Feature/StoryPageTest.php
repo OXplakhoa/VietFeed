@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Authorization\Permissions;
 use App\Content\ContentCatalog;
 use App\Models\Article;
 use App\Models\Story;
@@ -130,7 +131,7 @@ class StoryPageTest extends TestCase
         $this->actingAs(User::factory()->create(['role' => 'user']));
         $this->get('/admin/processing')->assertForbidden();
         $this->post('/admin/processing/retry')->assertForbidden();
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]));
         $this->get('/admin/processing')->assertOk()->assertSee('Xử lý Story');
     }
 
@@ -140,7 +141,7 @@ class StoryPageTest extends TestCase
         $stream = app(StoryPipeline::class)->stream('graph');
         $dead = $this->deadLetter();
         $pending = $stream->receive('waiting-worker');
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]));
         $this->get('/admin/processing')->assertOk()->assertSee($dead)->assertSee($story->title.' · '.$story->id)
             ->assertSee($pending['id'])->assertSee('waiting-worker')->assertSee('story.article_added.v1')
             ->assertSee('Lỗi xử lý đã được ghi nhận.')->assertDontSee('SECRET')->assertDontSee('private-host')
@@ -177,7 +178,7 @@ class StoryPageTest extends TestCase
             ->assertJsonPath('sections.timeline.data.0.article_title', $article->title)
             ->assertJsonPath('sections.timeline.data.0.occurred_at_display', '14/11/2026 10:30')
             ->assertJsonPath('sections.timeline.data.1.article_title', 'Bài viết chưa có trong danh sách nguồn');
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]));
         $this->get('/admin/processing')->assertOk()->assertSee($story->title.' · '.$story->id);
     }
 
@@ -219,7 +220,7 @@ class StoryPageTest extends TestCase
         $query = json_encode($queries[0]);
         $this->assertStringContainsString('processing', $query);
         $this->assertStringNotContainsString('events', $query);
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]));
         $this->get('/admin/processing')->assertOk()->assertSee('50 Story mới nhất')->assertSee('Story 51')->assertDontSee('Story 0<', false);
     }
 
@@ -228,7 +229,7 @@ class StoryPageTest extends TestCase
         $story = $this->ingest();
         $client = Redis::connection('nosql')->client();
         $this->assertSame([], $client->xInfo('GROUPS', StoryPipeline::STREAM));
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]));
         $this->get('/admin/processing')->assertOk()
             ->assertSeeInOrder(['Dashboard', 'Health', 'Xử lý Story']);
         $groups = $client->xInfo('GROUPS', StoryPipeline::STREAM);
@@ -243,7 +244,7 @@ class StoryPageTest extends TestCase
 
     public function test_processing_reports_unexpected_exceptions_but_handles_missing_and_unavailable_stores(): void
     {
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]));
         Exceptions::fake();
         $this->post('/admin/processing/retry', ['section' => 'graph', 'id' => '1-0'])
             ->assertRedirect('/admin/processing')->assertSessionHas('error');
@@ -281,7 +282,7 @@ class StoryPageTest extends TestCase
 
     public function test_retry_validation_redirects_cleanly_and_csrf_is_enforced(): void
     {
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::OPERATIONS]]));
         foreach ([[], ['section' => 'unknown', 'id' => '1-0'], ['section' => 'graph', 'id' => 'invalid'], ['section' => 'graph', 'id' => '1-0']] as $input) {
             $this->post('/admin/processing/retry', $input)->assertRedirect('/admin/processing')->assertSessionHas('error');
         }
