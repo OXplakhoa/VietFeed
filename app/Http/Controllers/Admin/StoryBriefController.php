@@ -23,7 +23,7 @@ final class StoryBriefController extends Controller
             'title' => $story->title,
             'version' => $story->version ?? 0,
             'articles' => $story->article_count ?? count($story->article_ids ?? []),
-            'state' => $presented[$story->id]['state'],
+            'state_label' => $this->stateLabel($presented[$story->id]['state']),
             'published' => match ($presented[$story->id]['kind']) {
                 'ai' => 'AI',
                 'extractive' => 'Trích từ nguồn',
@@ -40,13 +40,26 @@ final class StoryBriefController extends Controller
         abort_if($story === null, 404);
         $evidence = BriefEvidence::read($story);
         $state = Briefs::state($story);
+        $stateLabel = $this->stateLabel($state);
         $brief = in_array($state, ['none', 'unavailable'], true) ? [] : $story->brief;
         $expired = $state === 'failed' && $brief['state'] === 'generating';
         $candidate = $store->output($story, $brief['candidate_id'] ?? null, 'candidate');
         $points = $candidate ? Briefs::cite($candidate['points'], $evidence) : null;
         $history = $store->history($story, Briefs::RECENT_LIMIT);
 
-        return view('admin.stories.show', compact('story', 'evidence', 'state', 'brief', 'candidate', 'points', 'history', 'expired'));
+        return view('admin.stories.show', compact('story', 'evidence', 'state', 'stateLabel', 'brief', 'candidate', 'points', 'history', 'expired'));
+    }
+
+    private function stateLabel(string $state): string
+    {
+        return match ($state) {
+            'none' => 'Chưa có bản nháp',
+            'queued' => 'Đang chờ xử lý',
+            'generating' => 'Đang tạo',
+            'ready' => 'Sẵn sàng',
+            'failed' => 'Thất bại',
+            default => 'Không khả dụng',
+        };
     }
 
     public function accept(Request $request, string $story, BriefStore $store): RedirectResponse

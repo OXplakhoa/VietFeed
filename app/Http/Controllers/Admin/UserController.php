@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Accounts\AccountLifecycle;
 use App\Authorization\Permissions;
 use App\Authorization\UserAuthorization;
 use App\Billing\BillingGateway;
@@ -14,7 +15,6 @@ use App\ReadingPass\UnlockLedger;
 use App\Services\ReadingPassService;
 use App\Support\MongoCounts;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -73,7 +73,7 @@ class UserController extends Controller
         $role = $request->input('role', $user->role);
         $data = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => ['required', 'email', Rule::unique('mongodb.users', 'email')->ignore($user->getKey(), '_id')],
+            'email' => ['required', 'lowercase', 'email', Rule::unique('mongodb.users', 'email')->ignore($user->getKey(), '_id')],
             'role' => ['sometimes', 'required', Rule::in(Permissions::ROLES)],
             'permissions' => ['sometimes', 'array', 'list', 'max:'.count(Permissions::ALL), Rule::prohibitedIf($role !== Permissions::ADMIN)],
             'permissions.*' => ['required', 'string', 'distinct', Rule::in(Permissions::ALL)],
@@ -96,19 +96,19 @@ class UserController extends Controller
         return redirect()->route($destination)->with('success', 'Đã cập nhật thông tin người dùng.');
     }
 
-    public function destroy(Request $request, User $user, UserAuthorization $authorization)
+    public function destroy(Request $request, User $user, UserAuthorization $authorization, AccountLifecycle $lifecycle)
     {
-        $self = $user->is($request->user());
-        $authorization->delete($request->user(), $user);
+        $authorization->authorizeManagement($request->user(), $user);
+        $lifecycle->request($request->user(), $user, AccountLifecycle::ORIGIN_ADMIN);
 
-        if ($self) {
-            Auth::logout();
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
+        return back()->with('success', 'Đã lên lịch xóa người dùng. Tài khoản bị khóa ngay và chỉ quản trị viên có thể khôi phục trong '.AccountLifecycle::recoveryDays().' ngày.');
+    }
 
-            return redirect()->route('home');
-        }
+    public function recover(Request $request, User $user, UserAuthorization $authorization, AccountLifecycle $lifecycle)
+    {
+        $authorization->authorizeManagement($request->user(), $user);
+        $lifecycle->recover((string) $user->id, byAdmin: true);
 
-        return back()->with('success', 'Đã xóa người dùng.');
+        return back()->with('success', 'Đã khôi phục tài khoản. Gói Pro (nếu có) đã bị hủy và người dùng cần đăng ký lại.');
     }
 }

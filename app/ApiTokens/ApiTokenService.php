@@ -82,7 +82,7 @@ class ApiTokenService
         if ((int) $user->api_token_epoch !== (int) $identity[3]) {
             throw new TokenException('token_family_revoked');
         }
-        if ($user->isBanned()) {
+        if ($user->isBanned() || $user->isPendingDeletion()) {
             throw new TokenException('account_unavailable');
         }
 

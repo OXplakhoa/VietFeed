@@ -444,7 +444,7 @@ class ReadingPassNosqlTest extends TestCase
         auth()->guard('web')->logout();
 
         $sid = $guestOpens([$shared, $mineOnly]);
-        $google = new SocialiteUser;
+        $google = (new SocialiteUser)->setRaw(['email_verified' => true]);
         $google->map(['id' => 'g-rp', 'name' => 'Google', 'email' => 'login@example.test', 'avatar' => null]);
         Socialite::shouldReceive('driver->user')->once()->andReturn($google);
         $this->withCookie(config('session.cookie'), $sid)->get('/auth/google/callback')->assertRedirect();

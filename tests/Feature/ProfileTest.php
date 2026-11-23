@@ -94,7 +94,8 @@ class ProfileTest extends TestCase
             ->assertRedirect('/');
 
         $this->assertGuest();
-        $this->assertNull($user->fresh());
+        // Gate 9.7b: deletion is a recoverable request; the document goes at purge time.
+        $this->assertSame('pending', $user->fresh()->deletion['state']);
     }
 
     public function test_correct_password_must_be_provided_to_delete_account(): void

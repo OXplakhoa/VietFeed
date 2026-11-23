@@ -43,6 +43,13 @@ class SuperAdminGuard
         )->getModifiedCount() === 1;
     }
 
+    public function isLastMember(string $userId): bool
+    {
+        $guard = $this->snapshot();
+
+        return ! isset($guard['repair_token']) && (array) ($guard['user_ids'] ?? []) === [$userId];
+    }
+
     public function bootstrapUserId(): ?string
     {
         return $this->snapshot()['bootstrap_user_id'] ?? null;
@@ -53,12 +60,24 @@ class SuperAdminGuard
         return $this->snapshot()['bootstrap_candidate_id'] ?? null;
     }
 
-    public function clearBootstrapCandidate(string $expectedId): bool
+    public function clearBootstrapCandidate(string $expectedId, array $event): bool
     {
-        return $this->collection()->updateOne([
+        $filter = [
             '_id' => self::ID, 'bootstrap_user_id' => null,
             'bootstrap_candidate_id' => $expectedId, 'repair_token' => null,
-        ], ['$unset' => ['bootstrap_candidate_id' => '']])->getModifiedCount() === 1;
+        ];
+        $collection = $this->collection();
+        // Give pre-upgrade markers with no timestamp a full staleness window.
+        $collection->updateOne($filter + ['bootstrap_started_at' => null], [
+            '$set' => ['bootstrap_started_at' => new UTCDateTime(now())],
+        ]);
+
+        return $collection->updateOne($filter + [
+            'bootstrap_started_at' => ['$lt' => new UTCDateTime(now()->subMinutes(AuthorizationRepair::MINIMUM_AGE_MINUTES))],
+        ], [
+            '$unset' => ['bootstrap_candidate_id' => '', 'bootstrap_started_at' => ''],
+            '$push' => [AuthorizationAudit::USER_OUTBOX => $event],
+        ])->getModifiedCount() === 1;
     }
 
     public function beginBootstrap(string $userId): bool
@@ -68,7 +87,7 @@ class SuperAdminGuard
         return $this->collection()->updateOne([
             '_id' => self::ID, 'bootstrap_user_id' => null, 'repair_token' => null,
             '$or' => [['bootstrap_candidate_id' => null], ['bootstrap_candidate_id' => $userId]],
-        ], ['$set' => ['bootstrap_candidate_id' => $userId]])->getMatchedCount() === 1;
+        ], ['$set' => ['bootstrap_candidate_id' => $userId, 'bootstrap_started_at' => new UTCDateTime(now())]])->getMatchedCount() === 1;
     }
 
     public function finishBootstrap(string $userId): bool
@@ -77,7 +96,10 @@ class SuperAdminGuard
         return $this->collection()->updateOne([
             '_id' => self::ID, 'bootstrap_user_id' => null, 'bootstrap_candidate_id' => $userId,
             'repair_token' => null, 'user_ids.0' => ['$exists' => true],
-        ], ['$set' => ['bootstrap_user_id' => $userId], '$unset' => ['bootstrap_candidate_id' => '']])->getMatchedCount() === 1;
+        ], [
+            '$set' => ['bootstrap_user_id' => $userId],
+            '$unset' => ['bootstrap_candidate_id' => '', 'bootstrap_started_at' => ''],
+        ])->getMatchedCount() === 1;
     }
 
     public function memberIds(): array

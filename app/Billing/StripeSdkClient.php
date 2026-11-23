@@ -42,4 +42,24 @@ class StripeSdkClient implements StripeClient
             throw $e;
         }
     }
+
+    public function cancelSubscription(string $id, string $idempotencyKey): void
+    {
+        try {
+            $this->client()->subscriptions->cancel($id, null, ['idempotency_key' => $idempotencyKey]);
+        } catch (InvalidRequestException $e) {
+            if ($e->getStripeCode() === 'resource_missing') {
+                return;
+            }
+            // Idempotency keys expire; a subscription canceled meanwhile rejects a second cancel.
+            try {
+                $canceled = ($this->retrieveSubscription($id)['status'] ?? null) === 'canceled';
+            } catch (SubscriptionMissing) {
+                return;
+            }
+            if (! $canceled) {
+                throw $e;
+            }
+        }
+    }
 }

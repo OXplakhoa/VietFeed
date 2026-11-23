@@ -20,7 +20,7 @@ final class AdminRoutes
         Permissions::MODERATION => ['reports.index', 'reports.show', 'reports.update', 'sanctions.index', 'sanctions.store', 'sanctions.show', 'sanctions.update', 'sanctions.revoke'],
         Permissions::OPERATIONS => ['processing.index', 'processing.retry', 'sources.health', 'sources.test', 'sources.retry'],
         Permissions::STORIES => ['stories.index', 'stories.show', 'stories.accept', 'stories.reject', 'stories.retry'],
-        Permissions::USERS => ['users.index', 'users.edit', 'users.update', 'users.destroy'],
+        Permissions::USERS => ['users.index', 'users.edit', 'users.update', 'users.destroy', 'users.recover'],
         Permissions::SUPER => ['authorization.audit'],
     ];
 

@@ -12,7 +12,7 @@
                         <tr>
                             <th scope="row"><a href="{{ route('admin.stories.show', $story['id']) }}">{{ $story['title'] }}</a></th>
                             <td>{{ $story['version'] }}</td><td>{{ $story['articles'] }}</td>
-                            <td>{{ $story['state'] }}</td><td>{{ $story['published'] }}</td>
+                            <td>{{ $story['state_label'] }}</td><td>{{ $story['published'] }}</td>
                         </tr>
                     @empty
                         <tr><td colspan="5">Chưa có Story.</td></tr>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Accounts\AccountLifecycle;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\ReadingPassService;
@@ -25,7 +26,7 @@ class GoogleAuthController extends Controller
             ->redirect();
     }
 
-    public function callback(ReadingPassService $readingPass): RedirectResponse
+    public function callback(ReadingPassService $readingPass, AccountLifecycle $lifecycle): RedirectResponse
     {
         $guestSessionId = request()->session()->getId();
 
@@ -37,65 +38,78 @@ class GoogleAuthController extends Controller
             return redirect()->route('login')->with('error', 'Không thể đăng nhập với Google. Vui lòng thử lại.');
         }
 
-        if (! $googleUser->getEmail()) {
+        $email = $googleUser->getEmail();
+        $googleId = (string) $googleUser->getId();
+        if (! $email || $googleId === '') {
             return redirect()->route('login')->with('error', 'Tài khoản Google này không cung cấp email hợp lệ.');
         }
 
-        $wasRecentlyCreated = false;
+        $verified = ($googleUser->getRaw()['email_verified'] ?? false) === true;
+        $user = User::where('google_id', $googleId)->first()
+            ?? ($verified ? User::where('email', $email)->first() : null);
 
-        // Gate 3: no SQL transaction/lock on Mongo. The unique indexes on
-        // users.email + users.google_id are the race guard; on duplicate key
-        // whoever won the race owns the identity — re-read and continue.
-        $findByIdentity = fn () => User::query()
-            ->where('google_id', $googleUser->getId())
-            ->orWhere('email', $googleUser->getEmail());
+        if ($user && $user->google_id !== $googleId && ($user->google_id !== null
+            || ($user->getAttribute('password_reset_requires_verified_email') === true && ! $user->hasVerifiedEmail()))) {
+            return $this->emailSignInRefused();
+        }
 
-        $user = $findByIdentity()->first();
+        if ($user?->isPendingDeletion()) {
+            // A pending account is not touched (no linking, no verification, no guest transfer): sign in only opens recovery.
+            Auth::login($user, remember: false);
+            request()->session()->regenerate();
+            request()->session()->put(AccountLifecycle::SESSION_KEY, $lifecycle->recoveryStamp($user));
 
-        if (! $user) {
-            $wasRecentlyCreated = true;
+            return redirect()->route('account.recover');
+        }
 
-            try {
+        $wasRecentlyCreated = $user === null;
+        if ($wasRecentlyCreated && ! $verified) {
+            return redirect()->route('login')->with('error', 'Vui lòng xác minh email của tài khoản Google trước khi đăng nhập.');
+        }
+
+        try {
+            if ($wasRecentlyCreated) {
                 $user = User::create([
-                    'name' => $googleUser->getName() ?: Str::before($googleUser->getEmail(), '@'),
-                    'email' => $googleUser->getEmail(),
+                    'name' => $googleUser->getName() ?: Str::before($email, '@'),
+                    'email' => $email,
                     'password' => Str::random(40),
                     'role' => 'user',
                     'avatar' => $googleUser->getAvatar(),
-                    'google_id' => $googleUser->getId(),
+                    'google_id' => $googleId,
                     'email_verified_at' => now(),
                 ]);
-            } catch (MongoBulkWriteException $e) {
-                if ($e->getCode() !== 11000) {
-                    throw $e;
+            } else {
+                $updates = [];
+                if ($googleUser->getAvatar()) {
+                    $updates['avatar'] = $googleUser->getAvatar();
+                }
+                if (empty($user->name) && $googleUser->getName()) {
+                    $updates['name'] = $googleUser->getName();
                 }
 
-                $user = $findByIdentity()->firstOrFail();
-            }
-        } else {
-            $updates = [];
+                if ($user->google_id === null) {
+                    // An email change bumps the epoch. A concurrent change or link must win over this lookup.
+                    if (User::whereKey($user->id)->where('email', $email)->whereNull('google_id')->whereNull('deletion')
+                        ->where('api_token_epoch', $user->getRawOriginal('api_token_epoch'))
+                        ->update($updates + ['google_id' => $googleId]) !== 1) {
+                        return $this->emailSignInRefused();
+                    }
+                } elseif ($updates !== []) {
+                    $user->forceFill($updates)->save();
+                }
 
-            if (! $user->google_id) {
-                $updates['google_id'] = $googleUser->getId();
-            }
+                if ($verified && $user->email === $email && ! $user->hasVerifiedEmail()) {
+                    $user->markEmailAsVerified();
+                }
 
-            if (! $user->email_verified_at) {
-                $updates['email_verified_at'] = now();
+                $user = $user->fresh();
             }
-
-            if ($googleUser->getAvatar()) {
-                $updates['avatar'] = $googleUser->getAvatar();
-            }
-
-            if (empty($user->name) && $googleUser->getName()) {
-                $updates['name'] = $googleUser->getName();
-            }
-
-            if ($updates !== []) {
-                $user->forceFill($updates)->save();
+        } catch (MongoBulkWriteException $e) {
+            if ($e->getCode() !== 11000) {
+                throw $e;
             }
 
-            $user = $user->fresh();
+            return $this->emailSignInRefused();
         }
 
         Auth::login($user, remember: true);
@@ -107,5 +121,12 @@ class GoogleAuthController extends Controller
         }
 
         return redirect()->intended(route('dashboard', absolute: false));
+    }
+
+    private function emailSignInRefused(): RedirectResponse
+    {
+        return redirect()->route('login')->withErrors([
+            'email' => 'Không thể đăng nhập bằng địa chỉ Google này. Hãy đăng nhập bằng mật khẩu và xác minh email của bạn.',
+        ]);
     }
 }

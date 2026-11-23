@@ -16,18 +16,27 @@
                         <th scope="col">Thời điểm (UTC)</th>
                         <th scope="col">Người thực hiện</th>
                         <th scope="col">Tài khoản</th>
-                        <th scope="col">Trước</th>
-                        <th scope="col">Sau</th>
+                        <th scope="col">Thay đổi trước → sau</th>
                         <th scope="col">Lý do</th>
                     </tr></thead>
                     <tbody>
                         @foreach($events as $event)
                             <tr>
                                 <td>{{ $event['occurred_at'] }}</td>
-                                <td>{{ $event['actor_id'] }}</td>
-                                <td>{{ $event['target_id'] }}</td>
-                                <td><code>{{ $event['before_state'] }}</code></td>
-                                <td><code>{{ $event['after_state'] }}</code></td>
+                                @foreach([$event['actor_id'], $event['target_id']] as $id)
+                                    <td title="{{ $id }}">{{ $people[$id] }}</td>
+                                @endforeach
+                                <td>
+                                    @if($event['changes'])
+                                        <ul class="list-unstyled mb-0">
+                                            @foreach($event['changes'] as $change)
+                                                <li>{{ $change }}</li>
+                                            @endforeach
+                                        </ul>
+                                    @else
+                                        Không thay đổi
+                                    @endif
+                                </td>
                                 <td>{{ $event['reason'] }}</td>
                             </tr>
                         @endforeach

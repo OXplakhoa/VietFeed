@@ -1,6 +1,6 @@
 @props(['comment', 'article', 'viewerCanReport' => false])
 @php
-    $isOwn = auth()->id() === $comment->user_id;
+    $isOwn = $comment->user_id !== null && auth()->id() === $comment->user_id;
     $canReport = ! $isOwn && ! $comment->is_hidden && $viewerCanReport;
 @endphp
 

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Authorization\AuthorizationAudit;
 use App\Authorization\AuthorizationConflict;
 use App\Authorization\Permissions;
 use App\Authorization\SuperAdminGuard;
@@ -16,7 +17,7 @@ final class RbacBootstrap extends Command
 
     protected $description = 'Initialize Super Admin membership and preserve access for legacy admins during cutover';
 
-    public function handle(SuperAdminGuard $guard, UserAuthorization $authorization): int
+    public function handle(SuperAdminGuard $guard, UserAuthorization $authorization, AuthorizationAudit $audit): int
     {
         $email = $this->option('super-admin');
         $candidate = $this->option('clear-candidate');
@@ -26,11 +27,14 @@ final class RbacBootstrap extends Command
 
                 return self::INVALID;
             }
-            if (! $guard->clearBootstrapCandidate($candidate)) {
-                $this->error('The candidate changed, bootstrap is complete, or a guard repair is running.');
+            $event = $audit->event('rbac:bootstrap', SuperAdminGuard::ID,
+                ['bootstrap_candidate_id' => $candidate], ['bootstrap_candidate_id' => null], 'bootstrap_candidate_cleared');
+            if (! $guard->clearBootstrapCandidate($candidate, $event)) {
+                $this->error('Clearing requires the recorded candidate to be older than 60 minutes, an incomplete bootstrap, and no guard repair.');
 
                 return self::FAILURE;
             }
+            $audit->deliverGuard($event);
             $this->info('Cleared the bootstrap candidate marker.');
 
             return self::SUCCESS;
@@ -65,7 +69,7 @@ final class RbacBootstrap extends Command
             $recordedCandidate = $guard->bootstrapCandidateId();
             if ($recordedCandidate !== null && $recordedCandidate !== (string) $initial->id) {
                 $this->line('Recorded candidate ID: '.$recordedCandidate);
-                $this->line('After confirming its bootstrap process has stopped, use --clear-candidate with that ID.');
+                $this->line('Once the attempt is over 60 minutes old and its process has stopped, use --clear-candidate with that ID.');
             }
 
             return self::FAILURE;

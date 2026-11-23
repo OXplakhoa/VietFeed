@@ -28,8 +28,12 @@ use Illuminate\Routing\Route as AdminRoute;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\User as SocialiteUser;
 use MongoDB\BSON\UTCDateTime;
 use MongoDB\Driver\Exception\BulkWriteException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -153,23 +157,20 @@ class AuthorizationTest extends TestCase
         $this->deleteJson(route('profile.destroy'), ['password' => 'password'])->assertConflict();
         $this->assertAuthenticatedAs($second);
         $this->assertTrue($second->refresh()->isSuperAdmin());
+        // Gate 9.7b: deletion no longer touches the Super Admin guard. Staff must be demoted first, so only the demotion is audited here.
         $events = app(AuthorizationAudit::class)->forUser($second->id);
-        $this->assertCount(3, $events);
+        $this->assertCount(1, $events);
         $this->assertSame(['super_admin_removal_refused'], array_unique(array_column($events, 'reason')));
-        $message = 'Phải giữ ít nhất một Super Admin. Vui lòng thử lại nếu tài khoản vừa thay đổi.';
+        $message = 'Không thể hạ quyền của Super Admin cuối cùng.';
+        $deletion = 'Hãy gỡ quyền quản trị trước khi xóa tài khoản.';
         $edit = route('admin.users.edit', $second);
         $this->from($edit)->patch(route('admin.users.update', $second), $this->profile($second, ['role' => 'user']))
             ->assertRedirect($edit)->assertSessionHas('error', $message);
         $this->from($edit)->delete(route('admin.users.destroy', $second))
-            ->assertRedirect($edit)->assertSessionHas('error', $message);
+            ->assertRedirect($edit)->assertSessionHas('error', $deletion);
         $this->from(route('profile.edit'))->delete(route('profile.destroy'), ['password' => 'password'])
-            ->assertRedirect(route('profile.edit'))->assertSessionHas('error', $message)->assertSessionMissing('_old_input.password');
-
-        $this->actingAs($second)->patch(route('admin.users.update', $first), $this->profile($first, ['role' => 'super_admin']))->assertRedirect();
-        $this->delete(route('admin.users.destroy', $second))->assertRedirect(route('home'));
-        $this->assertGuest();
-        $this->assertNull($second->fresh());
-        $this->assertContains('account_deleted', array_column(app(AuthorizationAudit::class)->forUser($second->id), 'reason'));
+            ->assertRedirect(route('profile.edit'))->assertSessionHas('error', $deletion)->assertSessionMissing('_old_input.password');
+        $this->assertNull($second->fresh()->getAttribute('deletion'));
     }
 
     public function test_two_removals_interleaved_between_the_guard_and_user_write_keep_one_super_admin(): void
@@ -314,8 +315,20 @@ class AuthorizationTest extends TestCase
         } finally {
             app(AuthorizationAudit::class)->schema();
         }
+        $audit = app(AuthorizationAudit::class);
+        $emptyTarget = $audit->event('fixture', ' ', [], [], 'empty target');
+        $future = $audit->event('fixture', $target, [], [], 'future timestamp');
+        $future['at'] = now()->utc()->addYears(21)->format('Y-m-d\TH:i:s.v\Z');
+        $audit->enqueue($emptyTarget);
+        $audit->enqueue($future);
         $this->artisan('rbac:audit', ['action' => 'retry'])->expectsOutput('Delivered: 1.')->assertSuccessful();
-        $this->artisan('rbac:audit', ['action' => 'retry'])->expectsOutput('Delivered: 0.')->assertSuccessful();
+        for ($attempt = 1; $attempt < AuthorizationAudit::MAX_ATTEMPTS; $attempt++) {
+            $this->assertSame(0, $audit->retry());
+        }
+        $this->assertEqualsCanonicalizing([$emptyTarget['event_id'], $future['event_id']], array_column($audit->deadLetters(null), '_id'));
+        $this->assertSame(1, DB::connection('mongodb')->getCollection('users')->countDocuments([
+            '_id' => $target->getRawOriginal('id') ?? $target->getRawOriginal('_id'), 'permissions' => ['$type' => 'array'],
+        ]));
         $events = app(AuthorizationAudit::class)->forUser($target->id);
         $this->assertCount(1, $events);
         $event = $events[0];
@@ -323,7 +336,11 @@ class AuthorizationTest extends TestCase
         $this->assertSame($super->id, $event['actor_id']);
         $this->assertSame(['role' => 'user', 'permissions' => []], json_decode($event['before_state'], true));
         $this->assertSame(['role' => 'admin', 'permissions' => [Permissions::STORIES]], json_decode($event['after_state'], true));
-        $this->get(route('admin.authorization.audit'))->assertOk()->assertSee($target->id);
+        $this->get(route('admin.authorization.audit'))->assertOk()->assertSee($super->name)->assertSee($target->name)
+            ->assertSee('Vai trò: Người dùng → Quản trị viên')->assertSee('Quyền: — → stories.review')
+            ->assertSee('table-responsive')->assertDontSee($event['after_state']);
+        $target->delete();
+        $this->get(route('admin.authorization.audit'))->assertOk()->assertSee('Người dùng đã xóa')->assertSee($target->id);
     }
 
     public function test_refusal_is_queued_when_cassandra_is_unavailable_and_route_gate_still_returns_403(): void
@@ -427,9 +444,18 @@ class AuthorizationTest extends TestCase
         $this->artisan('rbac:bootstrap', ['--super-admin' => $replacement->email])
             ->expectsOutput('Recorded candidate ID: '.$abandoned->id)->assertFailed();
         $this->artisan('rbac:bootstrap', ['--clear-candidate' => $replacement->id])->assertFailed();
+        $this->artisan('rbac:bootstrap', ['--clear-candidate' => $abandoned->id])->assertFailed();
         $this->assertSame($abandoned->id, $guard->bootstrapCandidateId());
+        $audit = app(AuthorizationAudit::class);
+        $candidateEvents = fn () => collect($audit->forUser(SuperAdminGuard::ID))
+            ->filter(fn ($event) => (json_decode($event['before_state'], true)['bootstrap_candidate_id'] ?? null) === $abandoned->id);
+        $this->assertCount(0, $candidateEvents());
 
+        $this->travel(61)->minutes();
         $this->artisan('rbac:bootstrap', ['--clear-candidate' => $abandoned->id])->assertSuccessful();
+        $event = $candidateEvents()->sole();
+        $this->assertSame('bootstrap_candidate_cleared', $event['reason']);
+        $this->assertSame(['bootstrap_candidate_id' => null], json_decode($event['after_state'], true));
         $this->assertFalse($guard->finishBootstrap($abandoned->id));
         $this->assertSame([$abandoned->id], $guard->memberIds());
         $this->artisan('rbac:bootstrap', ['--super-admin' => $replacement->email])->assertSuccessful();
@@ -542,6 +568,8 @@ class AuthorizationTest extends TestCase
     {
         $admin = $this->admin([Permissions::USERS]);
         $target = User::factory()->create();
+        $oldEmail = $target->email;
+        $transport = Mail::mailer('array')->getSymfonyTransport();
         $tokens = $this->partialMock(ApiTokenService::class);
         $tokens->shouldReceive('cleanupForUser')->twice()->with((string) $target->id);
         $pair = $tokens->issue($target);
@@ -550,17 +578,63 @@ class AuthorizationTest extends TestCase
             ->assertRedirect();
         $this->assertTrue($target->refresh()->hasVerifiedEmail());
         $this->assertSame($epoch, $target->api_token_epoch);
+        $this->assertCount(0, $transport->messages());
+        $this->patchJson(route('admin.users.update', $target), $this->profile($target, ['email' => 'Staff-Edit@example.test']))
+            ->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->assertNotNull($target->refresh()->getRawOriginal('remember_token'));
         $this->patch(route('admin.users.update', $target), $this->profile($target, ['email' => 'staff-edit@example.test']))
             ->assertRedirect();
         $this->assertNull($target->refresh()->email_verified_at);
+        $this->assertNull($target->getRawOriginal('remember_token'));
         $this->assertRevoked($pair);
+        $this->assertCount(1, $transport->messages());
+        $notice = $transport->messages()->sole()->getOriginalMessage();
+        $this->assertSame($oldEmail, $notice->getTo()[0]->getAddress());
+        $this->assertSame('Email tài khoản VietFeed đã thay đổi', $notice->getSubject());
+
+        Auth::logout();
+        $unchanged = $target->getRawOriginal();
+        Socialite::shouldReceive('driver->user')->once()->andReturn(
+            (new SocialiteUser)->setRaw(['email_verified' => true])->map([
+                'id' => 'google-changed-email', 'email' => $target->email, 'name' => 'Google User',
+            ]),
+        );
+        $response = $this->get('/auth/google/callback')->assertRedirect(route('login'))->assertSessionHasErrors('email');
+        $session = $response->getCookie(config('session.cookie'));
+        $this->withCookie($session->getName(), $session->getValue())->get(route('login'))
+            ->assertOk()->assertSee('Hãy đăng nhập bằng mật khẩu và xác minh email của bạn.');
+        $this->assertGuest();
+        $this->assertNull($target->refresh()->google_id);
+        $this->assertNull($target->email_verified_at);
+        $this->post('/forgot-password', ['email' => $target->email])->assertSessionHas('status', __(Password::RESET_LINK_SENT));
+        $this->assertFalse(Password::getRepository()->recentlyCreatedToken($target));
+        $this->assertEquals($unchanged, $target->refresh()->getRawOriginal());
+        $issued = Password::createToken($target);
+        $this->post('/reset-password', [
+            'email' => $target->email, 'token' => $issued, 'password' => 'new-password', 'password_confirmation' => 'new-password',
+        ])->assertSessionHasErrors(['email' => __(Password::INVALID_TOKEN)]);
+        $this->assertEquals($unchanged, $target->refresh()->getRawOriginal());
+        $this->assertCount(1, $transport->messages());
 
         $target->markEmailAsVerified();
+        Password::deleteToken($target);
+        $this->post('/forgot-password', ['email' => $target->email])->assertSessionHas('status', __(Password::RESET_LINK_SENT));
+        $this->assertCount(2, $transport->messages());
+        $this->assertSame($target->email, $transport->messages()->last()->getOriginalMessage()->getTo()[0]->getAddress());
+        $oldEmail = $target->email;
+        $target->forceFill(['remember_token' => Str::random(60)])->save();
         $pair = $tokens->issue($target);
         $this->actingAs($target)->patch(route('profile.update'), $this->profile($target, ['email' => 'self-edit@example.test']))
             ->assertRedirect(route('profile.edit'))->assertSessionHas('status', 'profile-updated');
         $this->assertNull($target->refresh()->email_verified_at);
+        $this->assertNull($target->getRawOriginal('remember_token'));
         $this->assertRevoked($pair);
+        Auth::logout();
+        $this->post('/forgot-password', ['email' => $target->email])->assertSessionHas('status', __(Password::RESET_LINK_SENT));
+        $this->assertCount(3, $transport->messages());
+        $selfNotice = $transport->messages()->last()->getOriginalMessage();
+        $this->assertSame($oldEmail, $selfNotice->getTo()[0]->getAddress());
+        $this->assertSame($notice->getSubject(), $selfNotice->getSubject());
     }
 
     public function test_user_editor_restores_selected_and_all_cleared_grants_after_validation(): void

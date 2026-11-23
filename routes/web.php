@@ -1,6 +1,7 @@
 <?php
 
 use App\Authorization\AdminRoutes;
+use App\Http\Controllers\AccountRecoveryController;
 use App\Http\Controllers\Admin\ArticleController as AdminArticle;
 use App\Http\Controllers\Admin\AuthorizationAuditController;
 use App\Http\Controllers\Admin\CategoryController as AdminCategory;
@@ -64,6 +65,10 @@ Route::middleware('auth')->group(function () {
 
     // Sanction appeals stay reachable for banned users (a verified-only group would block them).
     Route::post('/sanctions/{sanction}/appeal', [SanctionAppealController::class, 'store'])->name('sanctions.appeal');
+
+    // Recovery page for a pending self-deletion (reachable by a recovery session only; see EnforceAccountDeletion).
+    Route::get('/account/recover', [AccountRecoveryController::class, 'show'])->name('account.recover');
+    Route::post('/account/recover', [AccountRecoveryController::class, 'store'])->name('account.recover.store');
 
     Route::get('/profile/reading-pass', [ProfileController::class, 'readingPass'])->name('profile.reading-pass');
 
@@ -133,6 +138,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     AdminRoutes::resource('articles', AdminArticle::class, ['index', 'show', 'edit', 'update', 'destroy']);
     AdminRoutes::resource('comments', AdminComment::class, ['index', 'destroy']);
     AdminRoutes::resource('users', AdminUser::class, ['index', 'edit', 'update', 'destroy']);
+    Route::post('users/{user}/recover', [AdminUser::class, 'recover'])->middleware(AdminRoutes::middleware('users.recover'))->name('users.recover');
 
     // Cases are dismissed and sanctions revoked.
     AdminRoutes::resource('reports', AdminReport::class, ['index', 'show', 'update']);

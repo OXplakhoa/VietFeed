@@ -8,9 +8,12 @@ use App\Billing\BillingGateway;
 use App\Moderation\ModerationQueries;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use MongoDB\Laravel\Auth\User as Authenticatable;
 
 class User extends Authenticatable implements MustVerifyEmail
@@ -84,10 +87,51 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'favorite_category_ids' => 'array',
-            'permissions' => 'array',
             'password' => 'hashed',
             'api_token_epoch' => 'integer',
         ];
+    }
+
+    public function scopeEligibleForPasswordReset(Builder $query): void
+    {
+        $query->whereNull('deletion')->where(fn (Builder $query) => $query
+            ->where('password_reset_requires_verified_email', '!=', true)
+            ->orWhereNotNull('email_verified_at'));
+    }
+
+    public function resetPasswordIfEligible(string $password): bool
+    {
+        $epoch = $this->getRawOriginal('api_token_epoch');
+        $changes = [
+            'password' => Hash::make($password),
+            'remember_token' => Str::random(60),
+            'api_token_epoch' => (int) $epoch + 1,
+        ];
+        $updated = static::whereKey($this->id)->where('email', $this->email)
+            ->where('api_token_epoch', $epoch)->eligibleForPasswordReset()->update($changes);
+        if ($updated !== 1) {
+            return false;
+        }
+
+        $this->forceFill($changes)->syncOriginalAttributes(array_keys($changes));
+        app(ApiTokenService::class)->cleanupForUser((string) $this->id);
+
+        return true;
+    }
+
+    public function markEmailAsVerified(): bool
+    {
+        $verifiedAt = $this->freshTimestamp();
+        // Bind the verification to the address that was checked by the signed link or OAuth.
+        if (static::whereKey($this->id)->where('email', $this->email)->whereNull('email_verified_at')
+            ->update(['email_verified_at' => $verifiedAt]) !== 1) {
+            return false;
+        }
+
+        $this->email_verified_at = $verifiedAt;
+        $this->syncOriginalAttribute('email_verified_at');
+
+        return true;
     }
 
     public function isAdmin(): bool
@@ -104,6 +148,12 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return in_array($permission, Permissions::ALL, true) && ($this->isSuperAdmin()
             || ($this->role === Permissions::ADMIN && in_array($permission, $this->permissions ?? [], true)));
+    }
+
+    /** Gate 9.7b: a deletion request is pending or being purged (the account is closed to normal use). */
+    public function isPendingDeletion(): bool
+    {
+        return $this->getAttribute('deletion') !== null;
     }
 
     public function isUser(): bool

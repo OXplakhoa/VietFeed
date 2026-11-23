@@ -2,6 +2,7 @@
 
 namespace App\Billing;
 
+use App\Accounts\AccountLifecycle;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -256,12 +257,23 @@ class BillingGateway
             $userId = $subscription['metadata']['user_id'] ?? null;
             $user = is_string($userId) ? User::find($userId) : null;
             $user ??= User::where('stripe_customer_id', $customer)->first();
-            if (! $user) {
-                Log::notice('Billing webhook user not found', ['event_id' => $event['id']]);
-                // Drop only the placeholder this attempt upserted (never projected).
-                $subscriptions->deleteOne($fence + ['user_id' => ['$exists' => false]]);
+            // Gate 9.7b: once an account is being purged or gone, billing rows stay reconcilable under a pseudonym.
+            // A live user model read before the purge finished must never write the real id back.
+            $gone = null;
+            if ($user && (($user->getAttribute('deletion')['state'] ?? null) === AccountLifecycle::PURGING
+                || $subscriptions->findOne($fence + ['account_purged' => true]) !== null)) {
+                $gone = AccountLifecycle::pseudonym((string) $user->id);
+                $user = null;
+            }
+            if (! $user && $gone === null) {
+                $gone = $this->goneAccount($subscriptions, $fence, is_string($userId) ? $userId : null);
+                if ($gone === null) {
+                    Log::notice('Billing webhook user not found', ['event_id' => $event['id']]);
+                    // Drop only the placeholder this attempt upserted (never projected).
+                    $subscriptions->deleteOne($fence + ['user_id' => ['$exists' => false]]);
 
-                return 'unknown_user';
+                    return 'unknown_user';
+                }
             }
             $receipt = $this->collection('processed_stripe_events')->findOne([
                 '_id' => $event['id'], 'claim' => $receiptToken, 'processed_at' => null,
@@ -271,9 +283,9 @@ class BillingGateway
                 throw new BillingUnavailable('Receipt lease lost');
             }
             $periodEnd = $subscription['current_period_end'] ?? $subscription['items']['data'][0]['current_period_end'] ?? null;
-            $result = $subscriptions->updateOne($fence + ['applied_event_ids' => ['$ne' => $event['id']]], [
+            $result = $subscriptions->updateOne($fence + ['applied_event_ids' => ['$ne' => $event['id']]] + ($user ? ['account_purged' => ['$ne' => true]] : []), [
                 '$set' => [
-                    'user_id' => (string) $user->id, 'type' => $subscription['metadata']['type'] ?? 'pro',
+                    'user_id' => $user ? (string) $user->id : $gone, 'type' => $subscription['metadata']['type'] ?? 'pro',
                     'stripe_customer_id' => $customer, 'status' => $subscription['status'],
                     'price_id' => $subscription['items']['data'][0]['price']['id'] ?? null,
                     'current_period_end' => $periodEnd,
@@ -281,7 +293,7 @@ class BillingGateway
                     'canceled_at' => $subscription['canceled_at'] ?? null, 'cancel_at' => $subscription['cancel_at'] ?? null,
                     'ends_at' => $subscription['ended_at'] ?? $subscription['cancel_at'] ?? (! empty($subscription['cancel_at_period_end']) ? $periodEnd : null),
                     'event_id' => $event['id'], 'updated_at' => new UTCDateTime,
-                ],
+                ] + ($user ? [] : ['account_purged' => true]),
                 '$push' => ['applied_event_ids' => ['$each' => [$event['id']], '$slice' => -self::APPLIED_EVENTS_KEPT]],
                 '$inc' => ['projection_version' => 1],
                 '$unset' => ['ordering_marker' => '', 'event_created' => '', 'deleted' => ''],
@@ -289,11 +301,41 @@ class BillingGateway
             if ($result->getModifiedCount() !== 1 && $subscriptions->findOne($fence + ['applied_event_ids' => $event['id']]) === null) {
                 throw new BillingUnavailable('Subscription lease lost');
             }
-            User::where('_id', $user->id)->whereNull('stripe_customer_id')->update(['stripe_customer_id' => $customer]);
+            if ($user) {
+                User::where('_id', $user->id)->whereNull('stripe_customer_id')->update(['stripe_customer_id' => $customer]);
+                $this->cancelForPendingAccount($user, $subscription);
+            }
 
             return 'projected';
         } finally {
             $subscriptions->updateOne(['_id' => $id, 'lock_token' => $token], ['$unset' => ['lock_token' => '', 'lock_until' => '']]);
+        }
+    }
+
+    /** Pseudonym to project under when the owner is being purged or purged, else null (a genuinely unknown user). */
+    private function goneAccount(Collection $subscriptions, array $fence, ?string $metadataUserId): ?string
+    {
+        $existing = $subscriptions->findOne($fence + ['account_purged' => true]);
+        if ($existing !== null && is_string($existing['user_id'] ?? null)) {
+            return $existing['user_id'];
+        }
+        if ($metadataUserId !== null && app(AccountLifecycle::class)->isPurging($metadataUserId)) {
+            return AccountLifecycle::pseudonym($metadataUserId);
+        }
+
+        return null;
+    }
+
+    /** A subscription that became billable for an account awaiting deletion (e.g. a Checkout finished late) is canceled again. */
+    private function cancelForPendingAccount(User $user, array $subscription): void
+    {
+        if ($user->isPendingDeletion() && in_array($subscription['status'], AccountLifecycle::BILLABLE, true)) {
+            try {
+                $this->stripe->cancelSubscription($subscription['id'], 'vietfeed-delete-cancel-'.$subscription['id']);
+            } catch (Throwable $e) {
+                // The purge worker repeats the cancellation (final step), so the webhook must still succeed.
+                Log::warning('Billing cancel for pending deletion deferred', ['exception' => $e::class]);
+            }
         }
     }
 }
