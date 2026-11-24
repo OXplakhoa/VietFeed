@@ -219,7 +219,7 @@ class StoryBriefTest extends TestCase
             $this->post($uri.'/'.$action)->assertForbidden();
         }
         $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::STORIES]]));
-        $this->get('/admin/stories')->assertOk()->assertSee($story->title)->assertSee('queued');
+        $this->get('/admin/stories')->assertOk()->assertSee($story->title)->assertSee('Đang chờ xử lý');
         $this->get($uri)->assertOk()->assertSee('Tạo lại');
         $this->app->bind(PreventRequestForgery::class, fn ($app) => new class($app, $app['encrypter']) extends PreventRequestForgery
         {
@@ -384,10 +384,10 @@ class StoryBriefTest extends TestCase
         $this->assertNotNull(app(BriefStore::class)->claim($story->id, 1));
         $this->actingAs(User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::STORIES]]));
         $base = '/admin/stories/'.$story->id;
-        $this->get($base)->assertOk()->assertSee('Trạng thái generating');
+        $this->get($base)->assertOk()->assertSee('Trạng thái: Đang tạo');
         DB::connection('mongodb')->getCollection('stories')->updateOne(['_id' => $story->id], ['$set' => ['brief.lease_until' => new UTCDateTime(0)]]);
-        $this->get($base)->assertOk()->assertSee('Trạng thái failed')->assertSee('Quá hạn xử lý. Có thể tạo lại.')->assertSee('Tạo lại');
-        $this->get('/admin/stories')->assertOk()->assertSee('>failed<', false);
+        $this->get($base)->assertOk()->assertSee('Trạng thái: Thất bại')->assertSee('Quá hạn xử lý. Có thể tạo lại.')->assertSee('Tạo lại');
+        $this->get('/admin/stories')->assertOk()->assertSee('>Thất bại<', false);
         $this->post($base.'/retry')->assertSessionHas('success');
         $this->assertSame('queued', $story->fresh()->brief['state']);
     }

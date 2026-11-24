@@ -150,15 +150,35 @@
                 </div>
 
                 @can(\App\Authorization\Permissions::MANAGE_USER, $user)
+                @php($deletion = app(\App\Accounts\AccountLifecycle::class)->stateOf($user))
                 <div class="mt-3 p-3" style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:12px">
                     <div style="font-size:.85rem;font-weight:500;color:#ef4444;margin-bottom:.5rem">Vùng nguy hiểm</div>
+                    @if($deletion)
+                        <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:.5rem">
+                            @if($deletion['state'] === 'purging')
+                                Tài khoản đang được xóa vĩnh viễn, không thể khôi phục.
+                            @else
+                                Đã lên lịch xóa ({{ $deletion['origin'] === 'admin' ? 'bởi quản trị viên' : 'do người dùng yêu cầu' }}).
+                                Xóa vĩnh viễn sau {{ $deletion['purge_after']->timezone(config('app.timezone'))->format('d/m/Y H:i') }}.
+                            @endif
+                        </div>
+                        @if($deletion['state'] === 'pending' && $deletion['origin'] === 'admin')
+                        <form action="{{ route('admin.users.recover', $user) }}" method="POST">
+                            @csrf
+                            <button type="submit" style="font-size:.8rem;color:var(--text);background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;padding:.3rem .75rem;cursor:pointer">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Khôi phục
+                            </button>
+                        </form>
+                        @endif
+                    @else
                     <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
-                          onsubmit="vfConfirmForm(event, this, 'Người dùng {{ $user->name }} sẽ bị xóa. Hành động này không thể hoàn tác.')">
+                          onsubmit="vfConfirmForm(event, this, 'Tài khoản {{ $user->name }} sẽ bị khóa ngay và xóa vĩnh viễn sau '+{{ \App\Accounts\AccountLifecycle::recoveryDays() }}+' ngày. Chỉ quản trị viên mới khôi phục được trong thời gian này.')">
                         @csrf @method('DELETE')
                         <button type="submit" style="font-size:.8rem;color:#ef4444;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:.3rem .75rem;cursor:pointer">
-                            <i class="bi bi-trash me-1"></i>Xóa người dùng
+                            <i class="bi bi-trash me-1"></i>Lên lịch xóa
                         </button>
                     </form>
+                    @endif
                 </div>
                 @endcan
             </div>

@@ -2,6 +2,7 @@
 
 namespace App\Interaction;
 
+use App\Accounts\AccountLifecycle;
 use App\Processing\StreamConsumer;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -40,6 +41,10 @@ final class InteractionStream extends StreamConsumer
 
         return parent::consume($consumer, $limit, function (array $raw) use ($handler, &$activity): void {
             $event = InteractionEvent::fromArray($raw);
+            // Gate 9.7b: a late event must not recreate Cassandra rows for an account that is being or was purged.
+            if (app(AccountLifecycle::class)->isPurging($event->data['user_id'] ?? null)) {
+                return;
+            }
             if ($handler) {
                 $handler($event);
 

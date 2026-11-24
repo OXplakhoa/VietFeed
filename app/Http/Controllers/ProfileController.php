@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Accounts\AccountLifecycle;
 use App\Authorization\UserAuthorization;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Services\ReadingPassService;
@@ -55,9 +56,9 @@ class ProfileController extends Controller
     }
 
     /**
-     * Delete the user's account.
+     * Schedule the account for deletion (recoverable until the purge date).
      */
-    public function destroy(Request $request, UserAuthorization $authorization): RedirectResponse
+    public function destroy(Request $request, AccountLifecycle $lifecycle): RedirectResponse
     {
         $request->validateWithBag('userDeletion', [
             'password' => ['required', 'current_password'],
@@ -65,12 +66,12 @@ class ProfileController extends Controller
 
         $user = $request->user();
 
-        $authorization->delete($user, $user, selfService: true);
+        $lifecycle->request($user, $user, AccountLifecycle::ORIGIN_SELF);
         Auth::logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return Redirect::to('/');
+        return Redirect::to('/')->with('success', 'Đã lên lịch xóa tài khoản. Bạn có thể khôi phục trong '.AccountLifecycle::recoveryDays().' ngày bằng cách đăng nhập lại.');
     }
 }

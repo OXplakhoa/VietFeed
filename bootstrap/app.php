@@ -4,6 +4,7 @@ use App\ApiTokens\TokenException;
 use App\Exceptions\Handler;
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\CheckUserSanction;
+use App\Http\Middleware\EnforceAccountDeletion;
 use App\Http\Middleware\EnsureEmailIsVerified;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -34,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->validateCsrfTokens(except: ['stripe/webhook']);
 
+        $middleware->appendToGroup('web', EnforceAccountDeletion::class);
         $middleware->appendToGroup('web', CheckUserSanction::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

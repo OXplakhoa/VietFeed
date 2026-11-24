@@ -8,7 +8,7 @@ use Laudis\Neo4j\Contracts\ClientInterface;
 use Laudis\Neo4j\Types\CypherList;
 
 /** Central client construction; do not expose driver errors containing credentials to CLI. */
-final class Neo4jClient
+class Neo4jClient
 {
     private ?ClientInterface $client = null;
 

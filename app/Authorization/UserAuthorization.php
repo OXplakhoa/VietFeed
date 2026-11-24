@@ -6,10 +6,12 @@ use App\ApiTokens\ApiTokenService;
 use App\Models\Sanction;
 use App\Models\User;
 use App\Moderation\ModerationException;
+use App\Notifications\AccountEmailChanged;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use MongoDB\BSON\UTCDateTime;
 use MongoDB\Collection;
@@ -69,52 +71,6 @@ final class UserAuthorization
             ...($target->permissions ?? []),
         ];
         $this->write($target, 'db:seed:ModerationDemoSeeder', [], Permissions::ADMIN, $permissions, 'demo_seed');
-    }
-
-    public function delete(User $actor, User $target, bool $selfService = false): void
-    {
-        if ($selfService) {
-            abort_unless($actor->is($target), 403);
-        } else {
-            $this->authorizeManagement($actor, $target);
-        }
-
-        $filter = $this->snapshot($target);
-        $event = $target->isAdmin() ? $this->audit->event((string) $actor->id, $target, $this->state($target->role, $target->permissions), null, 'account_deleted') : null;
-        if ($target->isSuperAdmin()) {
-            $this->reserveRemoval($target, (string) $actor->id);
-        }
-
-        try {
-            // Keep undelivered authorization history after the user document is removed.
-            if ($event !== null) {
-                $this->tokens->revokeAllForUser((string) $target->id, fn () => $this->update($filter, [
-                    '$set' => [
-                        'role' => Permissions::USER,
-                        'permissions' => [],
-                        'authorization_version' => $event['event_id'],
-                        'authorization_deleting' => true,
-                        'authorization_deleting_at' => new UTCDateTime(now()),
-                    ],
-                    '$inc' => ['api_token_epoch' => 1],
-                    '$push' => [AuthorizationAudit::USER_OUTBOX => $event],
-                ]));
-                $filter['role'] = Permissions::USER;
-                $filter['authorization_version'] = $event['event_id'];
-            }
-            $this->audit->transferPending($target);
-            if ($this->users()->deleteOne($filter)->getDeletedCount() !== 1) {
-                throw new AuthorizationConflict;
-            }
-        } catch (Throwable $e) {
-            $this->logGuardFailure($target, $e);
-            throw $e;
-        }
-
-        $this->tokens->cleanupForUser((string) $target->id);
-        if ($event !== null) {
-            $this->audit->deliver($event);
-        }
     }
 
     public function authorizeBan(User $actor, User $target, string $type): void
@@ -179,12 +135,15 @@ final class UserAuthorization
         }
         if ($emailChanged) {
             $set['email_verified_at'] = null;
+            $set['password_reset_requires_verified_email'] = true;
+            $set['remember_token'] = null;
         }
         $roleReduced = array_search($role, Permissions::ROLES, true) < array_search($target->role, Permissions::ROLES, true);
         $revoke = $emailChanged || $roleReduced || array_diff($this->effective($before), $this->effective($after)) !== [];
         if ($before === $after) {
             if ($emailChanged) {
                 $this->tokens->revokeAllForUser((string) $target->id, fn () => $this->update($filter, ['$set' => $set, '$inc' => ['api_token_epoch' => 1]]));
+                $this->notifyOldEmail($target);
             } elseif ($profile !== []) {
                 $this->update($filter, ['$set' => $set]);
             }
@@ -194,7 +153,7 @@ final class UserAuthorization
 
         $promoting = ! $target->isSuperAdmin() && $role === Permissions::SUPER_ADMIN;
         $removing = $target->isSuperAdmin() && $role !== Permissions::SUPER_ADMIN;
-        if ($target->getAttribute('authorization_deleting')) {
+        if ($target->getAttribute('authorization_deleting') || $target->isPendingDeletion()) {
             throw new AuthorizationConflict('Tài khoản đang được xóa.');
         }
         if (($promoting && ! $this->canBecomeSuperAdmin($target))
@@ -207,17 +166,21 @@ final class UserAuthorization
             $this->reserveRemoval($target, $actor);
         }
 
+        // A deletion request that landed after this snapshot was read must win: never promote a pending account.
+        $filter['deletion'] = ['$exists' => false];
         $event = $this->audit->event($actor, $target, $before, $after, $reason);
         $change = [
             '$set' => $set + $after + ['authorization_version' => $event['event_id']],
             '$push' => [AuthorizationAudit::USER_OUTBOX => $event],
         ];
+        $committed = false;
         try {
             if ($revoke) {
                 $this->tokens->revokeAllForUser((string) $target->id, fn () => $this->update($filter, $change + ['$inc' => ['api_token_epoch' => 1]]));
             } else {
                 $this->update($filter, $change);
             }
+            $committed = true;
             if ($promoting) {
                 // A super admin without a guard entry cannot be removed. Register only after promotion has committed.
                 $this->guard->add((string) $target->id, $generation);
@@ -227,6 +190,10 @@ final class UserAuthorization
                 $this->logGuardFailure($target, $e, $promoting);
             }
             throw $e;
+        } finally {
+            if ($committed && $emailChanged) {
+                $this->notifyOldEmail($target);
+            }
         }
 
         $this->audit->deliver($event, $target);
@@ -234,11 +201,22 @@ final class UserAuthorization
         return true;
     }
 
+    private function notifyOldEmail(User $target): void
+    {
+        try {
+            Notification::route('mail', $target->email)->notify(new AccountEmailChanged);
+        } catch (Throwable $e) {
+            Log::warning('Account email-change notice could not be sent', ['user_id' => (string) $target->id, 'exception_type' => $e::class]);
+        }
+    }
+
     private function reserveRemoval(User $target, string $actor): void
     {
         if (! $this->guard->reserveRemoval((string) $target->id)) {
             $this->recordRefusal($actor, $target, 'super_admin_removal_refused');
-            throw new AuthorizationConflict('Phải giữ ít nhất một Super Admin. Vui lòng thử lại nếu tài khoản vừa thay đổi.');
+            throw $this->guard->isLastMember((string) $target->id)
+                ? new AuthorizationConflict('Không thể hạ quyền của Super Admin cuối cùng.')
+                : new AuthorizationConflict;
         }
     }
 

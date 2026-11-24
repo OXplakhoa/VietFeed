@@ -165,7 +165,7 @@ class ApiTokensTest extends TestCase
         $pairs = [$this->login($user), $this->login($user)];
         $pairs[] = $this->refreshToken($pairs[0]['refresh_token'])->assertOk()->json();
         $this->actingAs($user)->delete('/profile', ['password' => 'password'])->assertSessionHasNoErrors()->assertRedirect('/');
-        $this->assertNull(User::find($user->id));
+        $this->assertSame('pending', User::find($user->id)->deletion['state']);
         foreach ($pairs as $pair) {
             $this->me($pair['access_token'])->assertUnauthorized()->assertJsonPath('error.code', 'token_family_revoked');
             $this->refreshToken($pair['refresh_token'])->assertUnauthorized();
@@ -179,7 +179,7 @@ class ApiTokensTest extends TestCase
         $pairs[] = $this->refreshToken($pairs[0]['refresh_token'])->assertOk()->json();
         $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::USERS]]);
         $this->actingAs($admin)->delete('/admin/users/'.$user->id)->assertRedirect();
-        $this->assertNull(User::find($user->id));
+        $this->assertSame('pending', User::find($user->id)->deletion['state']);
         foreach ($pairs as $pair) {
             $this->me($pair['access_token'])->assertUnauthorized()->assertJsonPath('error.code', 'token_family_revoked');
             $this->refreshToken($pair['refresh_token'])->assertUnauthorized();
@@ -955,7 +955,7 @@ class ApiTokensTest extends TestCase
                     $this->assertSame(1, $user->fresh()->api_token_epoch);
                 } elseif ($action === 'delete') {
                     $this->actingAs($user)->delete('/profile', ['password' => 'password'])->assertSessionHasNoErrors()->assertRedirect('/');
-                    $this->assertNull(User::find($user->id));
+                    $this->assertSame('pending', User::find($user->id)->deletion['state']);
                 } else {
                     $this->actingAs($admin)->post('/admin/sanctions', ['user_id' => $user->id, 'type' => 'permanent_ban', 'reason' => 'Fixture'])
                         ->assertSessionHasNoErrors()->assertRedirect(route('admin.sanctions.index'));
@@ -968,7 +968,8 @@ class ApiTokensTest extends TestCase
             }
             $this->assertTrue($logs->hasWarningRecords());
             $this->assertStringNotContainsString('sensitive-driver-diagnostic', json_encode($logs->getRecords()));
-            $expected = $action === 'delete' ? 'account_unavailable' : 'token_family_revoked';
+            // Gate 9.7b: the user document survives the deletion request, so the epoch bump (not a missing user) revokes.
+            $expected = 'token_family_revoked';
             foreach ([$pair, $next] as $generation) {
                 $this->me($generation['access_token'])->assertUnauthorized()->assertJsonPath('error.code', $expected);
                 // The original rotated refresh token is already consumed; test the live one.

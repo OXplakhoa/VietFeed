@@ -16,7 +16,7 @@
 
         <section class="mb-4" aria-labelledby="candidate-title">
             <h2 id="candidate-title" class="h4">Bản nháp AI</h2>
-            <p>Trạng thái {{ $state }}.
+            <p>Trạng thái: {{ $stateLabel }}.
                 @if($points || $state === 'ready') Đã qua kiểm tra cấu trúc và ID nguồn.
                 @elseif($expired) Quá hạn xử lý. Có thể tạo lại.
                 @elseif($state === 'failed') Tạo tóm tắt thất bại ({{ $brief['error_category'] ?? 'worker_failed' }}{{ isset($brief['validation_reason']) ? ' · '.$brief['validation_reason'] : '' }}).

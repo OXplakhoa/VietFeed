@@ -73,4 +73,12 @@ class FakeStripeClient implements StripeClient
 
         return $snapshot;
     }
+
+    public function cancelSubscription(string $id, string $idempotencyKey): void
+    {
+        $this->calls[] = ['cancel', $id, $idempotencyKey];
+        if ($this->down) {
+            throw new \RuntimeException('sensitive synthetic diagnostic');
+        }
+    }
 }

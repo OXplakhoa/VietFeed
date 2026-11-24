@@ -73,6 +73,14 @@ LUA;
         });
     }
 
+    /** Remove one boost's contribution (account purge). Idempotent: an unknown or already removed boost is a no-op. */
+    public function retract(string $boostId, string $articleId): void
+    {
+        $this->withLiveLock(fn (string $owner) => RedisResult::run("Trending retract $boostId",
+            fn () => Redis::connection('nosql')->eval(self::APPLY, 2, self::KEY, self::LOCK, '', $boostId, 2, 5, $articleId, '1', $owner, ''),
+            fn ($result) => $result === 0 || $result === 1));
+    }
+
     private function applyTo(string $key, InteractionEvent $event, bool $removed = false, string $owner = '', bool $staging = false): void
     {
         $e = $event->data;

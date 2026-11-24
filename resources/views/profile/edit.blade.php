@@ -126,7 +126,8 @@
         <div class="p-4" style="background:var(--surface);border:1px solid rgba(230,57,70,.25);border-radius:12px">
             <h5 class="serif mb-2" style="color:var(--accent)">Xóa tài khoản</h5>
             <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">
-                Hành động này không thể hoàn tác. Tất cả dữ liệu của bạn sẽ bị xóa vĩnh viễn.
+                Tài khoản sẽ bị khóa ngay và dữ liệu bị xóa vĩnh viễn sau {{ \App\Accounts\AccountLifecycle::recoveryDays() }} ngày. Trong thời gian này bạn có thể đăng nhập lại để khôi phục tài khoản. Gói Pro (nếu có) sẽ bị hủy ngay và không được kích hoạt lại khi khôi phục.
+                Quản trị viên cần gỡ quyền quản trị trước khi xóa.
             </p>
             <button type="button" class="btn btn-sm"
                     style="background:rgba(230,57,70,.1);color:var(--accent);border:1px solid rgba(230,57,70,.3);border-radius:8px"
@@ -148,7 +149,7 @@
                     @csrf @method('DELETE')
                     <div class="modal-body">
                         <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1rem">
-                            Vui lòng nhập mật khẩu để xác nhận.
+                            Tài khoản sẽ bị khóa ngay và có thể khôi phục trong {{ \App\Accounts\AccountLifecycle::recoveryDays() }} ngày. Vui lòng nhập mật khẩu để xác nhận.
                         </p>
                         <input type="password" name="password" class="vf-form-control"
                                placeholder="Mật khẩu hiện tại" required>

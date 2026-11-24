@@ -2,6 +2,7 @@
 
 namespace App\ReadingPass;
 
+use App\Accounts\AccountLifecycle;
 use App\Processing\StreamConsumer;
 use App\StoryProcessing\CassandraClient;
 use Cassandra\Value\Boolean;
@@ -94,6 +95,10 @@ final class ReadingPassHistory
             && (is_string($event['user_id'] ?? null) xor is_string($event['session_hash'] ?? null));
         if (! $valid) {
             throw new \InvalidArgumentException('Malformed Reading Pass event');
+        }
+        // Gate 9.7b: a late event must not recreate Cassandra rows for an account that is being or was purged.
+        if (is_string($event['user_id'] ?? null) && app(AccountLifecycle::class)->isPurging($event['user_id'])) {
+            return;
         }
         $time = Carbon::parse($event['occurred_at'])->utc();
         $keyspace = $this->client->keyspace();

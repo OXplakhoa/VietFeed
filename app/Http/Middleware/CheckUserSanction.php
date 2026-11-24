@@ -21,7 +21,7 @@ class CheckUserSanction
 
         // Permanent ban: everything redirects to the banned page except it, logout and appeals.
         if ($user->isPermanentlyBanned()) {
-            if (! $request->routeIs('sanctions.banned', 'logout', 'sanctions.appeal')) {
+            if (! $request->routeIs('sanctions.banned', 'logout', 'sanctions.appeal', 'account.recover', 'account.recover.store')) {
                 return redirect()->route('sanctions.banned');
             }
 

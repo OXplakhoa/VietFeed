@@ -1694,9 +1694,14 @@ php artisan rbac:bootstrap --clear-candidate=<recorded-mongo-user-id>
 php artisan rbac:bootstrap --super-admin=<replacement-email>
 ```
 
-The clear requires an incomplete bootstrap and no active guard repair.
-It preserves committed roles and guard membership. Review the previous
-candidate's role if the earlier attempt reached promotion.
+The exact candidate must be older than 60 minutes. The bootstrap must still
+be incomplete, with no active guard repair. Each attempt with that candidate
+refreshes `bootstrap_started_at`. For a pre-upgrade marker without a
+timestamp, the first clear attempt records one and starts the waiting period.
+Clearing preserves committed roles and guard membership and queues a
+`bootstrap_candidate_cleared` event on the `super-admins` audit target in the
+same guard update. Review the previous candidate's role if the earlier attempt
+reached promotion.
 
 Fresh local installs provision the audit schema
 before seeding. `UserSeeder` bootstraps the demo account
@@ -1719,6 +1724,10 @@ Events use UUIDv7 IDs and capture actor ID, target ID, prior and resulting
 authorization state, timestamp, and reason. Bootstrap events use
 `rbac:bootstrap` as the actor. The recent projection expires each UTC bucket
 30 days after the start of that day. The per-user table keeps its history.
+The admin audit page shows current account names, falls back to IDs for
+system actors and unnamed accounts, and labels missing user records
+“Người dùng đã xóa”. The change column shows the old and new values of fields
+that changed. Cassandra retains the original IDs and state snapshots.
 
 Role and permission writes stage their event in
 `users.authorization_audit_pending` atomically. Before a physical delete,
@@ -1731,6 +1740,9 @@ scheduler retries every minute with a five-minute overlap lock. It stages
 embedded events through the indexed MongoDB queue and stops the batch on a
 Cassandra projection failure. Pending events keep their attempt counts.
 Invalid events consume their own attempt budget, and the batch continues.
+Validation rejects blank targets and timestamps outside the supported window
+(before the Unix epoch or more than one day ahead). Older valid events can
+still be replayed into the per-user history after the recent bucket expires.
 The fifth failed validation or encoding attempt moves the event to dead-letter
 state. Retry checks a 35-second monotonic budget before staging and projection
 work. The CLI uses a 45-second alarm when PHP PCNTL is available so a stalled
@@ -1789,3 +1801,152 @@ repair. The command requires maintenance mode for that case because a worker
 paused between reservation and insertion can still write to the sanctions
 collection. Clearing markers and recording their audit event use one
 conditional user update.
+
+## Gate 9.7b — Account lifecycle: deletion, recovery, purge
+
+Deleting an account is a request, not a delete. The account is closed
+immediately, stays recoverable for `ACCOUNT_RECOVERY_DAYS` days (default 30,
+`config/accounts.php`), and is then purged by a worker. MongoDB is standalone
+and has no transactions, so every write is one conditional single-document
+update and the `users` document is the linearization point.
+
+### States
+
+`users.deletion` is absent for a normal account. Otherwise:
+
+```text
+deletion = {state: pending|purging, requested_at, purge_after, requested_by, origin: self|admin}
+```
+
+| Transition | Writer | Condition |
+|---|---|---|
+| none → `pending` | request (self-service with password, or an admin with `users.manage`) | `role = user` and no `deletion` |
+| `pending` → none | recover | `deletion.state = pending` and `purge_after > $$NOW`; a self-service recovery also needs `origin = self` |
+| `pending` → `purging` | purge claim | `purge_after <= $$NOW`; recovery is refused from then on |
+
+Admins and Super Admins cannot request deletion while they are staff
+("Hãy gỡ quyền quản trị trước khi xóa tài khoản."); a Super Admin demotes them
+first, so the Super Admin guard is untouched by deletion. A pending account
+cannot be promoted. Email and `google_id` stay reserved (the unique indexes are
+unchanged), so nobody can register or sign in with Google as that identity.
+Password reset links are not mailed for a pending account.
+
+### Request: what is revoked at once
+
+One conditional user write sets `deletion`, clears `remember_token` and bumps
+`api_token_epoch` (API token families die; see Gate 8). Then, best effort and
+never failing the request: the password-reset token, the Reading Pass quota
+window and the Stripe cancellation. The browser session is invalidated; other
+web sessions are signed out by `EnforceAccountDeletion` on their next request.
+Signing in (password or Google) to a pending account only opens
+`/account/recover`; it never restores or links the account. API login and
+token refresh are refused for a pending account.
+
+Admin-origin requests cannot be recovered by the user, only by an admin with
+`users.manage` ("Khôi phục" on the user edit page). The admin edit page shows
+the state and purge date and replaces the hard delete with "Lên lịch xóa".
+
+### `account_deletion_workflows`
+
+`_id` is the user id. Written before the user document is flagged (a crash
+leaves an orphan the worker removes after 10 minutes; the reverse order could
+leave an account nothing ever purges).
+
+| Field | Meaning |
+|---|---|
+| `state` | `pending`, `purging`, `purged` |
+| `requested_at`, `purge_after`, `origin`, `requested_by` | copy of the request |
+| `steps.<name>` | checkpoint timestamp of each finished step |
+| `stripe_canceled[]` | subscription ids already canceled (never repeated) |
+| `claim`, `lease_until` | `$$NOW` lease of the running worker (10 min, renewed at every checkpoint) |
+| `context` | first month and Stripe customer id, captured at claim for steps that run after the user document is gone |
+| `attempts`, `last_error_at`, `last_error` | exception class of the last failed run |
+
+After the purge the document is reduced to `{_id, state: purged, requested_at,
+purged_at, steps}`: no email, name or other PII.
+
+Indexes (`2026_11_23_000002_create_mongodb_account_deletion_indexes`):
+workflows `{state, purge_after}` and `{state, requested_at}`, subscriptions
+`{user_id, status}`.
+
+### Stripe
+
+On request every `active`, `trialing` or `past_due` subscription of the user is
+canceled immediately through `StripeClient::cancelSubscription(id,
+idempotencyKey)` with key `vietfeed-delete-cancel-<subscription id>`; an
+already canceled or missing subscription counts as done. A failure leaves the
+step open and the worker retries it hourly. Recovery does not reactivate
+Stripe: the user subscribes again. `BillingGateway::apply()` keeps reconciling
+webhooks for pending users (a subscription that turns billable for a pending
+account is canceled again) and, once the owner is `purging` or gone, updates
+the `subscriptions` row by subscription id under the pseudonym instead of
+dropping it as `unknown_user`. At purge the Stripe Customer is kept for
+invoice history but scrubbed (`email`, `name` and `metadata.user_id` emptied).
+
+### Purge worker
+
+```bash
+php artisan accounts:purge --dry-run      # per step: how many items would be touched; changes nothing, prints no PII
+php artisan accounts:purge [--limit=100]  # retry Stripe cancellations, drop orphans, purge due accounts
+```
+
+It is scheduled hourly (`withoutOverlapping`, `runInBackground`). It exits
+non-zero when a step failed; the next run resumes at the first unfinished
+step. Order and idempotency:
+
+| Step | Store → action | Why a repeat is safe |
+|---|---|---|
+| `stripe_cancel_final` | Stripe: cancel anything billable that appeared after the request | per-subscription checkpoint + idempotency key |
+| `bookmarks` | Mongo: delete the user's rows | delete by filter |
+| `boosts` | Redis trending: subtract the boost (`Trending::retract`), then Mongo: delete it | retract is a no-op once the version marker is gone |
+| `article_unlocks` | Mongo: delete rows with `user_id` or `subject = u:<id>` | delete by filter |
+| `comments` | Mongo: anonymize in place (`user_id` null, `body` empty, `account_deleted`); never `Comment::delete()` (it cascades to other users' replies) | the filter no longer matches |
+| `redis` | API token families, Reading Pass window | deletes |
+| `cassandra_anonymize` | `activity_by_article_day.user_id` → `deleted`, keys read from `activity_by_user_month` | only rewrites a row that exists and still names the user |
+| `cassandra_delete` | delete the user's `activity_by_user_month` and `unlocks_by_user_month` partitions, month by month from `created_at` | partition deletes (must follow the anonymization that reads them) |
+| `neo4j` | `MATCH (u:User {uuid: $id}) DETACH DELETE u` (no User nodes are written today) | delete |
+| `stripe_customer` | scrub the Customer | same values every time; a missing customer is done |
+| `audit_outbox` | copy undelivered `authorization_audit_pending` events to the standalone outbox | upsert by event id |
+| `user_document` | Mongo: delete the user | conditional on `deletion.state = purging` |
+| `subscriptions` | Mongo: `subscriptions.user_id` → pseudonym, `account_purged` | filter no longer matches |
+
+Interaction and Reading Pass stream consumers skip events for users whose
+workflow is `purging` or `purged`, so Cassandra rows are not recreated.
+
+Kept on purpose (evidence, spec §12.5 item 4): `reports`, `moderation_cases`,
+`sanctions` and appeals, `story_briefs.reviewed_by`, the authorization audit
+(Mongo outbox and Cassandra), `processed_stripe_events`, and the billing rows
+(pseudonymized). A sanctioned user's deletion never removes sanctions.
+
+Limits to know: Cassandra months before `users.created_at` are not scanned
+(imported history older than the account would stay). A stream consumer that
+read the workflow just before the claim can still write one row after the
+Cassandra step; the worker does not sweep again, so such a row needs a manual
+`DELETE` for that user id. `ACCOUNT_RECOVERY_DAYS` is read from the
+environment; `.env.example` was not changed.
+
+### Email changes and password reset
+
+Admin and self-service email changes clear `email_verified_at` and
+`remember_token`, set `password_reset_requires_verified_email`, and bump
+`api_token_epoch` in the same user update. This invalidates existing API token
+families. Requesting and redeeming a reset link both require verification of
+the changed address.
+A blocked link request returns the generic success status and sends no mail.
+Unverified registrations without a recorded address change can still request
+resets.
+
+After a successful email change, VietFeed sends a notice to the previous
+address through Laravel's mail channel. An existing authenticated session
+can request a verification email for the new address from the profile page.
+Google sign-in by linked `google_id` verifies the current address only when
+it matches the email Google asserts is verified. Google sign-in by email match
+requires an account without a conflicting Google ID or a pending email
+re-verification. An email verification write checks that the verified address
+is still current.
+
+### Tests
+
+`tests/Feature/AccountLifecycleTest.php` runs on the isolated stores (Mongo
+`vietfeed_test`, Cassandra `vietfeed_test`, Redis DB15) with the fake Stripe
+client; Neo4j is mocked.

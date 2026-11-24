@@ -113,7 +113,7 @@
                                 <i class="bi bi-pencil me-1"></i>Sửa
                             </a>
                             <form action="{{ route('admin.users.destroy', $u) }}" method="POST" class="d-inline"
-                                  onsubmit="vfConfirmForm(event, this, 'Người dùng {{ $u->name }} sẽ bị xóa vĩnh viễn.')">
+                                  onsubmit="vfConfirmForm(event, this, 'Người dùng {{ $u->name }} sẽ bị khóa ngay và xóa vĩnh viễn sau '+{{ \App\Accounts\AccountLifecycle::recoveryDays() }}+' ngày. Chỉ quản trị viên mới khôi phục được trong thời gian này.')">
                                 @csrf @method('DELETE')
                                 <button type="submit" style="color:#ef4444;font-size:.8rem;background:none;border:none;padding:0;cursor:pointer">
                                     <i class="bi bi-trash me-1"></i>Xóa

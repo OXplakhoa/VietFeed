@@ -12,7 +12,7 @@
                 <span class="vf-pro-badge"><i class="bi bi-gem"></i> PRO</span>
                 @endif
                 <span>{{ $comment->created_at->diffForHumans() }}</span>
-                @if(auth()->id() === $comment->user_id)
+                @if(($comment->user_id !== null && auth()->id() === $comment->user_id))
                     <span class="badge rounded-pill" style="background:rgba(230,57,70,.15);color:var(--accent);font-size:.7rem">Của bạn</span>
                 @endif
                 @if($comment->is_hidden)
@@ -26,7 +26,11 @@
             </div>
 
             {{-- Hidden comments are only ever rendered for their author and admins (filtered in ArticleController). --}}
+            @if($comment->account_deleted)
+            <div class="comment-body" style="color:var(--text-muted);font-style:italic">Bình luận đã bị xóa</div>
+            @else
             <div class="comment-body" @if($comment->is_hidden) style="opacity:.7" @endif>{{ $comment->body }}</div>
+            @endif
             @if($comment->is_hidden)
             <div style="color:var(--text-muted);font-style:italic;font-size:.8rem;margin-top:.25rem">
                 @if(\Illuminate\Support\Facades\Gate::allows(\App\Authorization\Permissions::COMMENTS))
@@ -47,7 +51,7 @@
                         <i class="bi bi-reply me-1"></i>Trả lời
                     </button>
                     @endif
-                    @if(auth()->id() === $comment->user_id || \Illuminate\Support\Facades\Gate::allows(\App\Authorization\Permissions::COMMENTS))
+                    @if(($comment->user_id !== null && auth()->id() === $comment->user_id) || \Illuminate\Support\Facades\Gate::allows(\App\Authorization\Permissions::COMMENTS))
                     <form action="{{ route('comments.destroy', $comment) }}" method="POST" class="m-0">
                         @csrf @method('DELETE')
                         <button type="submit"
@@ -87,7 +91,7 @@
             @endif
 
             {{-- Edit form --}}
-            @if(auth()->id() === $comment->user_id)
+            @if(($comment->user_id !== null && auth()->id() === $comment->user_id))
             <div id="edit-comment-{{ $comment->id }}" class="reply-form-wrap d-none mt-2">
                 <form action="{{ route('comments.update', $comment) }}" method="POST">
                     @csrf @method('PUT')

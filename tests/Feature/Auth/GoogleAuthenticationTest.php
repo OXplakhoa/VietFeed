@@ -36,7 +36,7 @@ class GoogleAuthenticationTest extends TestCase
         $this->assertNotNull(User::where('email', 'google-user@example.com')->first()?->email_verified_at);
     }
 
-    public function test_existing_users_are_linked_by_email_when_signing_in_with_google(): void
+    public function test_google_sign_in_links_a_verified_address_and_keeps_verification_bound_to_it(): void
     {
         $user = User::factory()->create([
             'email' => 'existing@example.com',
@@ -45,14 +45,9 @@ class GoogleAuthenticationTest extends TestCase
             'avatar' => null,
         ]);
 
-        Socialite::shouldReceive('driver->user')
-            ->once()
-            ->andReturn($this->fakeGoogleUser(
-                id: 'google-existing',
-                name: 'Existing User',
-                email: 'existing@example.com',
-                avatar: 'https://example.com/existing.jpg',
-            ));
+        $linked = $this->fakeGoogleUser('google-existing', 'Existing User', $user->email, 'https://example.com/existing.jpg');
+        $different = $this->fakeGoogleUser('google-different', 'Different User', $user->email, 'https://example.com/different.jpg');
+        Socialite::shouldReceive('driver->user')->times(3)->andReturn($linked, $different, $linked);
 
         $response = $this->get('/auth/google/callback');
 
@@ -64,11 +59,27 @@ class GoogleAuthenticationTest extends TestCase
         $this->assertSame('google-existing', $user->google_id);
         $this->assertSame('https://example.com/existing.jpg', $user->avatar);
         $this->assertNotNull($user->email_verified_at);
+        auth()->logout();
+
+        $this->get('/auth/google/callback')->assertRedirect(route('login'))
+            ->assertSessionHasErrors('email');
+        $this->assertGuest();
+        $this->assertSame('google-existing', $user->refresh()->google_id);
+        $this->assertSame('https://example.com/existing.jpg', $user->avatar);
+
+        $this->actingAs($user)->patch('/profile', ['name' => $user->name, 'email' => 'changed@example.com'])->assertRedirect(route('profile.edit'));
+        auth()->logout();
+
+        $this->get('/auth/google/callback')->assertRedirect(route('dashboard', absolute: false));
+
+        $this->assertAuthenticatedAs($user);
+        $this->assertSame('changed@example.com', $user->refresh()->email);
+        $this->assertNull($user->email_verified_at);
     }
 
     protected function fakeGoogleUser(string $id, string $name, string $email, string $avatar): SocialiteUser
     {
-        $user = new SocialiteUser;
+        $user = (new SocialiteUser)->setRaw(['email_verified' => true]);
         $user->map([
             'id' => $id,
             'name' => $name,

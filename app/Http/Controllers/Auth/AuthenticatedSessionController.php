@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Accounts\AccountLifecycle;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Services\ReadingPassService;
@@ -23,13 +24,19 @@ class AuthenticatedSessionController extends Controller
     /**
      * Handle an incoming authentication request.
      */
-    public function store(LoginRequest $request, ReadingPassService $readingPass): RedirectResponse
+    public function store(LoginRequest $request, ReadingPassService $readingPass, AccountLifecycle $lifecycle): RedirectResponse
     {
         $guestSessionId = $request->session()->getId();
 
         $request->authenticate();
 
         $request->session()->regenerate();
+        if ($request->user()->isPendingDeletion()) {
+            // Signing in never restores an account: it only opens the recovery page.
+            $request->session()->put(AccountLifecycle::SESSION_KEY, $lifecycle->recoveryStamp($request->user()));
+
+            return redirect()->route('account.recover');
+        }
         $readingPass->transferGuestUnlocks($request->user(), $guestSessionId);
 
         return redirect()->intended(route('dashboard', absolute: false));

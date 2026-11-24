@@ -30,7 +30,7 @@ final class TokenController
         // Equal hash work on either branch, including a Google-only user with no password.
         $dummy = Hash::make(bin2hex(random_bytes(32)));
         $valid = Hash::check($data['password'], $user?->password ?: $dummy);
-        if (! $valid || ! $user || $user->isBanned()) {
+        if (! $valid || ! $user || $user->isBanned() || $user->isPendingDeletion()) {
             $limiter->hit($key, 60);
             $limiter->hit($ipKey, 60);
             throw new TokenException('invalid_credentials');

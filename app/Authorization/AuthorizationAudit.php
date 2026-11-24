@@ -274,14 +274,16 @@ final class AuthorizationAudit
         if (($event['event_id'] ?? null) !== $id || ! Str::isUuid($id)
             || ! is_string($event['at'] ?? null)
             || ! is_string($event['actor'] ?? null)
-            || ! is_string($event['target'] ?? null)
+            || ! is_string($event['target'] ?? null) || trim($event['target']) === ''
             || ! is_string($event['reason'] ?? null)
             || ! is_array($event['before'] ?? null)
             || ! array_key_exists('after', $event) || ($event['after'] !== null && ! is_array($event['after']))) {
             throw new InvalidArgumentException('Malformed authorization audit event.');
         }
         $at = DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s.v\Z', $event['at'], new DateTimeZone('UTC'));
-        if ($at === false || $at->format('Y-m-d\TH:i:s.v\Z') !== $event['at']) {
+        // Allow clock skew, while keeping the recent projection TTL in Cassandra's range.
+        if ($at === false || $at->format('Y-m-d\TH:i:s.v\Z') !== $event['at']
+            || $at->getTimestamp() < 0 || $at > now()->addDay()) {
             throw new InvalidArgumentException('Invalid authorization audit timestamp.');
         }
 

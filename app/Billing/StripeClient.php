@@ -13,4 +13,7 @@ interface StripeClient
     public function createPortal(array $params): string;
 
     public function retrieveSubscription(string $id): array;
+
+    /** Cancel immediately. A subscription that is already gone or canceled is success (account deletion retries this). */
+    public function cancelSubscription(string $id, string $idempotencyKey): void;
 }
