@@ -527,7 +527,8 @@ class StoryProjectionsTest extends TestCase
         $storyIds = Story::pluck('id')->all();
         $started = microtime(true);
         foreach (['timeline', 'graph'] as $section) {
-            $this->assertSame(10, $pipeline->consume($section, 'converge', 100));
+            $this->artisan('storylens', ['action' => 'consume', '--section' => $section, '--consumer' => 'converge', '--limit' => 100])
+                ->expectsOutput('Processed 10 deliveries')->assertSuccessful();
         }
         foreach ($storyIds as $id) {
             $read = app(StoryLens::class)->read($id);

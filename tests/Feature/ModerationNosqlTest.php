@@ -607,7 +607,8 @@ class ModerationNosqlTest extends TestCase
         $caseId = (string) $report->fresh()->case_id;
         $audit = app(ModerationAudit::class);
 
-        $this->assertSame(2, $this->consumeAll());
+        $this->artisan('moderation:audit', ['action' => 'consume'])
+            ->expectsOutput('Processed 2 deliveries')->assertSuccessful();
         $timeline = $audit->timeline($caseId);
         $this->assertSame('ready', $timeline['state']);
         $this->assertSame(['REPORTED', 'CASE_FALSE_REPORT'], array_column($timeline['events'], 'type'));

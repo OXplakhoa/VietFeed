@@ -3,7 +3,9 @@
 namespace App\Interaction;
 
 use App\Models\InteractionMembership;
+use Carbon\CarbonImmutable;
 use MongoDB\Driver\Exception\BulkWriteException;
+use RuntimeException;
 
 final class InteractionToggle
 {
@@ -36,7 +38,26 @@ final class InteractionToggle
 
             $this->stream->publishMembership(InteractionEvent::membership($membership, $added));
 
-            return ['action' => $added ? 'added' : 'removed', 'count' => $model::where('article_id', $articleId)->count()];
+            return ['action' => $added ? 'added' : 'removed', 'count' => $model::real()->where('article_id', $articleId)->count()];
+        }
+    }
+
+    /** @param class-string<InteractionMembership> $model */
+    public function seedSynthetic(string $model, string $userId, string $articleId, int $seed, string $eventId, CarbonImmutable $at): void
+    {
+        $key = ['user_id' => $userId, 'article_id' => $articleId];
+        $membership = $model::unguarded(fn () => $model::firstOrCreate($key, [
+            '_id' => $eventId,
+            'synthetic' => true,
+            'synthetic_seed' => $seed,
+            'created_at' => $at,
+            'updated_at' => $at,
+        ]));
+        if ($membership->id !== $eventId || $membership->synthetic !== true || $membership->synthetic_seed !== $seed) {
+            throw new RuntimeException('Synthetic membership conflicts with an existing record.');
+        }
+        if (! $this->stream->publishMembership(InteractionEvent::membership($membership, added: true))) {
+            throw new RuntimeException('Synthetic interaction could not be published. Retry the same seed.');
         }
     }
 }

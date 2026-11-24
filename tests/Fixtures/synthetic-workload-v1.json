@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "seed": 10410,
+  "user_count": 16,
+  "event_count": 48,
+  "events_per_user": ["unlock", "bookmark", "boost"],
+  "article_fixture": "tests/Fixtures/storylens-rss-v1.json",
+  "article_limit": 10,
+  "window_utc": {
+    "start": "2026-10-28T00:00:00Z",
+    "end_exclusive": "2026-11-05T00:00:00Z"
+  }
+}

@@ -142,7 +142,7 @@ class ModerationUserReportTest extends TestCase
         $this->assertSame(1, Report::count());
     }
 
-    public function test_hidden_and_deleted_comments_cannot_be_reported(): void
+    public function test_hidden_deleted_and_anonymized_comments_cannot_be_reported(): void
     {
         $article = $this->article();
         $comment = $this->comment($this->user(), $article);
@@ -155,6 +155,13 @@ class ModerationUserReportTest extends TestCase
         $goneId = $gone->id;
         $gone->delete();
         $this->actingAs($reporter)->post('/comments/'.$goneId.'/report', ['reason' => 'spam'])->assertSessionHas('error');
+
+        $anonymized = $this->comment($this->user(), $article);
+        $anonymized->forceFill(['user_id' => null, 'body' => '', 'account_deleted' => true])->save();
+        $this->actingAs($reporter)->get('/articles/'.$article->slug)
+            ->assertOk()->assertSee('Bình luận đã bị xóa')->assertDontSee('report-modal-'.$anonymized->id);
+        $this->actingAs($reporter)->post(route('reports.store', $anonymized), ['reason' => 'spam'])
+            ->assertSessionHas('error', 'Không thể báo cáo bình luận của tài khoản đã xóa.');
 
         $this->assertSame(0, Report::count());
     }

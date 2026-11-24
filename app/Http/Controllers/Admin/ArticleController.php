@@ -92,7 +92,10 @@ class ArticleController extends Controller
         $article->load(['source', 'category', 'comments' => fn ($q) => $q->visibleTo(auth()->user())->with('user')->latest()]);
 
         ArticleCounts::attach(collect([$article]));
-        $article->unlocks_count = ArticleUnlock::where('article_id', (string) $article->getKey())->where('state', UnlockLedger::GRANTED)->count();
+        $article->unlocks_count = ArticleUnlock::where('article_id', (string) $article->getKey())
+            ->where('state', UnlockLedger::GRANTED)
+            ->where('synthetic', '!=', true)
+            ->count();
 
         return view('admin.articles.show', compact('article'));
     }

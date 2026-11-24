@@ -21,7 +21,8 @@ class UserController extends Controller
 {
     public function index(Request $request, ReadingPassService $readingPass, BillingGateway $billing)
     {
-        $query = User::query()->latest();
+        $synthetic = $request->boolean('synthetic');
+        $query = User::where('synthetic', $synthetic ? '=' : '!=', true)->latest();
 
         if ($request->filled('q')) {
             $q = $request->q;
@@ -55,7 +56,7 @@ class UserController extends Controller
             $user->reading_pass_allowance = $readingPass->allowance($user);
         });
 
-        return view('admin.users.index', compact('users'));
+        return view('admin.users.index', compact('users', 'synthetic'));
     }
 
     public function edit(Request $request, User $user, UserAuthorization $authorization)

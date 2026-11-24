@@ -28,13 +28,13 @@ class DashboardController extends Controller
 
         $stats = [
             'articles' => Article::count(),
-            'users' => User::count(),
+            'users' => User::where('synthetic', '!=', true)->count(),
             'comments' => Comment::count(),
             'sources' => Source::where('is_active', true)->count(),
             'bookmarks' => $bookmarkCounts->sum(),
             'boosts' => $boostCounts->sum(),
-            'unlocks_today' => ArticleUnlock::where('state', UnlockLedger::GRANTED)->where('unlocked_at', '>=', now('Asia/Ho_Chi_Minh')->startOfDay())->count(),
-            'unlocks_5h' => ArticleUnlock::where('state', UnlockLedger::GRANTED)->where('unlocked_at', '>=', now()->subHours(5))->count(),
+            'unlocks_today' => ArticleUnlock::where('synthetic', '!=', true)->where('state', UnlockLedger::GRANTED)->where('unlocked_at', '>=', now('Asia/Ho_Chi_Minh')->startOfDay())->count(),
+            'unlocks_5h' => ArticleUnlock::where('synthetic', '!=', true)->where('state', UnlockLedger::GRANTED)->where('unlocked_at', '>=', now()->subHours(5))->count(),
             'pro_users' => User::whereIn('_id', app(BillingGateway::class)->proUserIds())->count(),
         ];
 
@@ -45,7 +45,7 @@ class DashboardController extends Controller
             ->map(fn ($date) => $date->format('Y-m-d'))->countBy();
 
         // Users per day — last 30 days (same spillover).
-        $usersPerDayRaw = User::where('created_at', '>=', $dayStart)->pluck('created_at')
+        $usersPerDayRaw = User::where('synthetic', '!=', true)->where('created_at', '>=', $dayStart)->pluck('created_at')
             ->map(fn ($date) => $date->format('Y-m-d'))->countBy();
 
         $chartDates = [];

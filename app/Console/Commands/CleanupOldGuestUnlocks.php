@@ -24,9 +24,13 @@ class CleanupOldGuestUnlocks extends Command
         ])->getDeletedCount();
 
         // A reservation is decided within one request; anything pending this long belongs to a crashed request.
+        $stale = ['$lt' => UnlockLedger::date(CarbonImmutable::now()->subHour())];
         $abandoned = $ledger->collection()->deleteMany([
             'state' => UnlockLedger::PENDING,
-            'unlocked_at' => ['$lt' => UnlockLedger::date(CarbonImmutable::now()->subHour())],
+            '$or' => [
+                ['synthetic' => ['$ne' => true], 'unlocked_at' => $stale],
+                ['synthetic' => true, 'created_at' => $stale],
+            ],
         ])->getDeletedCount();
 
         $this->info("Deleted {$deleted} old guest unlock(s).");

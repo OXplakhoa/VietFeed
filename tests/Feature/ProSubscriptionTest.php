@@ -130,13 +130,19 @@ class ProSubscriptionTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin', 'permissions' => [Permissions::USERS]]);
         $pro = User::factory()->create(['name' => 'Gate Seven Pro']);
         $free = User::factory()->create(['name' => 'Gate Seven Free']);
+        $synthetic = User::factory()->unverified()->create(['name' => 'Synthetic Gate Seven', 'synthetic' => true]);
         foreach (['sub_one', 'sub_two'] as $id) {
             DB::connection('mongodb')->table('subscriptions')->insert(['stripe_subscription_id' => $id, 'user_id' => (string) $pro->id, 'type' => 'pro', 'price_id' => 'price_gate7', 'status' => 'trialing']);
         }
         $this->actingAs($admin)->get('/admin/users?plan=pro')->assertOk()->assertSee($pro->name)->assertDontSee($free->name);
-        $this->get('/admin/users')->assertOk()->assertSee($free->name)->assertSee($pro->name);
+        $this->get('/admin/users')->assertOk()->assertSee($free->name)->assertSee($pro->name)->assertDontSee($synthetic->name)
+            ->assertSee(route('admin.users.index', ['synthetic' => 1]), false)
+            ->assertViewHas('users', fn ($users) => $users->total() === 3);
+        $this->get('/admin/users?synthetic=1&q=Gate+Seven')->assertOk()->assertSee($synthetic->name)->assertDontSee($free->name)->assertDontSee($pro->name)
+            ->assertSee('name="synthetic" value="1"', false)
+            ->assertViewHas('users', fn ($users) => $users->total() === 1);
         $this->get('/admin/users/'.$pro->id.'/edit')->assertOk()->assertSee('Pro');
-        $this->get('/admin/dashboard')->assertOk()->assertViewHas('stats', fn ($stats) => $stats['pro_users'] === 1);
+        $this->get('/admin/dashboard')->assertOk()->assertViewHas('stats', fn ($stats) => $stats['users'] === 3 && $stats['pro_users'] === 1);
         $gateway = app(BillingGateway::class);
         $users = collect([$pro, $free]);
         $gateway->primeEntitlements($users);

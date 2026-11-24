@@ -320,6 +320,9 @@ class CatalogArticlePagesTest extends TestCase
         Bookmark::create(['user_id' => auth()->id(), 'article_id' => $article->id]);
         Boost::create(['user_id' => auth()->id(), 'article_id' => $article->id]);
         ArticleUnlock::create(['user_id' => auth()->id(), 'article_id' => $article->id, 'unlocked_at' => now()]);
+        foreach ([Bookmark::class, Boost::class, ArticleUnlock::class] as $model) {
+            $model::forceCreate(['user_id' => 'synthetic-reader', 'article_id' => $article->id, 'synthetic' => true]);
+        }
         DB::connection('mongodb')->enableQueryLog();
         DB::connection('mongodb')->flushQueryLog();
         foreach (['bookmarks_count', 'boosts_count', 'unlocks_count'] as $attribute) {

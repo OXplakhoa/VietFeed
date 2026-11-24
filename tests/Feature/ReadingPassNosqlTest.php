@@ -483,9 +483,12 @@ class ReadingPassNosqlTest extends TestCase
         $ledger = app(UnlockLedger::class);
         $abandoned = $ledger->reserve($this->fields('u:crashed', $this->article('crashed'), null), now()->subHours(2));
         $inFlight = $ledger->reserve($this->fields('u:in-flight', $this->article('in-flight'), null), now());
+        $syntheticInFlight = $ledger->reserve($this->fields('u:synthetic-live', $this->article('synthetic-live'), null) + ['synthetic' => true], now()->subDays(60));
+        $syntheticAbandoned = $ledger->reserve($this->fields('u:synthetic-crashed', $this->article('synthetic-crashed'), null) + ['synthetic' => true], now()->subDays(60));
+        ArticleUnlock::whereKey($syntheticAbandoned)->update(['created_at' => now()->subHours(2)]);
 
-        $this->artisan('unlocks:cleanup')->expectsOutput('Deleted 1 old guest unlock(s).')->expectsOutput('Deleted 1 abandoned reservation(s).')->assertSuccessful();
-        $this->assertEqualsCanonicalizing([$recent->id, $mine->id, $inFlight], ArticleUnlock::all()->map(fn ($unlock) => (string) $unlock->id)->all());
+        $this->artisan('unlocks:cleanup')->expectsOutput('Deleted 1 old guest unlock(s).')->expectsOutput('Deleted 2 abandoned reservation(s).')->assertSuccessful();
+        $this->assertEqualsCanonicalizing([$recent->id, $mine->id, $inFlight, $syntheticInFlight], ArticleUnlock::all()->map(fn ($unlock) => (string) $unlock->id)->all());
         $this->assertNull(ArticleUnlock::find($old->id));
         $this->assertNull(ArticleUnlock::find($abandoned));
 

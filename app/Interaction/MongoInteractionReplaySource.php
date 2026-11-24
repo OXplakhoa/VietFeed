@@ -9,7 +9,7 @@ final class MongoInteractionReplaySource implements InteractionReplaySource
 {
     public function events(): iterable
     {
-        foreach (Boost::query()->lazyById(500, '_id', 'id') as $boost) {
+        foreach (Boost::real()->lazyById(500, '_id', 'id') as $boost) {
             yield InteractionEvent::membership($boost, added: true);
         }
     }

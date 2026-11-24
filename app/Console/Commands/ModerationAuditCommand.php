@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\ProjectionConsumeBudget;
 use App\Moderation\ModerationAudit;
 use App\StoryProcessing\StoryPipeline;
 use Illuminate\Console\Command;
@@ -32,7 +33,9 @@ final class ModerationAuditCommand extends Command
                     $this->info('Cassandra moderation audit schema ready');
                     break;
                 case 'consume':
-                    $this->info('Processed '.$audit->consume((string) $this->option('consumer'), $limit).' deliveries');
+                    $consumer = (string) $this->option('consumer');
+                    $count = ProjectionConsumeBudget::run($consumer, $limit, fn () => $audit->consume($consumer, 1));
+                    $this->info('Processed '.$count.' deliveries');
                     break;
                 case 'inspect':
                     $this->line(json_encode($audit->overview(), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));

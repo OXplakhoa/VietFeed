@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Content\ContentCatalog;
 use App\Models\Article;
+use App\Models\Category;
+use App\Models\Source;
 use App\Models\Story;
 use App\StoryLens\StoryLens;
 use App\StoryProcessing\StoryPipeline;
@@ -67,6 +69,8 @@ class StoryCatalogTest extends TestCase
             Event::forget($eventName);
         }
         $article = Article::firstOrFail();
+        $this->assertNull($article->source_id);
+        $this->assertNull($article->category_id);
         $this->assertSame(0, Story::count());
         $this->assertSame(0, app(StoryPipeline::class)->stream('graph')->lengths()['stream']);
         $this->assertSame(1, app(ContentCatalog::class)->ingest($fixture));
@@ -80,14 +84,24 @@ class StoryCatalogTest extends TestCase
         $this->assertSame(1, app(StoryPipeline::class)->stream('graph')->lengths()['stream']);
     }
 
-    public function test_frozen_evidence_is_available_before_projection_and_reingest_is_a_noop(): void
+    public function test_frozen_evidence_is_available_before_projection_and_reingest_does_not_reattach(): void
     {
         $fixture = json_decode(file_get_contents(base_path('tests/Fixtures/storylens-rss-v1.json')), true);
+        $category = Category::create($fixture['items'][0]['category']);
+        $source = Source::create($fixture['items'][0]['source'] + ['category_id' => $category->id]);
+        $otherSource = Source::create($fixture['items'][3]['source'] + ['category_id' => $category->id, 'is_active' => false]);
         $catalog = app(ContentCatalog::class);
         $this->assertSame(10, $catalog->ingest($fixture));
         $this->assertSame(10, Article::count());
         $this->assertSame(2, Story::count());
         $ids = Article::pluck('id')->all();
+        $linked = Article::where('original_url', $fixture['items'][0]['link'])->sole();
+        $unlinked = Article::where('original_url', $fixture['items'][3]['link'])->sole();
+        $this->assertSame($source->id, $linked->source_id);
+        $this->assertSame($category->id, $linked->category_id);
+        $this->assertNull($unlinked->source_id);
+        $this->get('/articles/'.$linked->slug)->assertOk()->assertSee($linked->title);
+        $this->get('/articles/'.$unlinked->slug)->assertNotFound();
         foreach (Story::all() as $story) {
             $read = app(StoryLens::class)->read($story->id);
             $this->assertCount(5, $read['evidence']);
@@ -101,7 +115,10 @@ class StoryCatalogTest extends TestCase
                 $this->assertLessThanOrEqual(200, mb_strlen($article['excerpt']));
             }
         }
+        $otherSource->update(['is_active' => true]);
         $this->assertSame(0, $catalog->ingest($fixture));
+        $this->assertSame($otherSource->id, $unlinked->fresh()->source_id);
+        $this->get('/articles/'.$unlinked->slug)->assertOk()->assertSee($unlinked->title);
         $this->assertSame($ids, Article::pluck('id')->all());
         $this->assertSame(10, app(StoryPipeline::class)->stream('graph')->lengths()['stream']);
     }
