@@ -1,0 +1,77 @@
+# VietFeed demo origin. Install: sudo cp deploy/caddy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+# TLS is terminated by Cloudflare; cloudflared forwards plain HTTP to 127.0.0.1:8080, so Caddy must not try HTTPS.
+{
+	auto_https off
+
+	# cloudflared connects from loopback, so it is the only trusted proxy. Caddy then keeps the headers it
+	# forwarded and takes the real visitor IP from Cloudflare's CF-Connecting-IP (see deploy/README.md, "Client IP").
+	# Without this block Caddy would overwrite X-Forwarded-For/-Proto and every visitor would look like 127.0.0.1.
+	servers {
+		trusted_proxies static 127.0.0.1/32 ::1/128
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
+http://:8080 {
+	# Loopback only: the machine never exposes this port to the LAN. Use 127.0.0.1 (not localhost) in the tunnel.
+	bind 127.0.0.1
+
+	root * /home/dolakhoa/vietfeed-demo/public
+	encode zstd gzip
+
+	# Multipart uploads (avatars) stay small; PHP enforces the same ceiling (see php-fpm pool).
+	request_body {
+		max_size 12MB
+	}
+
+	log {
+		output file /var/log/caddy/vietfeed-demo-access.log {
+			roll_size 20MiB
+			roll_keep 5
+			roll_keep_for 336h
+		}
+		format json
+	}
+
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(self)"
+		# Cloudflare serves HTTPS only; browsers ignore HSTS on plain HTTP. No includeSubDomains/preload from here.
+		Strict-Transport-Security "max-age=31536000"
+		# Report-only so it can never break the demo. Check the browser console on the main pages, then rename the
+		# header to Content-Security-Policy to enforce (see deploy/README.md).
+		Content-Security-Policy-Report-Only "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' https: data:; connect-src 'self'"
+	}
+
+	# Never serve dotfiles (.env, .git) even if one ever lands in public/.
+	@dotfiles {
+		path /.*
+		not path /.well-known/*
+	}
+	respond @dotfiles 404
+
+	# Vite output is content-hashed: cache forever. Other static files: one day.
+	@build path /build/*
+	header @build Cache-Control "public, max-age=31536000, immutable"
+	@static {
+		path *.css *.js *.svg *.png *.jpg *.jpeg *.gif *.webp *.ico *.woff *.woff2
+		not path /build/*
+	}
+	header @static Cache-Control "public, max-age=86400"
+
+	# Laravel front controller. HTTPS=on because TLS ended at Cloudflare (URLs and secure cookies).
+	php_fastcgi unix//run/php/vietfeed-demo.sock {
+		env HTTPS on
+		# Backstop: TLS ends at Cloudflare, so the app must always see https even if the header got lost upstream.
+		header_up X-Forwarded-Proto https
+		# The CF-Connecting-IP-derived visitor IP, so Laravel (TRUSTED_PROXIES=127.0.0.1) sees the real client.
+		header_up X-Forwarded-For {client_ip}
+		read_timeout 60s
+		write_timeout 60s
+	}
+
+	file_server
+}

@@ -1,0 +1,38 @@
+# Dedicated Redis for the public demo (separate from the dev stack's Redis on 6379).
+# Why: the dev Redis runs allkeys-lru with 200 MB, which could evict sessions, queue jobs, rate-limit counters and
+# reset tokens under load. This instance never evicts (noeviction) and has its own volume and password.
+#
+# Start (password is read from the demo .env, never printed):
+#   docker compose -p vietfeed-demo -f ~/vietfeed-demo/deploy/docker-compose.demo.yml --env-file ~/vietfeed-demo/.env up -d
+# Stop:
+#   docker compose -p vietfeed-demo -f ~/vietfeed-demo/deploy/docker-compose.demo.yml --env-file ~/vietfeed-demo/.env stop
+# Bound to 127.0.0.1:6380 only. Mongo, Cassandra and Neo4j still come from the dev stack's containers.
+services:
+  redis-demo:
+    image: redis:7-alpine
+    container_name: vietfeed-demo-redis
+    ports:
+      - "127.0.0.1:6380:6379"
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD in the demo .env}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDISCLI_AUTH" --maxmemory 256mb --maxmemory-policy noeviction --appendonly yes
+    volumes:
+      - vietfeed-demo-redis-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 320m
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  vietfeed-demo-redis-data:
