@@ -42,6 +42,9 @@ class ModerationService
         if ($comment === null) {
             throw new ModerationException('Bình luận này không còn tồn tại.');
         }
+        if ($comment->account_deleted) {
+            throw new ModerationException('Không thể báo cáo bình luận của tài khoản đã xóa.');
+        }
         if ($reporter->isAdmin()) {
             throw new ModerationException('Quản trị viên không cần báo cáo.');
         }

@@ -33,6 +33,39 @@ no app data is seeded. Cassandra writes belong to the T2 spike.
 native in-container CLIs, exit 0 iff 4/4 READY. It reads creds from shell env,
 then `.env`, then compose dev-defaults.
 
+## Laravel scheduler
+
+`composer run dev` starts `php artisan schedule:work`. Run only one scheduler
+for a standalone demo and bootstrap the Cassandra projection tables first
+using the setup commands in [Gate 9.5 slice 5](#gate-95-slice-5--sql-runtime-removed).
+Consumers process up to 100 deliveries per invocation. The command names below
+omit the `php artisan` prefix.
+
+| Command | Cadence | Overlap lock | Background | Purpose |
+|---|---|---|---|---|
+| `feeds:fetch` | Every 30 minutes | — | — | Dispatch active RSS feeds |
+| `unlocks:cleanup` | Daily at 02:15 | — | — | Remove old guest unlocks and abandoned reservations |
+| `interactions consume --consumer=scheduler --limit=100` | Every 5 seconds | 1 minute | — | Project interaction history and trending |
+| `reading-pass consume --consumer=scheduler --limit=100` | Every 5 seconds | 1 minute | — | Project Reading Pass history |
+| `sources:history-manage consume --consumer=scheduler --limit=100` | Every 5 seconds | 1 minute | Yes | Project source-fetch history |
+| `storylens consume --section=timeline --consumer=scheduler --limit=100` | Every 10 seconds | 5 minutes | Yes | Project Story timelines to Cassandra (240 s budget, 270 s alarm) |
+| `storylens consume --section=graph --consumer=scheduler --limit=100` | Every 10 seconds | 5 minutes | Yes | Project Story relationships to Neo4j (240 s budget, 270 s alarm) |
+| `moderation:audit consume --consumer=scheduler --limit=100` | Every 10 seconds | 5 minutes | Yes | Project moderation audit events to Cassandra (240 s budget, 270 s alarm) |
+| `moderation:repair` | Every 5 minutes | 30 minutes | Yes | Complete interrupted moderation steps with the default 600-second claim lease |
+| `rbac:audit retry` | Every minute | 5 minutes | Yes | Retry pending authorization audit writes |
+| `accounts:purge` | Hourly | 120 minutes | Yes | Retry billing cancellations and purge due accounts |
+
+StoryLens and moderation audit check the work budget before taking each
+delivery. These commands reserve `--consumer=scheduler` for scheduled runs.
+They require PHP CLI PCNTL in that mode and use SIGALRM to terminate a blocked
+worker before its 300-second lock expires. An earlier existing alarm keeps its
+own handler and takes precedence. Manual runs with other consumer names use
+the work budget alone. An unacknowledged delivery can be retried by the next run.
+
+Pause the scheduler when testing a failure that requires a stopped consumer
+or running a recovery command that requires paused consumers. Projection
+workers process the backlog after the scheduler resumes.
+
 ## Native CLI smoke queries (one per DB)
 
 ```bash
@@ -435,6 +468,19 @@ php artisan storylens reemit --story=<story-uuid>
 # Omit --story to re-emit all tracer Stories; use --fixture=/path/to/frozen.json for ingest.
 ```
 
+Ingest resolves missing canonical `source_id` by exact `source.feed_url` and
+`category_id` by exact `category.slug`, using active MongoDB records only. The
+frozen feeds match the VnExpress and Tuổi Trẻ world news sources and category
+`the-gioi`. Fixture snapshots stay available for Story evidence. The public
+`/articles/{slug}` route requires both canonical references to point to active
+records.
+
+To repair earlier fixture imports, configure the matching active records and
+rerun `php artisan storylens ingest` with the same fixture. The existing article
+keeps its UUID, slug, snapshots and populated references. Re-ingest fills missing
+IDs and leaves Story history unchanged. The command can report `Ingested 0 Articles`
+when it only filled references. There is no automatic migration.
+
 `reemit` requires paused writers/consumers and a reachable, writable Neo4j store.
 Before changing any Mongo processing state or publishing any events, it calls
 `StoryGraph::resetForRebuild` to reset the projection-side Story version to 0 for
@@ -466,7 +512,8 @@ fixing the cause. Repeating re-emission is safe for canonical projection facts.
 DLQ replay republishes into the shared Stream; the other group's duplicate is
 ignored. If Redis publish fails after Mongo commit, content remains readable with
 pending sections: restore Redis and Neo4j, pause writers/consumers and use reemit.
-Re-running ingest after this boundary is a no-op and does not repair lost dispatch.
+Recover lost dispatch with `reemit`. Re-ingesting an attached article can fill
+missing canonical references without publishing a Story event.
 
 The earlier Article-save → Story-save interruption is repaired differently:
 `php artisan storylens ingest --fixture=/path/to/the-same-frozen.json` reuses the
@@ -850,12 +897,11 @@ php artisan up
 exist without a `legacy_sql_id` copy in MongoDB (the only runtime read of those SQL
 tables, inside `SqlImport::unimported()`).
 
-**Consumer and repair are manual for now** (control decision): run
-`php artisan moderation:audit consume` and `php artisan moderation:repair` (lease ≥ 60 s,
-default 600 s) by hand; the Gate 10 runbook wires them into the process supervisor /
-scheduler. `moderation:repair` also unhides comments left hidden by a revoked/inactive
-sanction and reports `orphaned_new` / `orphaned_total` sanctions (issued for a case whose
-claim was lost; shown on the case page).
+The [Laravel scheduler](#laravel-scheduler) runs the audit consumer and repair.
+Repair uses the default 600-second claim lease. It settles interrupted case
+decisions, unhides comments left hidden by a revoked or inactive sanction and
+reports `orphaned_new` / `orphaned_total` sanctions (issued for a case whose claim
+was lost and shown on the case page).
 
 Native inspection of one case (replace ids; dev uses `vietfeed`, tests `vietfeed_test`/DB15):
 
@@ -1092,7 +1138,7 @@ php artisan interactions top --synthetic
 so a previously delivered add remains one Cassandra row in each table.
 Removed memberships cannot be reemitted from current state. Replay the DLQ
 when it still holds the original event. The default rebuild recreates the
-ranking from active MongoDB boosts, including boosts that were never
+ranking from active MongoDB boosts outside the Gate 10.1 workload, including boosts that were never
 published and excluding memberships whose remove event was lost. Resume
 consumers after the rebuild. Use `interactions rebuild` to repair the ranking
 after a lost removal. `DemoEngagementSeeder` writes memberships without events,
@@ -1859,7 +1905,7 @@ leave an account nothing ever purges).
 | `steps.<name>` | checkpoint timestamp of each finished step |
 | `stripe_canceled[]` | subscription ids already canceled (never repeated) |
 | `claim`, `lease_until` | `$$NOW` lease of the running worker (10 min, renewed at every checkpoint) |
-| `context` | first month and Stripe customer id, captured at claim for steps that run after the user document is gone |
+| `context` | first month, Stripe customer id and synthetic flag captured at claim for the purge steps |
 | `attempts`, `last_error_at`, `last_error` | exception class of the last failed run |
 
 After the purge the document is reduced to `{_id, state: purged, requested_at,
@@ -1902,7 +1948,7 @@ step. Order and idempotency:
 | `article_unlocks` | Mongo: delete rows with `user_id` or `subject = u:<id>` | delete by filter |
 | `comments` | Mongo: anonymize in place (`user_id` null, `body` empty, `account_deleted`); never `Comment::delete()` (it cascades to other users' replies) | the filter no longer matches |
 | `redis` | API token families, Reading Pass window | deletes |
-| `cassandra_anonymize` | `activity_by_article_day.user_id` → `deleted`, keys read from `activity_by_user_month` | only rewrites a row that exists and still names the user |
+| `cassandra_anonymize` | `activity_by_article_day.user_id` → `deleted` for real users or `deleted-synthetic` for synthetic readers, keys read from `activity_by_user_month` | only rewrites a row that exists and still names the user |
 | `cassandra_delete` | delete the user's `activity_by_user_month` and `unlocks_by_user_month` partitions, month by month from `created_at` | partition deletes (must follow the anonymization that reads them) |
 | `neo4j` | `MATCH (u:User {uuid: $id}) DETACH DELETE u` (no User nodes are written today) | delete |
 | `stripe_customer` | scrub the Customer | same values every time; a missing customer is done |
@@ -1950,3 +1996,68 @@ is still current.
 `tests/Feature/AccountLifecycleTest.php` runs on the isolated stores (Mongo
 `vietfeed_test`, Cassandra `vietfeed_test`, Redis DB15) with the fake Stripe
 client; Neo4j is mocked.
+
+## Gate 10.1 synthetic reader workload
+
+`tests/Fixtures/synthetic-workload-v1.json` defines seed `10410`, 16 synthetic
+readers and 48 events (one unlock, bookmark and boost per reader) from
+2026-10-28 through 2026-11-04 UTC. It requires the ten articles from the frozen
+`storylens-rss-v1.json` file, matched by URL and StoryLens story key. The
+workload orders these articles by URL and pins their MongoDB IDs on the first
+run. Inspect uses URL order to break ties between equal scores. Fresh imports
+reproduce the same readership, logical events and ranking by URL even when
+MongoDB assigns new article IDs. Event IDs reference the article IDs in each
+store. If a pinned corpus has changed, ingest the complete fixture and use a new
+seed in that store.
+
+Use a non-production demo environment with the `interactions schema` and
+`reading-pass schema` tables. Seed, preview and inspection require the complete
+ingested fixture. The command refuses production.
+
+```bash
+php artisan storylens ingest
+php artisan demo:synthetic seed --dry-run
+php artisan demo:synthetic seed
+php artisan demo:synthetic inspect
+php artisan demo:synthetic inspect --seed=10410
+```
+
+Dry-run and inspect show the manifest, selected article IDs, publish progress
+and any projected ranking without writing to the stores. The seed command
+creates `Synthetic v1 …` readers with addresses under `demo.invalid` and
+unpublished random passwords. It calls the interaction and Reading Pass services.
+MongoDB workload, user, membership and unlock documents and Redis event payloads
+carry `synthetic: true`. The Cassandra schemas identify synthetic rows by the
+`synthetic-v1-<seed>-<number>` reader ID and, for unlocks, `origin = 'synthetic'`.
+After the consumers drain, the full workload has 32 rows in
+`activity_by_user_month`, 32 in `activity_by_article_day` and 16 in
+`unlocks_by_user_month`.
+
+The normal Redis consumers populate the same Cassandra tables and a per-seed
+ranking at `interactions:trending:workload:v1:<seed>`. Inspect shows up to ten
+article scores from that sorted set. Article engagement totals (including the
+admin article detail) and the live ranking exclude the synthetic workload.
+The older Gate 5 synthetic replay has its own key.
+
+Retry the same seed if publication fails. Successful publishes are checkpointed
+in `synthetic_workloads`, so a completed rerun emits no additional deliveries.
+A crash between Redis publish and MongoDB checkpoint can redeliver the same ID.
+Consumers write the same Cassandra keys and Redis membership contribution.
+After Redis loss, `interactions reemit` restores the current memberships through
+the stream. Use `reading-pass reemit --user=<synthetic-reader-id>` for a reader's
+unlock history. Let the scheduler drain the queues and check inspection again.
+
+Use dedicated throwaway stores for demos. To remove the workload immediately
+from the active demo, switch to fresh dedicated stores using the safe reset
+procedure above. The old stores remain available for recovery.
+
+In a shared demo, removing the synthetic readers goes through the normal
+account deletion lifecycle. Open **Tài khoản mô phỏng** on the admin user page
+(`/admin/users?synthetic=1`) and request deletion for each reader. The default
+list and its total exclude synthetic readers, matching the dashboard user
+total. The scheduled purge removes the accounts, memberships, unlocks, per-user
+history and ranking contributions after the recovery window (30 days by
+default). Until purge runs, the readers appear in the filtered list and their
+ranking contributions remain. Retained per-article rows carry
+`user_id = 'deleted-synthetic'` after purge, and the checkpoint records the
+original event IDs.

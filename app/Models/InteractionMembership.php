@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use MongoDB\Laravel\Eloquent\Model;
 
@@ -14,6 +15,11 @@ abstract class InteractionMembership extends Model
     protected $primaryKey = '_id';
 
     protected $fillable = ['user_id', 'article_id'];
+
+    public function scopeReal(Builder $query): Builder
+    {
+        return $query->where('synthetic', '!=', true);
+    }
 
     public function setAttribute($key, $value)
     {

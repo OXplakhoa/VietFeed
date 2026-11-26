@@ -15,6 +15,11 @@ Schedule::command('reading-pass consume --consumer=scheduler --limit=100')->ever
 // Run separately so CQL waits cannot block other sub-minute tasks. The consumer's alarm is shorter than this mutex.
 Schedule::command('sources:history-manage consume --consumer=scheduler --limit=100')->everyFiveSeconds()->withoutOverlapping(1)->runInBackground();
 
+Schedule::command('storylens consume --section=timeline --consumer=scheduler --limit=100')->everyTenSeconds()->withoutOverlapping(5)->runInBackground();
+Schedule::command('storylens consume --section=graph --consumer=scheduler --limit=100')->everyTenSeconds()->withoutOverlapping(5)->runInBackground();
+Schedule::command('moderation:audit consume --consumer=scheduler --limit=100')->everyTenSeconds()->withoutOverlapping(5)->runInBackground();
+Schedule::command('moderation:repair')->everyFiveMinutes()->withoutOverlapping(30)->runInBackground();
+
 Schedule::command('rbac:audit retry')->everyMinute()->withoutOverlapping(5)->runInBackground();
 
 // Gate 9.7b: retries Stripe cancellations and purges accounts after the recovery window; touches four stores.

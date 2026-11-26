@@ -10,6 +10,7 @@ use App\ReadingPass\UnlockLedger;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -58,7 +59,23 @@ class ReadingPassService
      */
     public function accessOrLock(Article $article, ?User $user): array
     {
-        $now = CarbonImmutable::now('Asia/Ho_Chi_Minh');
+        return $this->access($article, $user, CarbonImmutable::now('Asia/Ho_Chi_Minh'));
+    }
+
+    public function seedSyntheticUnlock(Article $article, User $user, string $eventId, CarbonImmutable $at): void
+    {
+        $result = $this->access($article, $user, $at->setTimezone('Asia/Ho_Chi_Minh'), $eventId);
+        $doc = $this->ledger->collection()->findOne(['_id' => $eventId, 'state' => UnlockLedger::GRANTED, 'synthetic' => true]);
+        if (! $result['canAccess'] || $doc === null) {
+            throw new RuntimeException('Synthetic Reading Pass unlock did not settle. Retry the same seed.');
+        }
+        if (! $this->history->publish($doc)) {
+            throw new RuntimeException('Synthetic Reading Pass unlock could not be published. Retry the same seed.');
+        }
+    }
+
+    private function access(Article $article, ?User $user, CarbonImmutable $now, ?string $syntheticId = null): array
+    {
         $plan = $this->plan($user, $now);
 
         // Admin support/debug access should not consume or inflate Reading Pass metrics.
@@ -71,12 +88,18 @@ class ReadingPassService
             'user_id' => $user ? (string) $user->getKey() : null,
             'session_hash' => $user ? null : UnlockLedger::sessionHash($this->sessionId()),
             'article_id' => (string) $article->getKey(),
-            'origin' => 'unlock',
+            'origin' => $syntheticId === null ? 'unlock' : 'synthetic',
         ];
+        if ($syntheticId !== null) {
+            $fields += ['_id' => $syntheticId, 'synthetic' => true, 'synthetic_seed' => $user->synthetic_seed];
+        }
         $deadline = hrtime(true) + $this->settleMs() * 1_000_000;
         while (true) {
             $found = $this->ledger->lookup($plan['subject'], $fields['article_id']);
             $doc = $found['doc'];
+            if ($doc !== null && $syntheticId !== null && $doc['_id'] !== $syntheticId) {
+                throw new RuntimeException('Synthetic unlock conflicts with an existing record.');
+            }
             if ($doc !== null && $doc['state'] === UnlockLedger::GRANTED) {
                 // Already unlocked: access without consuming.
                 if ($found['fallback']) {
@@ -90,7 +113,7 @@ class ReadingPassService
                 if ($id !== null) {
                     return $this->decide($plan, $fields, $id, $found['fallback'], $now);
                 }
-            } elseif (UnlockLedger::msOf($doc['unlocked_at']) < UnlockLedger::ms($now) - ReadingPassQuota::STALE_MS) {
+            } elseif ($this->reservationIsStale($doc, $now, $syntheticId !== null)) {
                 $this->ledger->release($doc['_id']); // Abandoned reservation of a crashed request.
 
                 continue;
@@ -102,6 +125,14 @@ class ReadingPassService
             }
             usleep(25_000);
         }
+    }
+
+    private function reservationIsStale(array $doc, CarbonImmutable $now, bool $synthetic): bool
+    {
+        // Synthetic unlocks have a historical event time, but a live reservation lease.
+        return $synthetic
+            ? UnlockLedger::msOf($doc['created_at']) < UnlockLedger::ms(CarbonImmutable::now()) - ReadingPassQuota::STALE_MS
+            : UnlockLedger::msOf($doc['unlocked_at']) < UnlockLedger::ms($now) - ReadingPassQuota::STALE_MS;
     }
 
     /**
@@ -212,18 +243,18 @@ class ReadingPassService
         try {
             // A window that missed fallback grants must never decide: without a rebuild, count the ledger instead.
             if ($fallbackSeen && ! $this->rebuild($subject, $now, force: true)) {
-                throw new \RuntimeException('Reading Pass forced rebuild unavailable');
+                throw new RuntimeException('Reading Pass forced rebuild unavailable');
             }
             for ($i = 0; $i < 3 && $result === null; $i++) {
                 $decision = $this->quota->decide($subject, $fields['article_id'], UnlockLedger::ms($now), UnlockLedger::ms($plan['window_start']), $plan['limit']);
                 match ($decision['status']) {
-                    ReadingPassQuota::NOT_BUILT => $this->rebuild($subject, $now) || throw new \RuntimeException('Reading Pass window rebuild unavailable'),
+                    ReadingPassQuota::NOT_BUILT => $this->rebuild($subject, $now) || throw new RuntimeException('Reading Pass window rebuild unavailable'),
                     ReadingPassQuota::STALE => $this->quota->resolve($subject, $this->ledger->resolveStale($subject, $decision['stale'], $now->subMilliseconds(ReadingPassQuota::STALE_MS))),
                     default => $result = $decision,
                 };
             }
             if ($result === null) {
-                throw new \RuntimeException('Reading Pass decision did not settle');
+                throw new RuntimeException('Reading Pass decision did not settle');
             }
         } catch (Throwable $e) {
             $this->warn('decide', $e);
@@ -244,7 +275,9 @@ class ReadingPassService
             return ['canAccess' => false, 'allowance' => $this->allowanceFrom($plan, $result, $now)];
         }
         $doc = $this->ledger->grant($id, $fields, $now, $plan['tier'], $fallback);
-        $this->history->publish($doc);
+        if (! ($fields['synthetic'] ?? false)) {
+            $this->history->publish($doc);
+        }
 
         return ['canAccess' => true, 'allowance' => $this->allowanceFrom($plan, $plan['limit'] === -1 ? null : $result, $now)];
     }

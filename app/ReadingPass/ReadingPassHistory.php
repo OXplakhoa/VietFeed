@@ -70,7 +70,7 @@ final class ReadingPassHistory
             'origin' => $doc['origin'] ?? 'unlock',
             'occurred_at' => UnlockLedger::carbon($doc['unlocked_at'])->format('Y-m-d\TH:i:s.v\Z'),
             'backfill' => in_array($doc['origin'] ?? null, ['import', 'seed'], true),
-        ];
+        ] + (($doc['synthetic'] ?? false) === true ? ['synthetic' => true, 'synthetic_seed' => $doc['synthetic_seed']] : []);
     }
 
     /** Best effort: the ledger is already durable, `reemit` recovers a lost publish. */

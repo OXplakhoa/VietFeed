@@ -3,6 +3,8 @@
 namespace App\Content;
 
 use App\Models\Article;
+use App\Models\Category;
+use App\Models\Source;
 use App\Models\Story;
 use App\StoryLens\Brief\Briefs;
 use App\StoryProcessing\StoryPipeline;
@@ -62,6 +64,10 @@ final class ContentCatalog
         $story = Story::where('story_key', $item['story_key'])->first();
         $article = Article::where('original_url', $item['link'])->first();
         if ($article && $story && in_array($article->id, $story->article_ids ?? [], true)) {
+            foreach ($this->missingCanonicalIds($article, $item) as $field => $id) {
+                Article::whereKey($article->id)->whereNull($field)->update([$field => $id]);
+            }
+
             return null;
         }
         if ($article && $article->story_id && (($story && $article->story_id !== $story->id) || ($article->story_key && $article->story_key !== $item['story_key']))) {
@@ -84,7 +90,7 @@ final class ContentCatalog
             'published_at' => CarbonImmutable::parse($item['published_at']),
             'description' => $item['excerpt'], 'source_snapshot' => $source,
             'category_snapshot' => $category, 'story_id' => $story->id, 'story_key' => $item['story_key'],
-        ])->save();
+        ] + $this->missingCanonicalIds($article, $item))->save();
         $ids = [...$story->article_ids, $article->id];
         $evidence = Article::whereIn('_id', $ids)->get();
         $version = $story->version + 1;
@@ -123,6 +129,14 @@ final class ContentCatalog
         }
 
         return $event;
+    }
+
+    private function missingCanonicalIds(Article $article, array $item): array
+    {
+        return array_filter([
+            'source_id' => $article->source_id === null ? Source::active()->where('feed_url', $item['source']['feed_url'])->value('id') : null,
+            'category_id' => $article->category_id === null ? Category::active()->where('slug', $item['category']['slug'])->value('id') : null,
+        ], fn ($id) => $id !== null);
     }
 
     private function indexes(): void

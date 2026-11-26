@@ -31,7 +31,7 @@ final readonly class InteractionEvent
             'user_id' => $membership->user_id,
             'article_id' => $membership->article_id,
             'backfill' => $added && $membership->legacy_sql_id !== null,
-        ]);
+        ] + ($membership->synthetic === true ? ['synthetic' => true, 'synthetic_seed' => $membership->synthetic_seed] : []));
     }
 
     public function isMembership(): bool
@@ -62,7 +62,8 @@ final readonly class InteractionEvent
         if ($membershipVersion !== null) {
             if (! is_string($data['user_id'] ?? null) || $data['user_id'] === ''
                 || $data['aggregate_version'] !== $membershipVersion
-                || (array_key_exists('backfill', $data) && ! is_bool($data['backfill']))) {
+                || (array_key_exists('backfill', $data) && ! is_bool($data['backfill']))
+                || (($data['synthetic'] ?? false) === true && ! is_int($data['synthetic_seed'] ?? null))) {
                 throw new InvalidArgumentException('Invalid membership event');
             }
         } elseif (! in_array($data['type'], ['view', 'boost'], true)) {

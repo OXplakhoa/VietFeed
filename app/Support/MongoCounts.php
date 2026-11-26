@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Article;
+use App\Models\InteractionMembership;
 use Illuminate\Support\Collection;
 use MongoDB\Laravel\Eloquent\Model;
 
@@ -27,10 +28,13 @@ class MongoCounts
         if ($in === []) {
             return collect();
         }
-        $pipeline = [];
+        $match = $field === 'article_id' && is_subclass_of($model, InteractionMembership::class)
+            ? ['synthetic' => ['$ne' => true]]
+            : [];
         if ($in !== null) {
-            $pipeline[] = ['$match' => [$field => ['$in' => array_values($in)]]];
+            $match[$field] = ['$in' => array_values($in)];
         }
+        $pipeline = $match === [] ? [] : [['$match' => $match]];
         $pipeline[] = ['$group' => ['_id' => '$'.$field, 'n' => ['$sum' => 1]]];
 
         return collect(iterator_to_array($model::raw(fn ($collection) => $collection->aggregate($pipeline))))->pluck('n', 'id');

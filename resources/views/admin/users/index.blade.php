@@ -13,7 +13,10 @@
 
         {{-- Search --}}
         <form method="GET" action="{{ route('admin.users.index') }}" class="mb-4">
-            <div class="d-flex gap-2">
+            @if($synthetic)
+            <input type="hidden" name="synthetic" value="1">
+            @endif
+            <div class="d-flex flex-wrap gap-2">
                 <input type="text" name="q" value="{{ request('q') }}"
                        class="form-control form-control-sm"
                        placeholder="Tìm theo tên hoặc email…"
@@ -22,11 +25,15 @@
                         style="background:var(--accent);color:#fff;border:none;border-radius:6px">
                     <i class="bi bi-search"></i>
                 </button>
-                <a href="{{ route('admin.users.index', array_filter(['q' => request('q'), 'plan' => request('plan') === 'pro' ? null : 'pro'])) }}" class="btn btn-sm"
+                <a href="{{ route('admin.users.index', array_filter(['q' => request('q'), 'plan' => request('plan') === 'pro' ? null : 'pro', 'synthetic' => $synthetic ? 1 : null])) }}" class="btn btn-sm"
                    style="background:{{ request('plan') === 'pro' ? 'rgba(230,57,70,.12)' : 'var(--surface-alt)' }};color:{{ request('plan') === 'pro' ? 'var(--accent)' : 'var(--text-muted)' }};border:1px solid var(--border);border-radius:6px;text-decoration:none">
                     <i class="bi bi-stars me-1"></i>Pro
                 </a>
-                @if(request('q') || request('plan'))
+                <a href="{{ route('admin.users.index', array_filter(['q' => request('q'), 'plan' => request('plan'), 'synthetic' => $synthetic ? null : 1])) }}" class="btn btn-sm"
+                   style="background:{{ $synthetic ? 'rgba(230,57,70,.12)' : 'var(--surface-alt)' }};color:{{ $synthetic ? 'var(--accent)' : 'var(--text-muted)' }};border:1px solid var(--border);border-radius:6px;text-decoration:none">
+                    Tài khoản mô phỏng
+                </a>
+                @if(request('q') || request('plan') || $synthetic)
                 <a href="{{ route('admin.users.index') }}" class="btn btn-sm"
                    style="background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);border-radius:6px">
                     Xóa bộ lọc

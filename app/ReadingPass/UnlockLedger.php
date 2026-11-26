@@ -2,6 +2,7 @@
 
 namespace App\ReadingPass;
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -72,7 +73,7 @@ final class UnlockLedger
         $fallback = false;
         $cursor = $this->collection()->find(
             ['subject' => $subject, '$or' => [['article_id' => $articleId], ['fallback' => true]]],
-            ['projection' => ['article_id' => 1, 'state' => 1, 'unlocked_at' => 1, 'fallback' => 1]],
+            ['projection' => ['article_id' => 1, 'state' => 1, 'unlocked_at' => 1, 'created_at' => 1, 'fallback' => 1]],
         );
         foreach ($cursor as $row) {
             if ($row['article_id'] === $articleId) {
@@ -87,14 +88,15 @@ final class UnlockLedger
     /** Insert a pending reservation; null when the subject already has a document for the article. */
     public function reserve(array $fields, CarbonInterface $now): ?string
     {
-        $id = (string) Str::uuid7();
+        $id = $fields['_id'] ?? (string) Str::uuid7();
+        $writtenAt = self::writeTime($fields, $now);
         try {
             $this->collection()->insertOne($fields + [
                 '_id' => $id,
                 'state' => self::PENDING,
                 'unlocked_at' => self::date($now),
-                'created_at' => self::date($now),
-                'updated_at' => self::date($now),
+                'created_at' => $writtenAt,
+                'updated_at' => $writtenAt,
             ]);
         } catch (BulkWriteException $e) {
             if (self::isDuplicate($e)) {
@@ -113,7 +115,8 @@ final class UnlockLedger
      */
     public function grant(string $id, array $fields, CarbonInterface $now, string $tier, bool $fallback): array
     {
-        $set = ['state' => self::GRANTED, 'tier' => $tier, 'updated_at' => self::date($now)] + ($fallback ? ['fallback' => true] : []);
+        $writtenAt = self::writeTime($fields, $now);
+        $set = ['state' => self::GRANTED, 'tier' => $tier, 'updated_at' => $writtenAt] + ($fallback ? ['fallback' => true] : []);
         $doc = $this->collection()->findOneAndUpdate(['_id' => $id], ['$set' => $set], ['returnDocument' => FindOneAndUpdate::RETURN_DOCUMENT_AFTER]);
         if ($doc !== null) {
             return $doc;
@@ -121,9 +124,14 @@ final class UnlockLedger
 
         return $this->collection()->findOneAndUpdate(
             ['subject' => $fields['subject'], 'article_id' => $fields['article_id']],
-            ['$set' => $set, '$setOnInsert' => $fields + ['_id' => $id, 'unlocked_at' => self::date($now), 'created_at' => self::date($now)]],
+            ['$set' => $set, '$setOnInsert' => $fields + ['_id' => $id, 'unlocked_at' => self::date($now), 'created_at' => $writtenAt]],
             ['upsert' => true, 'returnDocument' => FindOneAndUpdate::RETURN_DOCUMENT_AFTER],
         );
+    }
+
+    private static function writeTime(array $fields, CarbonInterface $eventTime): UTCDateTime
+    {
+        return self::date(($fields['synthetic'] ?? false) ? CarbonImmutable::now() : $eventTime);
     }
 
     public function release(string $id): void

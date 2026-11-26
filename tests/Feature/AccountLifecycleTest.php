@@ -22,6 +22,7 @@ use App\ReadingPass\ReadingPassHistory;
 use App\ReadingPass\ReadingPassQuota;
 use App\StoryProcessing\CassandraClient;
 use App\StoryProcessing\Neo4jClient;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -46,6 +47,9 @@ class AccountLifecycleTest extends TestCase
     /** @var list<string> user ids whose Cassandra partitions must not outlive the test */
     private array $cassandraUsers = [];
 
+    /** @var array{string, string}|null */
+    private ?array $cassandraArticleDay = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -63,6 +67,9 @@ class AccountLifecycleTest extends TestCase
                 foreach (['activity_by_user_month', 'unlocks_by_user_month'] as $table) {
                     $client->execute("DELETE FROM $keyspace.$table WHERE user_id = ? AND year_month = ?", [$id, now('UTC')->format('Y-m')]);
                 }
+            }
+            if ($this->cassandraArticleDay !== null) {
+                $client->execute("DELETE FROM $keyspace.activity_by_article_day WHERE article_id = ? AND activity_day = ?", $this->cassandraArticleDay);
             }
         } finally {
             parent::tearDown();
@@ -173,8 +180,27 @@ class AccountLifecycleTest extends TestCase
         $this->cassandraSchema();
         [$user, $other, $article] = $this->populatedAccount();
         $id = (string) $user->id;
-        $this->mockNeo4j(1);
+        $synthetic = User::factory()->unverified()->create([
+            '_id' => 'synthetic-v1-10-01', 'name' => 'Synthetic v1 10-01',
+            'email' => 'synthetic+v1-10-01@demo.invalid', 'synthetic' => true, 'synthetic_seed' => 10,
+        ]);
+        $syntheticId = (string) $synthetic->id;
+        $this->cassandraUsers[] = $syntheticId;
+        $at = CarbonImmutable::now('UTC');
+        app(InteractionToggle::class)->seedSynthetic(Bookmark::class, $syntheticId, $article->id, 10, (string) Str::uuid7(), $at);
+        $this->artisan('interactions', ['action' => 'consume', '--limit' => 100])->assertSuccessful();
+        $this->assertCount(1, $this->rows('activity_by_user_month', 'user_id', $syntheticId, 'year_month', $at->format('Y-m')));
+        $this->mockNeo4j(2);
 
+        $this->actingAs(User::where('role', Permissions::SUPER_ADMIN)->sole())
+            ->delete(route('admin.users.destroy', $synthetic))->assertRedirect();
+        $this->makeDue($syntheticId);
+        // Resume a claim whose context predates the synthetic flag.
+        $this->users()->updateOne(['_id' => $syntheticId], ['$set' => ['deletion.state' => AccountLifecycle::PURGING]]);
+        $this->workflows()->updateOne(['_id' => $syntheticId], ['$set' => [
+            'state' => AccountLifecycle::PURGING,
+            'context' => ['first_month' => $at->format('Y-m'), 'stripe_customer_id' => null],
+        ]]);
         $this->actingAs($user)->delete(route('profile.destroy'), ['password' => 'password'])->assertRedirect('/');
         $this->assertContains(['cancel', 'sub_gate97b', 'vietfeed-delete-cancel-sub_gate97b'], $this->stripe->calls);
         $this->makeDue($id);
@@ -187,6 +213,7 @@ class AccountLifecycleTest extends TestCase
         $this->artisan('accounts:purge')->assertSuccessful();
 
         $this->assertNull(User::find($id));
+        $this->assertNull(User::find($syntheticId));
         $workflow = (array) $this->workflows()->findOne(['_id' => $id]);
         $this->assertSame(['_id', 'purged_at', 'requested_at', 'state', 'steps'], collect(array_keys($workflow))->sort()->values()->all());
         $this->assertSame(AccountLifecycle::PURGED, $workflow['state']);
@@ -208,10 +235,11 @@ class AccountLifecycleTest extends TestCase
         $this->assertSame($this->commentId, $reply->parent_id);
 
         $this->assertSame([], $this->rows('activity_by_user_month', 'user_id', $id, 'year_month', now('UTC')->format('Y-m')));
+        $this->assertSame([], $this->rows('activity_by_user_month', 'user_id', $syntheticId, 'year_month', $at->format('Y-m')));
         $this->assertSame([], $this->rows('unlocks_by_user_month', 'user_id', $id, 'year_month', now('UTC')->format('Y-m')));
         $day = $this->rows('activity_by_article_day', 'article_id', (string) $article->id, 'activity_day', now('UTC')->format('Y-m-d'));
         $this->assertNotEmpty($day);
-        $this->assertEqualsCanonicalizing(['deleted', (string) $other->id], array_values(array_unique(array_column($day, 'user_id'))), 'article history stays, without the user');
+        $this->assertEqualsCanonicalizing(['deleted', 'deleted-synthetic', (string) $other->id], array_values(array_unique(array_column($day, 'user_id'))));
         $this->assertSame(0, Redis::connection('nosql')->client()->exists(ReadingPassQuota::windowKey('u:'.$id)));
 
         $this->assertSame(1, Sanction::where('user_id', $id)->count(), 'sanctions are evidence');
@@ -386,9 +414,10 @@ class AccountLifecycleTest extends TestCase
         $user = User::factory()->create(['stripe_customer_id' => 'cus_gate97b']);
         $other = User::factory()->create();
         $id = (string) $user->id;
-        $this->cassandraUsers = [$id];
+        $this->cassandraUsers = [$id, (string) $other->id];
         $article = Article::create(['title' => 'Bài viết', 'slug' => 'bai-viet', 'original_url' => 'https://example.test/bai-viet']);
         $aid = (string) $article->id;
+        $this->cassandraArticleDay = [$aid, now('UTC')->format('Y-m-d')];
 
         $toggle = app(InteractionToggle::class);
         $toggle->run(Bookmark::class, $id, $aid);

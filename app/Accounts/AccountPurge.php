@@ -36,6 +36,8 @@ final class AccountPurge
 
     public const ANONYMOUS = 'deleted';
 
+    private const ANONYMOUS_SYNTHETIC = 'deleted-synthetic';
+
     /** Ordered purge steps. Cassandra anonymization MUST precede the partition deletes that locate its keys. */
     public const STEPS = [
         'stripe_cancel_final', 'bookmarks', 'boosts', 'article_unlocks', 'comments', 'redis',
@@ -204,13 +206,15 @@ final class AccountPurge
         if ($claimed === null) {
             return null;
         }
-        if ($user !== null && ! isset($claimed['context'])) {
+        if ($user !== null && ! isset($claimed['context']['synthetic'])) {
             // What later steps need after the user document is gone. Cleared when the workflow is marked purged.
             $created = $user['created_at'] ?? null;
-            $workflows->updateOne(['_id' => $id, 'claim' => $token], ['$set' => ['context' => [
+            $context = self::arr($claimed['context'] ?? [
                 'first_month' => ($created === null ? CarbonImmutable::parse('2015-01-01', 'UTC') : AccountLifecycle::carbon($created))->format('Y-m'),
                 'stripe_customer_id' => $user['stripe_customer_id'] ?? $user['stripe_id'] ?? null,
-            ]]]);
+            ]);
+            $context['synthetic'] = ($user['synthetic'] ?? false) === true;
+            $workflows->updateOne(['_id' => $id, 'claim' => $token], ['$set' => ['context' => $context]]);
             $claimed = $workflows->findOne(['_id' => $id]);
         }
 
@@ -268,9 +272,9 @@ final class AccountPurge
     private function stepBoosts(string $id, array $context): void
     {
         $boosts = $this->mongo('boosts');
-        foreach ($boosts->find(['user_id' => $id], ['projection' => ['_id' => 1, 'article_id' => 1]]) as $boost) {
+        foreach ($boosts->find(['user_id' => $id], ['projection' => ['_id' => 1, 'article_id' => 1, 'synthetic_seed' => 1]]) as $boost) {
             // Redis trending is a projection of the boosts: subtract this boost, then drop it. Retract is a no-op on repeat.
-            $this->trending->retract((string) $boost['_id'], (string) $boost['article_id']);
+            $this->trending->retract((string) $boost['_id'], (string) $boost['article_id'], $boost['synthetic_seed'] ?? null);
             $boosts->deleteOne(['_id' => $boost['_id']]);
         }
     }
@@ -294,6 +298,7 @@ final class AccountPurge
 
     private function stepCassandraAnonymize(string $id, array $context): void
     {
+        $anonymous = ($context['synthetic'] ?? false) === true ? self::ANONYMOUS_SYNTHETIC : self::ANONYMOUS;
         $keyspace = $this->cassandra->keyspace();
         foreach ($this->months($context) as $month) {
             $this->renewLease($id);
@@ -304,7 +309,7 @@ final class AccountPurge
                 $current = $this->cassandra->rows("SELECT user_id FROM $keyspace.".InteractionActivity::BY_ARTICLE." $where", $key);
                 // UPDATE would upsert a partial row, so only rewrite a row that exists and still names this user.
                 if ($current !== [] && ($current[0]['user_id'] ?? null) === $id) {
-                    $this->cassandra->execute("UPDATE $keyspace.".InteractionActivity::BY_ARTICLE." SET user_id = ? $where", [self::ANONYMOUS, ...$key])->asVoidResult();
+                    $this->cassandra->execute("UPDATE $keyspace.".InteractionActivity::BY_ARTICLE." SET user_id = ? $where", [$anonymous, ...$key])->asVoidResult();
                 }
             }
         }

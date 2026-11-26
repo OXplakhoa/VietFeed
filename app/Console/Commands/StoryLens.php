@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\ProjectionConsumeBudget;
 use App\Content\ContentCatalog;
 use App\Models\Story;
 use App\StoryLens\Brief\Briefs;
@@ -50,7 +51,9 @@ final class StoryLens extends Command
                     $this->info('Cassandra Story timeline schema ready');
                     break;
                 case 'consume':
-                    $this->info('Processed '.$pipeline->consume($section, $this->option('consumer'), $limit).' deliveries');
+                    $consumer = (string) $this->option('consumer');
+                    $count = ProjectionConsumeBudget::run($consumer, $limit, fn () => $pipeline->consume($section, $consumer, 1));
+                    $this->info('Processed '.$count.' deliveries');
                     break;
                 case 'inspect':
                     $this->line(json_encode($pipeline->inspect($section, $this->option('story')), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));

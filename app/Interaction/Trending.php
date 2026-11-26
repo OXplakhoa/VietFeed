@@ -69,15 +69,17 @@ LUA;
             // another worker applied that incarnation's removal.
             $removed = $e['type'] === 'BOOSTED' && ! Boost::whereKey($e['aggregate_id'])
                 ->where('article_id', $e['article_id'])->where('user_id', $e['user_id'])->exists();
-            $this->applyTo(self::KEY, $event, $removed, $owner);
+            $key = ($e['synthetic'] ?? false) === true ? self::workloadKey($e['synthetic_seed']) : self::KEY;
+            $this->applyTo($key, $event, $removed, $owner);
         });
     }
 
     /** Remove one boost's contribution (account purge). Idempotent: an unknown or already removed boost is a no-op. */
-    public function retract(string $boostId, string $articleId): void
+    public function retract(string $boostId, string $articleId, ?int $workloadSeed = null): void
     {
+        $key = $workloadSeed === null ? self::KEY : self::workloadKey($workloadSeed);
         $this->withLiveLock(fn (string $owner) => RedisResult::run("Trending retract $boostId",
-            fn () => Redis::connection('nosql')->eval(self::APPLY, 2, self::KEY, self::LOCK, '', $boostId, 2, 5, $articleId, '1', $owner, ''),
+            fn () => Redis::connection('nosql')->eval(self::APPLY, 2, $key, self::LOCK, '', $boostId, 2, 5, $articleId, '1', $owner, ''),
             fn ($result) => $result === 0 || $result === 1));
     }
 
@@ -94,10 +96,24 @@ LUA;
 
     public function top(int $limit = 10, bool $synthetic = false): array
     {
+        return $this->topKey($synthetic ? self::DEMO_KEY : self::KEY, $limit);
+    }
+
+    public function workloadTop(int $seed, int $limit = 10): array
+    {
+        return $this->topKey(self::workloadKey($seed), $limit);
+    }
+
+    private static function workloadKey(int $seed): string
+    {
+        return 'interactions:trending:workload:v1:'.$seed;
+    }
+
+    private function topKey(string $key, int $limit): array
+    {
         if ($limit < 1 || $limit > 100) {
             throw new InvalidArgumentException('Top limit must be 1..100');
         }
-        $key = $synthetic ? self::DEMO_KEY : self::KEY;
         $ranked = RedisResult::run('Trending top',
             fn () => Redis::connection('nosql')->zrevrange($key, 0, $limit - 1, true),
             is_array(...));
