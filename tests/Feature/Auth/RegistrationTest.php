@@ -24,5 +24,12 @@ class RegistrationTest extends TestCase
 
         $this->assertAuthenticated();
         $response->assertRedirect(route('dashboard', absolute: false));
+
+        // Public demo hardening: the 11th registration attempt from one IP within a minute is throttled.
+        $this->post('/logout');
+        for ($i = 0; $i < 9; $i++) {
+            $this->post('/register', []);
+        }
+        $this->post('/register', [])->assertStatus(429);
     }
 }

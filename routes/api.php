@@ -5,7 +5,7 @@ use App\Http\Middleware\ApiBearer;
 use Illuminate\Support\Facades\Route;
 
 Route::post('auth/login', [TokenController::class, 'login']);
-Route::post('auth/refresh', [TokenController::class, 'refresh']);
+Route::post('auth/refresh', [TokenController::class, 'refresh'])->middleware('throttle:10,1,api-refresh');
 Route::middleware(ApiBearer::class)->group(function () {
     Route::post('auth/logout', [TokenController::class, 'logout']);
     Route::get('auth/me', [TokenController::class, 'me']);

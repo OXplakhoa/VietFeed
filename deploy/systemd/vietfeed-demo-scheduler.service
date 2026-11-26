@@ -1,0 +1,23 @@
+[Unit]
+Description=VietFeed demo scheduler (schedule:work) - run exactly ONE instance
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dolakhoa
+Group=dolakhoa
+WorkingDirectory=/home/dolakhoa/vietfeed-demo
+Environment=WAIT_MONGO_PORT=27018
+ExecStartPre=/home/dolakhoa/vietfeed-demo/deploy/systemd/wait-for-stores.sh
+ExecStart=/usr/bin/php8.4 artisan schedule:work
+# Hardening compatible with writing storage/ and bootstrap/cache in the worktree under /home.
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+Restart=always
+RestartSec=5
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
