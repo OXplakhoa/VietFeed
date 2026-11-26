@@ -23,6 +23,9 @@
     @vite(['resources/css/app.css'])
 </head>
 <body class="vf-auth-body">
+@if (config('app.demo_mode'))
+    <x-demo-banner />
+@endif
     <div class="vf-auth-shell">
         <div class="vf-auth-grid">
             <aside class="vf-auth-editorial-panel">

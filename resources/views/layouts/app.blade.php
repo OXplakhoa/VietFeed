@@ -31,6 +31,9 @@
     @stack('styles')
 </head>
 <body>
+@if (config('app.demo_mode'))
+    <x-demo-banner />
+@endif
 
 {{-- ── Glassmorphism Navbar ───────────────────────────────────── --}}
 <nav class="navbar navbar-expand-lg vf-navbar">

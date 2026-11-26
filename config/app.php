@@ -80,6 +80,9 @@ return [
 
     'locale' => env('APP_LOCALE', 'en'),
 
+    // Public self-hosted demo: shows a visible "test mode, data may be reset" banner (off by default).
+    'demo_mode' => (bool) env('DEMO_MODE', false),
+
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
